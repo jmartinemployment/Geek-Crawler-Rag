@@ -46,11 +46,19 @@ docker compose up --build -d
 
 ## Hostinger
 
-Compose caps match the plan: Qdrant `mem_limit: 3g` + `MAX_SEARCH_THREADS=1`, API `mem_limit: 2g`.
-Point `MONGO_CRAWLER_URL` at the existing Hostinger Mongo `geek_crawler` database (read-only).
+Live stack on KVM 2 (alongside Mongo):
+
+- Health: `http://2.24.101.90:8080/health`
+- Image: `ghcr.io/jmartinemployment/geek-crawler-rag:latest`
+- Compose: [`deploy/hostinger-compose.yml`](./deploy/hostinger-compose.yml) (Qdrant + API; Mongo via `host.docker.internal`)
+
+Caps: Qdrant `mem_limit: 3g` + `MAX_SEARCH_THREADS=1`, API `mem_limit: 2g`.
+Point `MONGO_CRAWLER_URL` at the existing Hostinger Mongo `geek_crawler` database (read-only for crawl HTML).
+
+GeekAPI: set `GEEK_CRAWLER_RAG_URL` / optional `GEEK_CRAWLER_RAG_API_KEY`.
 
 ## Consumers
 
 - **gcc-v2 WRITE** and **GeekAPI**: HTTP clients only — resolve `runId`, call `/v1/query`, inject chunks; on miss **notify-and-skip** (do not block generate).
-- Thin optional trigger: `POST /v1/index` when a crawl reaches `complete` / `external`.
+- Thin optional trigger: `POST /v1/index` when a crawl reaches `complete`.
 """
