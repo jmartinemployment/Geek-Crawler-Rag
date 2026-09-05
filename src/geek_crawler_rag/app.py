@@ -22,6 +22,7 @@ from geek_crawler_rag.mongo import MongoCorpus
 from geek_crawler_rag.qdrant_store import QdrantStore
 from geek_crawler_rag.query import QueryService
 from geek_crawler_rag.status_store import IndexStatusStore
+from geek_crawler_rag.webhook import IndexStatusWebhook
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,7 @@ class AppState:
     embedder: Embedder
     indexer: IndexService
     query: QueryService
+    webhook: IndexStatusWebhook
 
 
 state = AppState()
@@ -64,15 +66,29 @@ async def lifespan(_app: FastAPI):
         batch_size=settings.embed_batch_size,
     )
     status_store = IndexStatusStore(state.mongo.db)
+    state.webhook = IndexStatusWebhook(
+        settings.index_status_webhook_url,
+        settings.index_status_webhook_key or settings.api_key,
+    )
     state.indexer = IndexService(
-        state.mongo, state.store, state.embedder, settings, status_store=status_store
+        state.mongo,
+        state.store,
+        state.embedder,
+        settings,
+        status_store=status_store,
+        webhook=state.webhook,
     )
     state.query = QueryService(state.store, state.embedder)
     await state.store.ensure_collection()
     await state.indexer.start()
-    logger.info("Geek-Crawler-Rag listening (collection=%s)", settings.qdrant_collection)
+    logger.info(
+        "Geek-Crawler-Rag listening (collection=%s webhook=%s)",
+        settings.qdrant_collection,
+        "on" if state.webhook.enabled else "off",
+    )
     yield
     await state.indexer.stop()
+    await state.webhook.close()
     await state.store.close()
     await state.mongo.close()
 

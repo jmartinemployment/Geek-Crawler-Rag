@@ -32,6 +32,8 @@ services:
       OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
       QDRANT_COLLECTION: ${QDRANT_COLLECTION:-geek_crawler_chunks}
       API_KEY: ${API_KEY:-}
+      INDEX_STATUS_WEBHOOK_URL: ${INDEX_STATUS_WEBHOOK_URL:-}
+      INDEX_STATUS_WEBHOOK_KEY: ${INDEX_STATUS_WEBHOOK_KEY:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     extra_hosts:
       - "host.docker.internal:host-gateway"

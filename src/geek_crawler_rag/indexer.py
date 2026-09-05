@@ -17,6 +17,7 @@ from geek_crawler_rag.models import TERMINAL_CRAWL_STATUSES, IndexState, IndexSt
 from geek_crawler_rag.mongo import MongoCorpus
 from geek_crawler_rag.qdrant_store import QdrantStore, point_id
 from geek_crawler_rag.status_store import IndexStatusStore
+from geek_crawler_rag.webhook import IndexStatusWebhook
 
 logger = logging.getLogger(__name__)
 
@@ -29,12 +30,14 @@ class IndexService:
         embedder: Embedder,
         settings: Settings,
         status_store: IndexStatusStore | None = None,
+        webhook: IndexStatusWebhook | None = None,
     ) -> None:
         self._mongo = mongo
         self._store = store
         self._embedder = embedder
         self._settings = settings
         self._status_store = status_store
+        self._webhook = webhook
         self._statuses: dict[str, IndexStatusResponse] = {}
         self._queue: asyncio.Queue[str] = asyncio.Queue()
         self._worker_task: asyncio.Task[None] | None = None
@@ -96,12 +99,13 @@ class IndexService:
             return status
 
     async def _persist(self, status: IndexStatusResponse) -> None:
-        if self._status_store is None:
-            return
-        try:
-            await self._status_store.save(status)
-        except Exception:
-            logger.exception("Failed to persist index status for runId=%s", status.run_id)
+        if self._status_store is not None:
+            try:
+                await self._status_store.save(status)
+            except Exception:
+                logger.exception("Failed to persist index status for runId=%s", status.run_id)
+        if self._webhook is not None:
+            await self._webhook.notify(status)
 
     async def _worker_loop(self) -> None:
         logger.info("Index worker started (concurrency=1)")
@@ -291,3 +295,6 @@ class IndexService:
         vectors = await self._embedder.embed(texts)
         await self._store.upsert(ids=ids, vectors=vectors, payloads=payloads)
         status.chunks_upserted += len(ids)
+        # Progress push for SignalR bridge (webhook); durable store optional mid-run.
+        if self._webhook is not None:
+            await self._webhook.notify(status)

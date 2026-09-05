@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     # Optional shared secret for index/query (GeekAPI / gcc-v2). Empty = open (dev).
     api_key: str | None = None
 
+    # Push index status to GeekAPI → SignalR (no UI polling).
+    index_status_webhook_url: str | None = None
+    index_status_webhook_key: str | None = None
+
     host: str = "0.0.0.0"
     port: int = 8080
     log_level: str = "INFO"
