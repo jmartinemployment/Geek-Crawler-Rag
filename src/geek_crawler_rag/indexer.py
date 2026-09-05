@@ -189,6 +189,19 @@ class IndexService:
         )
         await self._persist(status)
 
+        # Guard runaway external/incomplete corpora on small Hostinger hosts (~12k typical).
+        max_pages = 50_000
+        if mongo_page_count > max_pages:
+            status.state = IndexState.SKIPPED
+            status.error = (
+                f"mongoPageCount={mongo_page_count} exceeds safety cap {max_pages}; "
+                "skipping (re-POST after crawl is complete if intentional)"
+            )
+            status.finished_at_utc = utc_now()
+            logger.warning("Index skipped for runId=%s — %s", run_id, status.error)
+            await self._persist(status)
+            return
+
         if mongo_page_count == 0:
             await self._store.delete_by_run_id(run_id)
             status.state = IndexState.SKIPPED

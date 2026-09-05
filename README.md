@@ -21,13 +21,22 @@ See [`architecture.md`](./architecture.md) and [`plans/geek-crawler-rag.md`](./p
 |--------|------|---------|
 | `GET` | `/health` | Mongo + Qdrant liveness |
 | `POST` | `/v1/index` | Enqueue full-run index `{ "runId": "…" }` |
-| `GET` | `/v1/index/{runId}` | Index job status (`pending` / `running` / `complete` / `failed` / `skipped`) |
+| `GET` | `/v1/index/{runId}` | Index job status (ops/debug; UI uses SignalR, not polling) |
 | `POST` | `/v1/query` | Retrieve chunks `{ "need", "runId", "crawlType?", "host?", "topK?" }` |
 
 Optional auth: set `API_KEY` and send header `X-Api-Key`.
 
 Index concurrency is **1**. Rebuild deletes all Qdrant points for `runId`, then reindexes.
-At index start the service logs **`mongoPageCount`**.
+At index start the service logs **`mongoPageCount`**. Runs with `mongoPageCount` above **50 000** are skipped (Hostinger safety cap).
+
+### Index status push (no UI polling)
+
+On status transitions the API POSTs to GeekAPI (optional):
+
+- `INDEX_STATUS_WEBHOOK_URL` — e.g. `https://api.geekatyourspot.com/api/geek-crawler/internal/rag/index-status`
+- `INDEX_STATUS_WEBHOOK_KEY` — `GEEK_BACKEND_API_KEY` (falls back to `API_KEY` if unset)
+
+GeekAPI fans out SignalR **`GeekCrawlerRagIndexEvent`**. The Geek-Crawler UI listens on that hub method; it does **not** poll `GET /v1/index`.
 
 ## Local run
 
@@ -59,6 +68,7 @@ GeekAPI: set `GEEK_CRAWLER_RAG_URL` / optional `GEEK_CRAWLER_RAG_API_KEY`.
 
 ## Consumers
 
-- **gcc-v2 WRITE** and **GeekAPI**: HTTP clients only — resolve `runId`, call `/v1/query`, inject chunks; on miss **notify-and-skip** (do not block generate).
-- Thin optional trigger: `POST /v1/index` when a crawl reaches `complete`.
+- **gcc-v2 WRITE** (via GeekAPI): HTTP query client — resolve `runId`, call `/v1/query`, inject chunks; on miss **notify-and-skip** (do not block generate).
+- Thin trigger: `POST /v1/index` when a crawl reaches **`complete`**.
+- Progress: webhook → GeekAPI → SignalR (see above).
 """

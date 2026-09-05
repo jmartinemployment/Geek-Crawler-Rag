@@ -103,8 +103,9 @@ test -f /Users/jeffmartin/development/Geek-Crawler-Rag/plans/geek-crawler-rag.md
 ! rg -l 'qdrant|Qdrant' /Users/jeffmartin/development/content-creator-v2/src 2>/dev/null | head -1
 ```
 
-[ ] Separate repo owns Python + Qdrant  
-[ ] Full index per `runId`; English only  
-[ ] `partner` and `competitors` same pipeline  
-[ ] gcc-v2 / GeekAPI are consumers only  
-[ ] No Creator crawl of tools/competitors from this project  
+[x] Separate repo owns Python + Qdrant  
+[x] Full index per `runId`; English only  
+[x] `partner` and `competitors` same pipeline  
+[x] gcc-v2 / GeekAPI are consumers only  
+[x] No Creator crawl of tools/competitors from this project  
+[x] Index status is push (webhook → SignalR); UI does not poll  

@@ -35,13 +35,16 @@ flowchart LR
   rag[Geek-Crawler-Rag Python]
   qdrant[Hostinger Qdrant]
   write[gcc-v2 WRITE]
+  ui[Geek-Crawler UI]
 
   cheerio -->|page batches| api --> repo --> mongo
-  api -.->|optional thin trigger or query| rag
+  api -.->|thin trigger / query proxy| rag
   rag -->|read Html| mongo
   rag -->|embed| openai[OpenAI Embeddings]
   rag -->|upsert search| qdrant
-  write -->|retrieve chunks| rag
+  rag -->|index status webhook| api
+  api -->|SignalR GeekCrawlerRagIndexEvent| ui
+  write -->|retrieve chunks via GeekAPI| rag
   write -->|LLM| llm[External LLM]
 ```
 
@@ -51,9 +54,10 @@ flowchart LR
 | **Corpus** | Mongo `geek_crawler` on Hostinger | Source of truth for HTML |
 | **Index + query** | **Geek-Crawler-Rag** (this repo) | Chunk, English-only embed, Qdrant upsert/search |
 | **Vectors** | Qdrant (colocated) | Rebuildable index per `runId` |
-| **Consumer** | content-creator-v2 / GeekAPI WRITE | Query Geek-Crawler-Rag; inject chunks into prompts |
+| **Consumer** | content-creator-v2 WRITE via GeekAPI | Query Geek-Crawler-Rag; inject chunks into prompts |
+| **Progress** | RAG webhook → GeekAPI → SignalR | UI shows RAG index status without polling |
 
-Dashed GeekAPI→Geek-Crawler-Rag edge: optional glue only. RAG does **not** live inside GeekAPI.
+Dashed GeekAPI→Geek-Crawler-Rag edge: thin glue only (trigger, query proxy, webhook bridge). RAG does **not** live inside GeekAPI.
 
 ---
 
@@ -68,6 +72,7 @@ Dashed GeekAPI→Geek-Crawler-Rag edge: optional glue only. RAG does **not** liv
 7. **Qdrant is rebuildable** — Mongo remains durable; index can be wiped and rebuilt.
 8. **Fail soft for consumers** — index/query miss → notify-and-skip research; do not block generate.
 9. **Hostinger caps** — Qdrant ~3 GB RAM, search threads = 1; indexer concurrency = 1; leave OS headroom.
+10. **Index status is push** — RAG → GeekAPI webhook → SignalR `GeekCrawlerRagIndexEvent`. UI must not poll `GET /v1/index`.
 
 ---
 
@@ -95,7 +100,9 @@ No Playwright required on this box for RAG.
 
 ## 6. Contracts (summary)
 
-**Index:** `POST` index for `runId` (idempotent). Terminal crawl statuses `complete` / `external` (or explicit admin).
+**Index:** `POST` index for `runId` (idempotent). GeekAPI triggers on crawl **`complete`**. Admin may POST any run; `mongoPageCount` > 50 000 is skipped.
+
+**Status push:** optional `INDEX_STATUS_WEBHOOK_*` → GeekAPI → SignalR (not UI polling).
 
 **Query:** embed need + filter `runId` (+ `host`, `crawlType`); return top-k chunks with `url` / text for grounding.
 

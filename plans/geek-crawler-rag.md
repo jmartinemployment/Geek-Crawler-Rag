@@ -53,12 +53,15 @@ flowchart LR
   py[Geek-Crawler-Rag Python]
   qdrant[Hostinger Qdrant]
   write[gcc-v2 WRITE]
+  ui[Geek-Crawler UI]
 
   cheerio -->|page batches| api --> repo --> mongo
-  api -.->|optional thin trigger or query| py
+  api -.->|thin trigger or query| py
   py -->|read Html| mongo
   py -->|embed| openai[OpenAI Embeddings]
   py -->|upsert search| qdrant
+  py -->|index status webhook| api
+  api -->|SignalR RagIndexEvent| ui
   write -->|retrieve chunks| py
   write -->|LLM| llm[External LLM]
 ```
@@ -67,14 +70,15 @@ flowchart LR
 
 ## Index pipeline (per `runId`)
 
-1. Trigger on terminal run status (`complete` / `external`) or explicit admin `POST`.
-2. Paginate Mongo pages for that `runId`; log **Mongo page count**.
+1. Trigger on crawl **`complete`** (GeekAPI) or explicit admin `POST`.
+2. Paginate Mongo pages for that `runId`; log **Mongo page count** (skip if > 50 000).
 3. Extract text; detect language; **skip non-English**.
 4. Chunk (~500–800 tokens, small overlap).
 5. Embed + upsert to collection `geek_crawler_chunks`.
 6. Payload: `runId`, `crawlType`, `host`, `url`, `finalUrl`, `chunkIndex`, `language` (`en`), `title`.
 7. Reindex: delete points with that `runId`, then full pass.
 8. Index concurrency = **1**.
+9. Status transitions → optional webhook → GeekAPI → SignalR (no UI polling).
 
 ---
 
@@ -107,6 +111,7 @@ flowchart LR
 - [x] Optional: GeekAPI thin trigger on run complete
 - [x] gcc-v2 WRITE: partner + competitor chunk injection
 - [x] Verify on a real Hostinger run (579 pages / 1747 chunks); `mongoPageCount` logged — scale to ~12k when available
+- [x] Index status webhook → GeekAPI → SignalR `GeekCrawlerRagIndexEvent` (no UI polling)
 
 ---
 
