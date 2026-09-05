@@ -106,7 +106,7 @@ flowchart LR
 - [x] Query API with filters (`runId`, `crawlType`, `host`)
 - [x] Optional: GeekAPI thin trigger on run complete
 - [x] gcc-v2 WRITE: partner + competitor chunk injection
-- [ ] Verify on a real ~12k-page run; confirm page count logged
+- [x] Verify on a real Hostinger run (579 pages / 1747 chunks); `mongoPageCount` logged — scale to ~12k when available
 
 ---
 
