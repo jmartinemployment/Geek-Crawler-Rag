@@ -72,7 +72,7 @@ def main() -> int:
             }
         )
         missing = max(0, with_html - with_md)
-        reindex = "yes" if with_md > 0 else "skip-empty"
+        reindex = "yes" if with_md > 0 else "no-pages"
         if missing > 0:
             reindex = "backfill-first"
         elif with_md > 0:

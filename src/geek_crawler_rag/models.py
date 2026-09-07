@@ -10,6 +10,7 @@ class IndexState(StrEnum):
     RUNNING = "running"
     COMPLETE = "complete"
     FAILED = "failed"
+    # Legacy terminal value kept for reading old status docs only — never written.
     SKIPPED = "skipped"
 
 

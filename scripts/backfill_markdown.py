@@ -53,6 +53,8 @@ class Counts:
     deleted_links: int = 0
     skipped_has_markdown: int = 0
     skipped_no_html: int = 0
+    already_markdown: int = 0
+    missing_doc: int = 0
 
     def as_dict(self) -> dict[str, int]:
         return {
@@ -62,8 +64,8 @@ class Counts:
             "deleted_failure": self.deleted_failure,
             "deleted_extract_empty": self.deleted_extract_empty,
             "deleted_links": self.deleted_links,
-            "skipped_has_markdown": self.skipped_has_markdown,
-            "skipped_no_html": self.skipped_no_html,
+            "already_markdown": self.already_markdown,
+            "missing_doc": self.missing_doc,
         }
 
 
@@ -153,7 +155,6 @@ def backfill(
                     {"markdown": ""},
                 ]
             },
-            {"MarkdownBackfilledAt": {"$exists": False}},
         ],
     }
     if run_id:
@@ -235,15 +236,18 @@ def backfill(
                 delete_page(page_id, "extract_empty")
                 continue
             if doc is None:
-                counts.skipped_no_html += 1
+                counts.missing_doc += 1
                 continue
             if _has_markdown(doc):
-                counts.skipped_has_markdown += 1
+                counts.already_markdown += 1
                 if write:
                     try:
                         pages.update_one(
                             {"Id": page_id},
-                            {"$set": {"MarkdownBackfilledAt": now}},
+                            {
+                                "$set": {"MarkdownBackfilledAt": now},
+                                "$unset": {"MarkdownBackfillSkip": ""},
+                            },
                         )
                     except Exception as exc:
                         print(f"WARN mark existing md failed id={page_id}: {exc}", flush=True)

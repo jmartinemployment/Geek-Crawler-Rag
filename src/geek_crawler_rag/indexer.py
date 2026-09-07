@@ -134,7 +134,6 @@ class IndexService:
                 if status and status.state not in (
                     IndexState.COMPLETE,
                     IndexState.FAILED,
-                    IndexState.SKIPPED,
                 ):
                     status.state = IndexState.FAILED
                     status.error = "Unhandled indexer exception"
@@ -157,10 +156,8 @@ class IndexService:
             status.pages_deleted_failure += 1
         elif reason == "non_english":
             status.pages_deleted_non_english += 1
-            status.pages_skipped_lang += 1
         else:
             status.pages_deleted_empty += 1
-            status.pages_skipped_empty += 1
         try:
             await self._mongo.delete_page(page.id)
         except Exception:
@@ -220,22 +217,22 @@ class IndexService:
 
         max_pages = 50_000
         if mongo_page_count > max_pages:
-            status.state = IndexState.SKIPPED
+            status.state = IndexState.FAILED
             status.error = (
                 f"mongoPageCount={mongo_page_count} exceeds safety cap {max_pages}; "
-                "skipping (re-POST after crawl is complete if intentional)"
+                "refusing index (re-POST after crawl is complete if intentional)"
             )
             status.finished_at_utc = utc_now()
-            logger.warning("Index skipped for runId=%s — %s", run_id, status.error)
+            logger.warning("Index failed for runId=%s — %s", run_id, status.error)
             await self._persist(status)
             return
 
         if mongo_page_count == 0:
             await self._store.delete_by_run_id(run_id)
-            status.state = IndexState.SKIPPED
+            status.state = IndexState.COMPLETE
             status.error = "No Mongo pages for run"
             status.finished_at_utc = utc_now()
-            logger.warning("Index skipped for runId=%s — no pages", run_id)
+            logger.warning("Index complete (empty) for runId=%s — no pages", run_id)
             await self._persist(status)
             return
 
@@ -306,11 +303,11 @@ class IndexService:
             return
 
         if status.pages_english == 0:
-            status.state = IndexState.SKIPPED
-            status.error = "No English pages to embed"
+            status.state = IndexState.COMPLETE
+            status.error = "No English pages to embed (unusable pages deleted)"
             status.finished_at_utc = utc_now()
             logger.warning(
-                "Index skipped for runId=%s — pagesSeen=%s deletedLocale=%s "
+                "Index complete (empty corpus) for runId=%s — pagesSeen=%s deletedLocale=%s "
                 "deletedFailure=%s deletedEmpty=%s deletedNonEnglish=%s",
                 run_id,
                 status.pages_seen,

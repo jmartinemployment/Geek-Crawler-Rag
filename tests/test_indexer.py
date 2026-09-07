@@ -90,9 +90,9 @@ async def test_index_skips_when_no_english():
 
     status = await svc.get_status("r1")
     assert status is not None
-    assert status.state == IndexState.SKIPPED
+    assert status.state == IndexState.COMPLETE
     assert status.mongo_page_count == 1
-    assert status.pages_skipped_lang >= 1
+    assert status.pages_deleted_non_english >= 1
     llama.embed_and_upsert.assert_not_called()
 
 
