@@ -1,17 +1,18 @@
 """Geek-Crawler-Rag
 
 Standalone **Python** retrieval product for the Geek-Crawler Mongo corpus.
-Indexes English HTML into Qdrant and serves a thin query API for consumers
-(content-creator-v2 WRITE, optional GeekAPI glue).
+**FastAPI** exposes `v1/*`; **LlamaIndex** owns ingest/embed/dense retrieval into Qdrant
+(parent/child chunks, hybrid BM25 RRF, optional Cohere rerank).
 
-See [`architecture.md`](./architecture.md) and [`plans/geek-crawler-rag.md`](./plans/geek-crawler-rag.md).
+See [`architecture.md`](./architecture.md), [`plans/geek-crawler-rag.md`](./plans/geek-crawler-rag.md),
+and [`plans/rag-content-writing-pipeline.md`](./plans/rag-content-writing-pipeline.md).
 
 ## What this is / is not
 
 | Is | Is not |
 |----|--------|
-| Index + query for `geek_crawler` HTML | A crawler |
-| Qdrant colocated with Mongo on Hostinger | Cloud vector DB / pgvector |
+| Index + query for `geek_crawler` pages | A crawler |
+| FastAPI + LlamaIndex + Qdrant on Hostinger | Cloud vector DB / pgvector |
 | English-only embed (`text-embedding-3-small`) | Spanish indexing |
 | Owned by this repo | Logic inside phi or GeekAPI |
 
@@ -19,10 +20,57 @@ See [`architecture.md`](./architecture.md) and [`plans/geek-crawler-rag.md`](./p
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| `GET` | `/health` | Mongo + Qdrant liveness |
+| `GET` | `/health` | Mongo + Qdrant liveness (`engine`, `features`) |
 | `POST` | `/v1/index` | Enqueue full-run index `{ "runId": "…" }` |
 | `GET` | `/v1/index/{runId}` | Index job status (ops/debug; UI uses SignalR, not polling) |
-| `POST` | `/v1/query` | Retrieve chunks `{ "need", "runId", "crawlType?", "host?", "topK?" }` |
+| `POST` | `/v1/query` | Hybrid or graph retrieve (see below) |
+| `POST` | `/v1/templates/index` | Upsert ad-template exemplars (Content Creator owns corpus) |
+| `POST` | `/v1/templates/query` | Retrieve few-shot templates by need (+ channel/framework/tags) |
+
+`POST /v1/query` body (camelCase; new fields optional / backward compatible):
+
+```json
+{
+  "need": "…",
+  "runId": "…",
+  "crawlType": "partner",
+  "host": null,
+  "topK": 8,
+  "preferParent": true,
+  "preferChild": false,
+  "chunkRole": "child",
+  "sourceTypes": ["partner"],
+  "entityNames": ["acme.com"],
+  "categories": ["pricing"],
+  "minQuality": 0.4,
+  "retrievalMode": "hybrid"
+}
+```
+
+- Default `retrievalMode`: `hybrid` (LlamaIndex dense + BM25/text RRF + optional Cohere).
+- `retrievalMode: "graph"`: parent-biased hybrid plus `themes[]` (entity / category / co-occurrence) for slides/strategy.
+- Index writes parent + child LlamaIndex nodes with `parentText` / `childText` and entity metadata.
+- `GET /health` includes `"engine": "llamaindex"` and `"features": ["hybrid","graph","ad-templates"]`.
+
+`POST /v1/templates/index` example:
+
+```json
+{
+  "templates": [
+    {
+      "id": "pas-linkedin",
+      "name": "PAS LinkedIn",
+      "channel": "linkedin",
+      "framework": "pas",
+      "tone": "professional",
+      "body": "Problem… Agitate… Solution…",
+      "entityTags": ["acme"]
+    }
+  ]
+}
+```
+
+`POST /v1/templates/query`: `{ "need": "…", "topK": 5, "channel": "linkedin", "framework": "pas" }`.
 
 Optional auth: set `API_KEY` and send header `X-Api-Key`.
 

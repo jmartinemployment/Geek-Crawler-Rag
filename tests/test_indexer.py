@@ -1,28 +1,51 @@
-"""Indexer status transitions with mocked Mongo / Qdrant / embedder."""
+"""Indexer status transitions with mocked Mongo / Qdrant / LlamaIndex."""
 
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from llama_index.core.schema import TextNode
 
 from geek_crawler_rag.config import Settings
 from geek_crawler_rag.indexer import IndexService
+from geek_crawler_rag.metadata import EntityRef
 from geek_crawler_rag.models import IndexState
 from geek_crawler_rag.mongo import CrawlPage, CrawlRun
+
+
+def _entity_mock(mongo: MagicMock) -> None:
+    mongo.resolve_entity = AsyncMock(
+        return_value=EntityRef(
+            entity_id=None,
+            entity_name="example.com",
+            source_type="partner",
+            domains=("example.com",),
+        )
+    )
+
+
+def _llama_mock() -> MagicMock:
+    llama = MagicMock()
+
+    async def upsert(nodes: list[TextNode]) -> int:
+        return len(nodes)
+
+    llama.embed_and_upsert = AsyncMock(side_effect=upsert)
+    return llama
 
 
 @pytest.mark.asyncio
 async def test_index_run_not_found():
     mongo = MagicMock()
     mongo.get_run = AsyncMock(return_value=None)
+    _entity_mock(mongo)
     store = MagicMock()
     store.delete_by_run_id = AsyncMock()
     store.ensure_collection = AsyncMock()
-    embedder = MagicMock()
     settings = Settings(openai_api_key="test")
 
-    svc = IndexService(mongo, store, embedder, settings)
+    svc = IndexService(mongo, store, settings, llama=_llama_mock())
     await svc.enqueue("missing-run")
     await svc._index_run("missing-run")
 
@@ -39,6 +62,7 @@ async def test_index_skips_when_no_english():
         return_value=CrawlRun(id="r1", crawl_type="partner", status="complete")
     )
     mongo.count_pages = AsyncMock(return_value=1)
+    _entity_mock(mongo)
 
     async def empty_english_pages(_run_id, batch_size=25):
         yield [
@@ -58,12 +82,10 @@ async def test_index_skips_when_no_english():
     store = MagicMock()
     store.delete_by_run_id = AsyncMock()
     store.ensure_collection = AsyncMock()
-    store.upsert = AsyncMock()
-    embedder = MagicMock()
-    embedder.embed = AsyncMock(return_value=[])
+    llama = _llama_mock()
     settings = Settings(openai_api_key="test")
 
-    svc = IndexService(mongo, store, embedder, settings)
+    svc = IndexService(mongo, store, settings, llama=llama)
     await svc._index_run("r1")
 
     status = await svc.get_status("r1")
@@ -71,7 +93,7 @@ async def test_index_skips_when_no_english():
     assert status.state == IndexState.SKIPPED
     assert status.mongo_page_count == 1
     assert status.pages_skipped_lang >= 1
-    store.upsert.assert_not_called()
+    llama.embed_and_upsert.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -86,6 +108,7 @@ async def test_index_upserts_english_chunks():
         return_value=CrawlRun(id="r2", crawl_type="competitors", status="complete")
     )
     mongo.count_pages = AsyncMock(return_value=1)
+    _entity_mock(mongo)
 
     async def pages(_run_id, batch_size=25):
         yield [
@@ -103,16 +126,10 @@ async def test_index_upserts_english_chunks():
     store = MagicMock()
     store.delete_by_run_id = AsyncMock()
     store.ensure_collection = AsyncMock()
-    store.upsert = AsyncMock()
-
-    async def fake_embed(texts):
-        return [[0.1] * 8 for _ in texts]
-
-    embedder = MagicMock()
-    embedder.embed = AsyncMock(side_effect=fake_embed)
+    llama = _llama_mock()
     settings = Settings(openai_api_key="test", embed_batch_size=10)
 
-    svc = IndexService(mongo, store, embedder, settings)
+    svc = IndexService(mongo, store, settings, llama=llama)
     await svc._index_run("r2")
 
     status = await svc.get_status("r2")
@@ -121,7 +138,10 @@ async def test_index_upserts_english_chunks():
     assert status.chunks_upserted >= 1
     assert status.crawl_type == "competitors"
     store.delete_by_run_id.assert_awaited_once_with("r2")
-    assert store.upsert.await_count >= 1
+    assert llama.embed_and_upsert.await_count >= 1
+    nodes = llama.embed_and_upsert.await_args.args[0]
+    assert any(n.metadata.get("chunkRole") == "child" for n in nodes)
+    assert any(n.metadata.get("parentText") for n in nodes)
 
 
 @pytest.mark.asyncio
@@ -136,6 +156,7 @@ async def test_index_flush_failure_cleans_partial_points():
         return_value=CrawlRun(id="r3", crawl_type="partner", status="complete")
     )
     mongo.count_pages = AsyncMock(return_value=1)
+    _entity_mock(mongo)
 
     async def pages(_run_id, batch_size=25):
         yield [
@@ -153,12 +174,11 @@ async def test_index_flush_failure_cleans_partial_points():
     store = MagicMock()
     store.delete_by_run_id = AsyncMock()
     store.ensure_collection = AsyncMock()
-    store.upsert = AsyncMock(side_effect=RuntimeError("qdrant down"))
-    embedder = MagicMock()
-    embedder.embed = AsyncMock(return_value=[[0.1] * 8])
+    llama = MagicMock()
+    llama.embed_and_upsert = AsyncMock(side_effect=RuntimeError("qdrant down"))
     settings = Settings(openai_api_key="test", embed_batch_size=10)
 
-    svc = IndexService(mongo, store, embedder, settings)
+    svc = IndexService(mongo, store, settings, llama=llama)
     await svc._index_run("r3")
 
     status = await svc.get_status("r3")
@@ -170,10 +190,10 @@ async def test_index_flush_failure_cleans_partial_points():
 @pytest.mark.asyncio
 async def test_enqueue_dedupes_pending():
     mongo = MagicMock()
+    _entity_mock(mongo)
     store = MagicMock()
-    embedder = MagicMock()
     settings = Settings(openai_api_key="test")
-    svc = IndexService(mongo, store, embedder, settings)
+    svc = IndexService(mongo, store, settings, llama=_llama_mock())
     first = await svc.enqueue("same")
     second = await svc.enqueue("same")
     assert first is second

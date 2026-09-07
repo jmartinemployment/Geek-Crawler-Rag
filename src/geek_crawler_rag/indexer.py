@@ -1,4 +1,4 @@
-"""Index pipeline: Mongo → extract → English-only → chunk → embed → Qdrant.
+"""Index pipeline via LlamaIndex (nodes + embed + Qdrant) under FastAPI job queue.
 
 Index concurrency = 1 (single worker). Rebuild = delete-by-runId then full pass.
 """
@@ -7,19 +7,24 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import Protocol
 
-from geek_crawler_rag.chunk import chunk_text
+from llama_index.core.schema import TextNode
+
 from geek_crawler_rag.config import Settings
-from geek_crawler_rag.embed import Embedder
-from geek_crawler_rag.extract import extract_text_and_title, host_from_origin_or_url
-from geek_crawler_rag.language import is_english
+from geek_crawler_rag.extract import host_from_origin_or_url
+from geek_crawler_rag.llama_nodes import page_to_nodes
 from geek_crawler_rag.models import TERMINAL_CRAWL_STATUSES, IndexState, IndexStatusResponse, utc_now
 from geek_crawler_rag.mongo import MongoCorpus
-from geek_crawler_rag.qdrant_store import QdrantStore, point_id
+from geek_crawler_rag.qdrant_store import QdrantStore
 from geek_crawler_rag.status_store import IndexStatusStore
 from geek_crawler_rag.webhook import IndexStatusWebhook
 
 logger = logging.getLogger(__name__)
+
+
+class NodeUpserter(Protocol):
+    async def embed_and_upsert(self, nodes: list[TextNode]) -> int: ...
 
 
 class IndexService:
@@ -27,15 +32,15 @@ class IndexService:
         self,
         mongo: MongoCorpus,
         store: QdrantStore,
-        embedder: Embedder,
         settings: Settings,
+        llama: NodeUpserter,
         status_store: IndexStatusStore | None = None,
         webhook: IndexStatusWebhook | None = None,
     ) -> None:
         self._mongo = mongo
         self._store = store
-        self._embedder = embedder
         self._settings = settings
+        self._llama = llama
         self._status_store = status_store
         self._webhook = webhook
         self._statuses: dict[str, IndexStatusResponse] = {}
@@ -108,7 +113,7 @@ class IndexService:
             await self._webhook.notify(status)
 
     async def _worker_loop(self) -> None:
-        logger.info("Index worker started (concurrency=1)")
+        logger.info("Index worker started (concurrency=1, engine=LlamaIndex)")
         while True:
             run_id = await self._queue.get()
             try:
@@ -179,9 +184,8 @@ class IndexService:
 
         mongo_page_count = await self._mongo.count_pages(run_id)
         status.mongo_page_count = mongo_page_count
-        # Required by plan/rules: log Mongo page count at index start.
         logger.info(
-            "Indexing runId=%s crawlType=%s status=%s mongoPageCount=%s",
+            "Indexing runId=%s crawlType=%s status=%s mongoPageCount=%s engine=LlamaIndex",
             run_id,
             run.crawl_type,
             run.status,
@@ -189,7 +193,6 @@ class IndexService:
         )
         await self._persist(status)
 
-        # Guard runaway external/incomplete corpora on small Hostinger hosts (~12k typical).
         max_pages = 50_000
         if mongo_page_count > max_pages:
             status.state = IndexState.SKIPPED
@@ -214,9 +217,8 @@ class IndexService:
         await self._store.ensure_collection()
         await self._store.delete_by_run_id(run_id)
 
-        pending_ids: list[str] = []
-        pending_texts: list[str] = []
-        pending_payloads: list[dict] = []
+        pending: list[TextNode] = []
+        entity_cache: dict[str, object] = {}
 
         try:
             async for pages in self._mongo.iter_pages(
@@ -224,52 +226,46 @@ class IndexService:
             ):
                 for page in pages:
                     status.pages_seen += 1
-                    text, title = extract_text_and_title(page.html)
-                    if not text:
+                    host_key = host_from_origin_or_url(page.origin, page.url)
+                    if host_key not in entity_cache:
+                        entity_cache[host_key] = await self._mongo.resolve_entity(
+                            host=host_key, crawl_type=run.crawl_type
+                        )
+                    entity = entity_cache[host_key]
+                    nodes, skip = page_to_nodes(
+                        page=page,
+                        run_id=run_id,
+                        crawl_type=run.crawl_type,
+                        entity=entity,  # type: ignore[arg-type]
+                        settings=self._settings,
+                    )
+                    if skip == "empty":
                         status.pages_skipped_empty += 1
                         continue
-                    if not is_english(text):
+                    if skip == "lang":
                         status.pages_skipped_lang += 1
                         continue
 
                     status.pages_english += 1
-                    host = host_from_origin_or_url(page.origin, page.url)
-                    chunks = chunk_text(
-                        text,
-                        size_tokens=self._settings.chunk_size_tokens,
-                        overlap_tokens=self._settings.chunk_overlap_tokens,
-                    )
-                    for idx, chunk in enumerate(chunks):
-                        pending_ids.append(point_id(run_id, page.id, idx))
-                        pending_texts.append(chunk)
-                        pending_payloads.append(
-                            {
-                                "runId": run_id,
-                                "crawlType": run.crawl_type,
-                                "host": host,
-                                "url": page.url,
-                                "finalUrl": page.final_url or page.url,
-                                "chunkIndex": idx,
-                                "language": "en",
-                                "title": title,
-                                "text": chunk,
-                                "pageId": page.id,
-                            }
-                        )
+                    pending.extend(nodes)
+                    if len(pending) >= self._settings.embed_batch_size:
+                        n = await self._llama.embed_and_upsert(pending)
+                        status.chunks_upserted += n
+                        pending = []
+                        if self._webhook is not None:
+                            await self._webhook.notify(status)
 
-                    if len(pending_texts) >= self._settings.embed_batch_size:
-                        await self._flush(status, pending_ids, pending_texts, pending_payloads)
-                        pending_ids, pending_texts, pending_payloads = [], [], []
-
-            if pending_texts:
-                await self._flush(status, pending_ids, pending_texts, pending_payloads)
+            if pending:
+                n = await self._llama.embed_and_upsert(pending)
+                status.chunks_upserted += n
+                if self._webhook is not None:
+                    await self._webhook.notify(status)
 
         except Exception as ex:
             status.state = IndexState.FAILED
             status.error = str(ex)
             status.finished_at_utc = utc_now()
             logger.exception("Index failed for runId=%s: %s", run_id, ex)
-            # Always scrub after a failed rebuild so consumers never see a partial runId.
             await self._safe_cleanup(run_id)
             await self._persist(status)
             return
@@ -291,23 +287,9 @@ class IndexService:
         status.state = IndexState.COMPLETE
         status.finished_at_utc = utc_now()
         logger.info(
-            "Index complete for runId=%s chunksUpserted=%s pagesEnglish=%s",
+            "Index complete for runId=%s chunksUpserted=%s pagesEnglish=%s engine=LlamaIndex",
             run_id,
             status.chunks_upserted,
             status.pages_english,
         )
         await self._persist(status)
-
-    async def _flush(
-        self,
-        status: IndexStatusResponse,
-        ids: list[str],
-        texts: list[str],
-        payloads: list[dict],
-    ) -> None:
-        vectors = await self._embedder.embed(texts)
-        await self._store.upsert(ids=ids, vectors=vectors, payloads=payloads)
-        status.chunks_upserted += len(ids)
-        # Progress push for SignalR bridge (webhook); durable store optional mid-run.
-        if self._webhook is not None:
-            await self._webhook.notify(status)

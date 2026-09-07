@@ -1,4 +1,4 @@
-"""Read-only Mongo access to geek_crawler crawl_pages / crawl_runs.
+"""Read-only Mongo access to geek_crawler crawl_pages / crawl_runs / entities.
 
 GeekRepository stores PG-export-shaped documents: PascalCase fields, Guid as
 string ("d" format). We never write crawl HTML.
@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from typing import Any, AsyncIterator
 
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+
+from geek_crawler_rag.metadata import EntityRef, entity_from_crawl, entity_from_doc, normalize_host
 
 logger = logging.getLogger(__name__)
 
@@ -30,12 +32,16 @@ class CrawlPage:
     url: str
     final_url: str
     html: str | None
+    markdown: str | None = None
+    title: str | None = None
+    crawled_at: str | None = None
 
 
 class MongoCorpus:
     def __init__(self, url: str, db_name: str = "geek_crawler") -> None:
         self._client = AsyncIOMotorClient(url)
         self._db: AsyncIOMotorDatabase = self._client[db_name]
+        self._entity_cache: list[dict[str, Any]] | None = None
 
     @property
     def db(self) -> AsyncIOMotorDatabase:
@@ -67,7 +73,7 @@ class MongoCorpus:
         *,
         batch_size: int = 25,
     ) -> AsyncIterator[list[CrawlPage]]:
-        """Paginate pages for a run. Batches Html deliberately (large documents)."""
+        """Paginate pages for a run. Batches Html/Markdown deliberately (large documents)."""
         projection = {
             "Id": 1,
             "RunId": 1,
@@ -75,6 +81,11 @@ class MongoCorpus:
             "Url": 1,
             "FinalUrl": 1,
             "Html": 1,
+            "Markdown": 1,
+            "markdown": 1,
+            "Title": 1,
+            "title": 1,
+            "CrawledAtUtc": 1,
             "_id": 0,
         }
         cursor = (
@@ -93,11 +104,65 @@ class MongoCorpus:
         if batch:
             yield batch
 
+    async def resolve_entity(self, *, host: str, crawl_type: str) -> EntityRef:
+        """Match Mongo entities.domains to host; else crawlType + host fallback."""
+        host_n = normalize_host(host)
+        fallback = entity_from_crawl(crawl_type, host_n)
+        if not host_n:
+            return fallback
+        try:
+            entities = await self._load_entities()
+        except Exception:
+            logger.exception("Failed loading entities collection; using crawlType fallback")
+            return fallback
+
+        for doc in entities:
+            domains_raw = doc.get("domains") or doc.get("Domains") or []
+            if isinstance(domains_raw, str):
+                domains = [domains_raw]
+            elif isinstance(domains_raw, list):
+                domains = [str(d) for d in domains_raw if d]
+            else:
+                domains = []
+            for domain in domains:
+                d = normalize_host(domain)
+                if not d:
+                    continue
+                if host_n == d or host_n.endswith("." + d):
+                    return entity_from_doc(doc, fallback_host=host_n, crawl_type=crawl_type)
+        return fallback
+
+    async def _load_entities(self) -> list[dict[str, Any]]:
+        if self._entity_cache is not None:
+            return self._entity_cache
+        names = await self._db.list_collection_names()
+        if "entities" not in names:
+            self._entity_cache = []
+            return self._entity_cache
+        cursor = self._db["entities"].find({}).limit(5000)
+        self._entity_cache = [doc async for doc in cursor]
+        logger.info("Loaded %s entities for domain matching", len(self._entity_cache))
+        return self._entity_cache
+
 
 def _page_from_doc(doc: dict[str, Any], run_id: str) -> CrawlPage:
     html = doc.get("Html")
     if html is not None and not isinstance(html, str):
         html = str(html)
+    markdown = doc.get("Markdown")
+    if markdown is None:
+        markdown = doc.get("markdown")
+    if markdown is not None and not isinstance(markdown, str):
+        markdown = str(markdown)
+    title = doc.get("Title")
+    if title is None:
+        title = doc.get("title")
+    if title is not None and not isinstance(title, str):
+        title = str(title)
+    crawled = doc.get("CrawledAtUtc")
+    crawled_at = None
+    if crawled is not None:
+        crawled_at = crawled.isoformat() if hasattr(crawled, "isoformat") else str(crawled)
     return CrawlPage(
         id=str(doc.get("Id") or ""),
         run_id=str(doc.get("RunId") or run_id),
@@ -105,4 +170,7 @@ def _page_from_doc(doc: dict[str, Any], run_id: str) -> CrawlPage:
         url=str(doc.get("Url") or ""),
         final_url=str(doc.get("FinalUrl") or doc.get("Url") or ""),
         html=html,
+        markdown=markdown.strip() if isinstance(markdown, str) and markdown.strip() else None,
+        title=title.strip() if isinstance(title, str) and title.strip() else None,
+        crawled_at=crawled_at,
     )

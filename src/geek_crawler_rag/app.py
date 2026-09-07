@@ -1,4 +1,4 @@
-"""Geek-Crawler-Rag HTTP API — index + query for the Geek-Crawler Mongo corpus."""
+"""Geek-Crawler-Rag HTTP API — FastAPI shell over LlamaIndex ingest/query."""
 
 from __future__ import annotations
 
@@ -9,10 +9,15 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, Header, HTTPException, status
 from fastapi.responses import JSONResponse
 
+from geek_crawler_rag.ad_templates import AdTemplateIndexService, normalize_upsert_items
 from geek_crawler_rag.config import Settings, get_settings
-from geek_crawler_rag.embed import Embedder
 from geek_crawler_rag.indexer import IndexService
+from geek_crawler_rag.llama_engine import LlamaIndexEngine
 from geek_crawler_rag.models import (
+    AdTemplateIndexRequest,
+    AdTemplateIndexResponse,
+    AdTemplateQueryRequest,
+    AdTemplateQueryResponse,
     IndexRunRequest,
     IndexStatusResponse,
     QueryRequest,
@@ -21,6 +26,7 @@ from geek_crawler_rag.models import (
 from geek_crawler_rag.mongo import MongoCorpus
 from geek_crawler_rag.qdrant_store import QdrantStore
 from geek_crawler_rag.query import QueryService
+from geek_crawler_rag.rerank import Reranker
 from geek_crawler_rag.status_store import IndexStatusStore
 from geek_crawler_rag.webhook import IndexStatusWebhook
 
@@ -31,9 +37,10 @@ class AppState:
     settings: Settings
     mongo: MongoCorpus
     store: QdrantStore
-    embedder: Embedder
+    llama: LlamaIndexEngine
     indexer: IndexService
     query: QueryService
+    templates: AdTemplateIndexService
     webhook: IndexStatusWebhook
 
 
@@ -59,12 +66,7 @@ async def lifespan(_app: FastAPI):
         api_key=settings.qdrant_api_key,
         vector_size=settings.embedding_dimensions,
     )
-    state.embedder = Embedder(
-        settings.openai_api_key,
-        model=settings.openai_embedding_model,
-        dimensions=settings.embedding_dimensions,
-        batch_size=settings.embed_batch_size,
-    )
+    state.llama = LlamaIndexEngine(settings)
     status_store = IndexStatusStore(state.mongo.db)
     state.webhook = IndexStatusWebhook(
         settings.index_status_webhook_url,
@@ -73,30 +75,47 @@ async def lifespan(_app: FastAPI):
     state.indexer = IndexService(
         state.mongo,
         state.store,
-        state.embedder,
         settings,
+        llama=state.llama,
         status_store=status_store,
         webhook=state.webhook,
     )
-    state.query = QueryService(state.store, state.embedder)
+    reranker = Reranker(
+        settings.cohere_api_key,
+        model=settings.cohere_rerank_model,
+        enabled=settings.rerank_enabled,
+    )
+    state.query = QueryService(
+        state.store, settings, llama=state.llama, reranker=reranker
+    )
+    state.templates = AdTemplateIndexService(settings, state.llama)
     await state.store.ensure_collection()
+    await state.templates.ensure_collection()
     await state.indexer.start()
     logger.info(
-        "Geek-Crawler-Rag listening (collection=%s webhook=%s)",
+        "Geek-Crawler-Rag listening (collection=%s templates=%s engine=LlamaIndex webhook=%s rerank=%s)",
         settings.qdrant_collection,
+        settings.qdrant_ad_templates_collection,
         "on" if state.webhook.enabled else "off",
+        "on" if reranker.enabled else "off",
     )
     yield
     await state.indexer.stop()
     await state.webhook.close()
+    await state.templates.close()
+    await state.llama.close()
     await state.store.close()
     await state.mongo.close()
 
 
 app = FastAPI(
     title="Geek-Crawler-Rag",
-    description="Index and query Geek-Crawler Mongo HTML via Qdrant (English only).",
-    version="0.1.0",
+    description=(
+        "Index and query Geek-Crawler Mongo pages via LlamaIndex + Qdrant "
+        "(English only; parent/child chunks; hybrid + optional Cohere rerank; "
+        "graph themes + ad-template index)."
+    ),
+    version="0.4.0",
     lifespan=lifespan,
 )
 
@@ -134,6 +153,8 @@ async def health() -> JSONResponse:
         "status": "ok" if healthy else "degraded",
         "mongo": mongo_ok,
         "qdrant": qdrant_ok,
+        "engine": "llamaindex",
+        "features": ["hybrid", "graph", "ad-templates"],
         "errors": errors or None,
     }
     return JSONResponse(body, status_code=200 if healthy else 503)
@@ -170,5 +191,31 @@ async def index_status(run_id: str) -> IndexStatusResponse:
     dependencies=[Depends(require_api_key)],
 )
 async def query(body: QueryRequest) -> QueryResponse:
-    """Retrieve top-k English chunks for a need, filtered by runId (+ optional host/crawlType)."""
+    """Hybrid retrieve via LlamaIndex dense + BM25/text RRF (+ optional rerank).
+
+    Pass ``retrievalMode: graph`` for Phase D1 theme/relationship overlay.
+    """
     return await state.query.query(body)
+
+
+@app.post(
+    "/v1/templates/index",
+    response_model=AdTemplateIndexResponse,
+    response_model_by_alias=True,
+    dependencies=[Depends(require_api_key)],
+)
+async def index_templates(body: AdTemplateIndexRequest) -> AdTemplateIndexResponse:
+    """Upsert few-shot ad templates (owned by content-creator-v2)."""
+    cleaned = normalize_upsert_items(body.templates)
+    return await state.templates.index(AdTemplateIndexRequest(templates=cleaned))
+
+
+@app.post(
+    "/v1/templates/query",
+    response_model=AdTemplateQueryResponse,
+    response_model_by_alias=True,
+    dependencies=[Depends(require_api_key)],
+)
+async def query_templates(body: AdTemplateQueryRequest) -> AdTemplateQueryResponse:
+    """Retrieve top ad-template exemplars for short-form few-shot generate."""
+    return await state.templates.query(body)

@@ -45,6 +45,15 @@ class QueryRequest(BaseModel):
     crawl_type: str | None = Field(None, alias="crawlType")
     host: str | None = None
     top_k: int = Field(8, alias="topK", ge=1, le=50)
+    prefer_parent: bool | None = Field(None, alias="preferParent")
+    prefer_child: bool | None = Field(None, alias="preferChild")
+    chunk_role: str | None = Field(None, alias="chunkRole")
+    source_types: list[str] | None = Field(None, alias="sourceTypes")
+    entity_names: list[str] | None = Field(None, alias="entityNames")
+    categories: list[str] | None = Field(None, alias="categories")
+    min_quality: float | None = Field(None, alias="minQuality", ge=0.0, le=1.0)
+    # Phase D1 — "graph" for slide/strategy theme retrieval; default hybrid.
+    retrieval_mode: str | None = Field(None, alias="retrievalMode")
 
     model_config = {"populate_by_name": True}
 
@@ -60,6 +69,29 @@ class ChunkHit(BaseModel):
     language: str
     text: str
     score: float
+    entity_name: str | None = Field(None, alias="entityName")
+    entity_id: str | None = Field(None, alias="entityId")
+    source_type: str | None = Field(None, alias="sourceType")
+    category: str | None = None
+    content_intent: str | None = Field(None, alias="contentIntent")
+    chunk_role: str | None = Field(None, alias="chunkRole")
+    section_title: str | None = Field(None, alias="sectionTitle")
+    quality_score: float | None = Field(None, alias="qualityScore")
+    dense_score: float | None = Field(None, alias="denseScore")
+    rerank_score: float | None = Field(None, alias="rerankScore")
+
+    model_config = {"populate_by_name": True, "ser_json_by_alias": True}
+
+
+class ThemeHit(BaseModel):
+    label: str
+    relationship: str | None = None
+    entity: str | None = None
+    related_entity: str | None = Field(None, alias="relatedEntity")
+    url: str | None = None
+    category: str | None = None
+    crawl_type: str | None = Field(None, alias="crawlType")
+    score: float | None = None
 
     model_config = {"populate_by_name": True, "ser_json_by_alias": True}
 
@@ -67,6 +99,63 @@ class ChunkHit(BaseModel):
 class QueryResponse(BaseModel):
     run_id: str = Field(..., alias="runId")
     chunks: list[ChunkHit]
+    warning: str | None = None
+    retrieval: str | None = None
+    themes: list[ThemeHit] | None = None
+
+    model_config = {"populate_by_name": True, "ser_json_by_alias": True}
+
+
+class AdTemplateUpsertItem(BaseModel):
+    id: str = ""
+    name: str = "template"
+    channel: str | None = None
+    framework: str | None = None
+    tone: str | None = None
+    body: str = ""
+    entity_tags: list[str] | None = Field(None, alias="entityTags")
+
+    model_config = {"populate_by_name": True}
+
+
+class AdTemplateIndexRequest(BaseModel):
+    templates: list[AdTemplateUpsertItem]
+
+    model_config = {"populate_by_name": True}
+
+
+class AdTemplateIndexResponse(BaseModel):
+    upserted: int
+    warning: str | None = None
+
+    model_config = {"populate_by_name": True, "ser_json_by_alias": True}
+
+
+class AdTemplateQueryRequest(BaseModel):
+    need: str = Field(..., min_length=1)
+    top_k: int = Field(5, alias="topK", ge=1, le=20)
+    channel: str | None = None
+    framework: str | None = None
+    entity_tags: list[str] | None = Field(None, alias="entityTags")
+
+    model_config = {"populate_by_name": True}
+
+
+class AdTemplateHit(BaseModel):
+    id: str
+    name: str
+    channel: str | None = None
+    framework: str | None = None
+    tone: str | None = None
+    body: str
+    score: float = 0.0
+    entity_tags: list[str] = Field(default_factory=list, alias="entityTags")
+
+    model_config = {"populate_by_name": True, "ser_json_by_alias": True}
+
+
+class AdTemplateQueryResponse(BaseModel):
+    templates: list[AdTemplateHit]
     warning: str | None = None
 
     model_config = {"populate_by_name": True, "ser_json_by_alias": True}

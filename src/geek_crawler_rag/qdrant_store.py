@@ -15,8 +15,8 @@ logger = logging.getLogger(__name__)
 _POINT_NS = uuid.UUID("a1b2c3d4-e5f6-7890-abcd-ef1234567890")
 
 
-def point_id(run_id: str, page_id: str, chunk_index: int) -> str:
-    return str(uuid.uuid5(_POINT_NS, f"{run_id}:{page_id}:{chunk_index}"))
+def point_id(run_id: str, page_id: str, chunk_key: int | str) -> str:
+    return str(uuid.uuid5(_POINT_NS, f"{run_id}:{page_id}:{chunk_key}"))
 
 
 class QdrantStore:
@@ -53,7 +53,17 @@ class QdrantStore:
         await self._ensure_payload_indexes()
 
     async def _ensure_payload_indexes(self) -> None:
-        for field in ("runId", "crawlType", "host", "language"):
+        keyword_fields = (
+            "runId",
+            "crawlType",
+            "host",
+            "language",
+            "chunkRole",
+            "sourceType",
+            "entityName",
+            "category",
+        )
+        for field in keyword_fields:
             try:
                 await self._client.create_payload_index(
                     collection_name=self._collection,
@@ -61,8 +71,26 @@ class QdrantStore:
                     field_schema=qm.PayloadSchemaType.KEYWORD,
                 )
             except Exception:
-                # Index already exists — Qdrant raises; treat as idempotent.
                 logger.debug("Payload index %s already present or create skipped", field)
+
+        for field in ("childText", "text", "parentText"):
+            try:
+                await self._client.create_payload_index(
+                    collection_name=self._collection,
+                    field_name=field,
+                    field_schema=qm.PayloadSchemaType.TEXT,
+                )
+            except Exception:
+                logger.debug("Text index %s already present or create skipped", field)
+
+        try:
+            await self._client.create_payload_index(
+                collection_name=self._collection,
+                field_name="qualityScore",
+                field_schema=qm.PayloadSchemaType.FLOAT,
+            )
+        except Exception:
+            logger.debug("Payload index qualityScore already present or create skipped")
 
     async def delete_by_run_id(self, run_id: str) -> None:
         await self._client.delete(
@@ -102,15 +130,18 @@ class QdrantStore:
             wait=True,
         )
 
-    async def search(
+    def build_filter(
         self,
-        vector: list[float],
         *,
         run_id: str,
         crawl_type: str | None = None,
         host: str | None = None,
-        top_k: int = 8,
-    ) -> list[qm.ScoredPoint]:
+        chunk_role: str | None = None,
+        source_types: list[str] | None = None,
+        entity_names: list[str] | None = None,
+        categories: list[str] | None = None,
+        min_quality: float | None = None,
+    ) -> qm.Filter:
         must: list[qm.Condition] = [
             qm.FieldCondition(key="runId", match=qm.MatchValue(value=run_id)),
             qm.FieldCondition(key="language", match=qm.MatchValue(value="en")),
@@ -129,11 +160,129 @@ class QdrantStore:
                     match=qm.MatchValue(value=host.lower().strip()),
                 )
             )
+        if chunk_role:
+            must.append(
+                qm.FieldCondition(
+                    key="chunkRole",
+                    match=qm.MatchValue(value=chunk_role),
+                )
+            )
+        if source_types:
+            must.append(
+                qm.FieldCondition(
+                    key="sourceType",
+                    match=qm.MatchAny(any=[s.strip().lower() for s in source_types if s]),
+                )
+            )
+        if entity_names:
+            must.append(
+                qm.FieldCondition(
+                    key="entityName",
+                    match=qm.MatchAny(any=[n.strip() for n in entity_names if n]),
+                )
+            )
+        if categories:
+            must.append(
+                qm.FieldCondition(
+                    key="category",
+                    match=qm.MatchAny(any=[c.strip().lower() for c in categories if c]),
+                )
+            )
+        if min_quality is not None:
+            must.append(
+                qm.FieldCondition(
+                    key="qualityScore",
+                    range=qm.Range(gte=float(min_quality)),
+                )
+            )
+        return qm.Filter(must=must)
+
+    async def search(
+        self,
+        vector: list[float],
+        *,
+        run_id: str,
+        crawl_type: str | None = None,
+        host: str | None = None,
+        top_k: int = 8,
+        chunk_role: str | None = None,
+        source_types: list[str] | None = None,
+        entity_names: list[str] | None = None,
+        categories: list[str] | None = None,
+        min_quality: float | None = None,
+    ) -> list[qm.ScoredPoint]:
+        query_filter = self.build_filter(
+            run_id=run_id,
+            crawl_type=crawl_type,
+            host=host,
+            chunk_role=chunk_role,
+            source_types=source_types,
+            entity_names=entity_names,
+            categories=categories,
+            min_quality=min_quality,
+        )
         result = await self._client.query_points(
             collection_name=self._collection,
             query=vector,
-            query_filter=qm.Filter(must=must),
+            query_filter=query_filter,
             limit=top_k,
             with_payload=True,
         )
         return list(result.points)
+
+    async def search_text(
+        self,
+        text: str,
+        *,
+        run_id: str,
+        crawl_type: str | None = None,
+        host: str | None = None,
+        top_k: int = 8,
+        chunk_role: str | None = None,
+        source_types: list[str] | None = None,
+        entity_names: list[str] | None = None,
+        categories: list[str] | None = None,
+        min_quality: float | None = None,
+        text_fields: tuple[str, ...] = ("childText", "text"),
+    ) -> list[qm.ScoredPoint]:
+        """Keyword/full-text style retrieval via payload TEXT indexes."""
+        base = self.build_filter(
+            run_id=run_id,
+            crawl_type=crawl_type,
+            host=host,
+            chunk_role=chunk_role,
+            source_types=source_types,
+            entity_names=entity_names,
+            categories=categories,
+            min_quality=min_quality,
+        )
+        should = [
+            qm.FieldCondition(key=field, match=qm.MatchText(text=text))
+            for field in text_fields
+        ]
+        query_filter = qm.Filter(must=list(base.must or []), should=should)
+        try:
+            # Prefer scroll+filter when no sparse vector; use dummy dense if needed.
+            # query_points without vector uses filter-only in recent clients via scroll.
+            points, _ = await self._client.scroll(
+                collection_name=self._collection,
+                scroll_filter=query_filter,
+                limit=top_k,
+                with_payload=True,
+                with_vectors=False,
+            )
+            scored: list[qm.ScoredPoint] = []
+            for i, point in enumerate(points):
+                scored.append(
+                    qm.ScoredPoint(
+                        id=point.id,
+                        version=getattr(point, "version", 0) or 0,
+                        score=float(top_k - i),
+                        payload=point.payload,
+                        vector=None,
+                    )
+                )
+            return scored
+        except Exception:
+            logger.exception("Text search scroll failed for runId=%s", run_id)
+            return []

@@ -44,3 +44,29 @@ def extract_text_and_title(html: str | None) -> tuple[str, str | None]:
     text = body.get_text(separator=" ", strip=True)
     text = _WS.sub(" ", text).strip()
     return text, title
+
+
+def page_text_and_title(
+    *,
+    markdown: str | None,
+    title: str | None,
+    html: str | None,
+) -> tuple[str, str | None, bool]:
+    """Prefer ingest markdown/title when present; else HTML extract.
+
+    Returns (text, title, used_markdown).
+    """
+    if markdown and markdown.strip():
+        md = markdown.strip()
+        # First markdown heading as title fallback.
+        md_title = title
+        if not md_title:
+            for line in md.splitlines():
+                line = line.strip()
+                if line.startswith("#"):
+                    md_title = line.lstrip("#").strip() or None
+                    break
+        return md, md_title, True
+
+    text, html_title = extract_text_and_title(html)
+    return text, title or html_title, False

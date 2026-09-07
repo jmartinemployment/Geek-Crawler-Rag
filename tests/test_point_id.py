@@ -9,3 +9,9 @@ def test_point_id_deterministic():
     assert a == b
     assert a != c
     assert a != d
+
+
+def test_point_id_role_keys_differ():
+    parent = point_id("run-1", "page-1", "parent:0")
+    child = point_id("run-1", "page-1", "child:0")
+    assert parent != child
