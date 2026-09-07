@@ -27,7 +27,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from bs4 import BeautifulSoup
 from markdownify import markdownify as html_to_md
-from pymongo import MongoClient
+from pymongo import MongoClient, UpdateOne
 from readability import Document
 
 from geek_crawler_rag.unusable import should_exclude_locale_path
@@ -131,8 +131,9 @@ def backfill(
         mongo_url,
         serverSelectionTimeoutMS=15_000,
         connectTimeoutMS=15_000,
-        socketTimeoutMS=120_000,
+        socketTimeoutMS=300_000,
         retryWrites=True,
+        maxPoolSize=8,
     )
     db = client[db_name]
     pages = db["crawl_pages"]
@@ -173,13 +174,6 @@ def backfill(
         "FailureReason": 1,
         "MarkdownBackfilledAt": 1,
     }
-    id_projection = {
-        "Id": 1,
-        "Url": 1,
-        "FinalUrl": 1,
-        "RobotsAllowed": 1,
-        "FailureReason": 1,
-    }
     now = datetime.now(timezone.utc)
     last_log = 0
 
@@ -205,39 +199,36 @@ def backfill(
         take = batch_size
         if limit is not None:
             take = min(batch_size, limit - counts.scanned)
-        id_docs = list(pages.find(query, id_projection).limit(take))
-        if not id_docs:
+        # One round-trip per batch (include Html) — avoids per-page find_one over WAN.
+        try:
+            batch_docs = list(pages.find(query, projection).limit(take))
+        except Exception as exc:
+            print(f"WARN batch fetch failed: {exc}", flush=True)
+            break
+        if not batch_docs:
             break
 
-        for stub in id_docs:
+        pending_updates: list[UpdateOne] = []
+        for doc in batch_docs:
             if limit is not None and counts.scanned >= limit:
                 break
             counts.scanned += 1
-            page_id = stub.get("Id")
+            page_id = doc.get("Id")
 
-            url = str(stub.get("FinalUrl") or stub.get("Url") or "")
-            if stub.get("RobotsAllowed") is False:
+            url = str(doc.get("FinalUrl") or doc.get("Url") or "")
+            if doc.get("RobotsAllowed") is False:
                 delete_page(page_id, "failure")
                 continue
-            failure = stub.get("FailureReason")
+            failure = doc.get("FailureReason")
             if isinstance(failure, str) and failure.strip():
                 delete_page(page_id, "failure")
                 continue
             if should_exclude_locale_path(url) or should_exclude_locale_path(
-                str(stub.get("Url") or "")
+                str(doc.get("Url") or "")
             ):
                 delete_page(page_id, "locale")
                 continue
 
-            try:
-                doc = pages.find_one({"Id": page_id}, projection)
-            except Exception as exc:
-                print(f"WARN fetch failed id={page_id}: {exc}", flush=True)
-                delete_page(page_id, "extract_empty")
-                continue
-            if doc is None:
-                counts.missing_doc += 1
-                continue
             if _has_markdown(doc):
                 counts.already_markdown += 1
                 if write:
@@ -270,8 +261,8 @@ def backfill(
 
             counts.updated += 1
             if write:
-                try:
-                    pages.update_one(
+                pending_updates.append(
+                    UpdateOne(
                         {"Id": page_id},
                         {
                             "$set": {
@@ -283,10 +274,7 @@ def backfill(
                             "$unset": {"MarkdownBackfillSkip": ""},
                         },
                     )
-                except Exception as exc:
-                    print(f"WARN update failed id={page_id}: {exc}", flush=True)
-                    counts.updated -= 1
-                    continue
+                )
 
             if counts.scanned - last_log >= 50 or counts.updated in (1, 5, 10, 25):
                 last_log = counts.scanned
@@ -296,6 +284,17 @@ def backfill(
                     f"del_extract={counts.deleted_extract_empty}",
                     flush=True,
                 )
+
+        if write and pending_updates:
+            try:
+                pages.bulk_write(pending_updates, ordered=False)
+            except Exception as exc:
+                print(
+                    f"WARN batch update failed count={len(pending_updates)}: {exc}",
+                    flush=True,
+                )
+                counts.updated -= len(pending_updates)
+                break
 
     client.close()
     return counts

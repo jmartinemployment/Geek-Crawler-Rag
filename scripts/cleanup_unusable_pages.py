@@ -76,16 +76,32 @@ SKIP_MARKS = [
 ]
 
 
-def _delete_ids(pages, links, ids: list[Any], *, write: bool, counts: CleanupCounts) -> None:
-    if not ids:
+def _delete_ids(
+    pages,
+    links,
+    docs: list[dict[str, Any]],
+    *,
+    write: bool,
+    counts: CleanupCounts,
+    delete_links: bool,
+) -> None:
+    if not docs:
         return
+    oids = [d["_id"] for d in docs if d.get("_id") is not None]
+    page_ids = [d["Id"] for d in docs if d.get("Id") is not None]
+    n = len(oids) if oids else len(page_ids)
     if write:
-        link_res = links.delete_many({"PageId": {"$in": ids}})
-        counts.deleted_links += int(link_res.deleted_count)
-        page_res = pages.delete_many({"Id": {"$in": ids}})
-        counts.deleted_pages += int(page_res.deleted_count)
+        if delete_links and page_ids:
+            link_res = links.delete_many({"PageId": {"$in": page_ids}})
+            counts.deleted_links += int(link_res.deleted_count)
+        if oids:
+            page_res = pages.delete_many({"_id": {"$in": oids}})
+            counts.deleted_pages += int(page_res.deleted_count)
+        elif page_ids:
+            page_res = pages.delete_many({"Id": {"$in": page_ids}})
+            counts.deleted_pages += int(page_res.deleted_count)
     else:
-        counts.deleted_pages += len(ids)
+        counts.deleted_pages += n
 
 
 def cleanup(
@@ -97,13 +113,14 @@ def cleanup(
     batch_size: int,
     run_id: str | None,
     skip_locale_scan: bool,
+    delete_links: bool = True,
 ) -> CleanupCounts:
     counts = CleanupCounts()
     client = MongoClient(
         mongo_url,
-        serverSelectionTimeoutMS=15_000,
-        connectTimeoutMS=15_000,
-        socketTimeoutMS=180_000,
+        serverSelectionTimeoutMS=30_000,
+        connectTimeoutMS=30_000,
+        socketTimeoutMS=300_000,
         retryWrites=True,
     )
     db = client[db_name]
@@ -117,15 +134,18 @@ def cleanup(
             return {"$and": [run_filter, extra]}
         return extra
 
-    # --- Fast path: field-based deletes (no full corpus classify) ---
-    for label, q in [
-        ("failure", scoped({"FailureReason": {"$exists": True, "$type": "string", "$ne": ""}})),
-        ("failure", scoped({"RobotsAllowed": False})),
+    # --- Fast path: field-based deletes (queries shaped for indexes) ---
+    # Prefer $gt:"" over $type so FailureReason_1 / MarkdownBackfillSkip_1 can be used.
+    fast_steps: list[tuple[str, dict[str, Any], str | None]] = [
+        ("failure", scoped({"FailureReason": {"$gt": ""}}), "FailureReason_1"),
+        ("failure", scoped({"RobotsAllowed": False}), "RobotsAllowed_1"),
         (
             "marked",
             scoped({"MarkdownBackfillSkip": {"$in": SKIP_MARKS}}),
+            "MarkdownBackfillSkip_1",
         ),
-    ]:
+    ]
+    for label, q, hint in fast_steps:
         if limit is not None and counts.deleted_pages >= limit:
             break
         while True:
@@ -134,10 +154,15 @@ def cleanup(
             take = batch_size
             if limit is not None:
                 take = min(batch_size, limit - counts.deleted_pages)
-            batch = list(pages.find(q, {"Id": 1, "MarkdownBackfillSkip": 1}).limit(take))
+            cursor = pages.find(q, {"_id": 1, "Id": 1, "MarkdownBackfillSkip": 1}).limit(take)
+            if hint:
+                try:
+                    cursor = cursor.hint(hint)
+                except Exception as exc:
+                    print(f"WARN hint {hint} skipped: {exc}", flush=True)
+            batch = list(cursor)
             if not batch:
                 break
-            ids = []
             for doc in batch:
                 counts.scanned += 1
                 skip = doc.get("MarkdownBackfillSkip")
@@ -150,9 +175,9 @@ def cleanup(
                         counts.by_reason["extract_empty"] += 1
                 else:
                     counts.by_reason[label] += 1
-                if doc.get("Id") is not None:
-                    ids.append(doc["Id"])
-            _delete_ids(pages, links, ids, write=write, counts=counts)
+            _delete_ids(
+                pages, links, batch, write=write, counts=counts, delete_links=delete_links
+            )
             print(
                 f"progress fast label={label} scanned={counts.scanned} "
                 f"deleted_pages={counts.deleted_pages} deleted_links={counts.deleted_links} "
@@ -164,8 +189,8 @@ def cleanup(
 
     # --- Locale URL scan (remaining pages) ---
     if not skip_locale_scan and (limit is None or counts.deleted_pages < limit):
-        pending: list[Any] = []
-        cursor = pages.find(run_filter, PROJECTION).batch_size(batch_size)
+        pending: list[dict[str, Any]] = []
+        cursor = pages.find(run_filter, {"_id": 1, "Id": 1, "Url": 1, "FinalUrl": 1, "FailureReason": 1, "RobotsAllowed": 1}).batch_size(batch_size)
         for doc in cursor:
             if limit is not None and counts.deleted_pages + len(pending) >= limit:
                 break
@@ -182,10 +207,11 @@ def cleanup(
             ):
                 continue
             counts.by_reason["locale"] += 1
-            if doc.get("Id") is not None:
-                pending.append(doc["Id"])
+            pending.append(doc)
             if len(pending) >= batch_size:
-                _delete_ids(pages, links, pending, write=write, counts=counts)
+                _delete_ids(
+                    pages, links, pending, write=write, counts=counts, delete_links=delete_links
+                )
                 pending = []
                 print(
                     f"progress locale_scan scanned={counts.scanned} "
@@ -196,7 +222,9 @@ def cleanup(
                 if not write and limit is None:
                     break
         if pending:
-            _delete_ids(pages, links, pending, write=write, counts=counts)
+            _delete_ids(
+                pages, links, pending, write=write, counts=counts, delete_links=delete_links
+            )
             print(
                 f"progress locale_scan scanned={counts.scanned} "
                 f"deleted_pages={counts.deleted_pages} deleted_links={counts.deleted_links} "
@@ -222,12 +250,18 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Only delete FailureReason / RobotsAllowed / MarkdownBackfillSkip matches",
     )
+    parser.add_argument(
+        "--skip-link-delete",
+        action="store_true",
+        help="Delete pages only (faster). Orphan crawl_links can be purged later.",
+    )
     args = parser.parse_args(argv)
     write = bool(args.write)
     mode = "WRITE" if write else "DRY-RUN"
     print(
         f"cleanup_unusable_pages mode={mode} run_id={args.run_id or '*'} "
-        f"limit={args.limit or '*'} locale_scan={not args.skip_locale_scan}"
+        f"limit={args.limit or '*'} locale_scan={not args.skip_locale_scan} "
+        f"delete_links={not args.skip_link_delete}"
     )
     try:
         counts = cleanup(
@@ -238,6 +272,7 @@ def main(argv: list[str] | None = None) -> int:
             batch_size=args.batch_size,
             run_id=args.run_id,
             skip_locale_scan=args.skip_locale_scan,
+            delete_links=not args.skip_link_delete,
         )
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
