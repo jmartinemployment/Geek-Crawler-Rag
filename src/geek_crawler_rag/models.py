@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -31,6 +32,10 @@ class IndexStatusResponse(BaseModel):
     pages_english: int = Field(0, alias="pagesEnglish")
     pages_skipped_lang: int = Field(0, alias="pagesSkippedLang")
     pages_skipped_empty: int = Field(0, alias="pagesSkippedEmpty")
+    pages_deleted_locale: int = Field(0, alias="pagesDeletedLocale")
+    pages_deleted_failure: int = Field(0, alias="pagesDeletedFailure")
+    pages_deleted_empty: int = Field(0, alias="pagesDeletedEmpty")
+    pages_deleted_non_english: int = Field(0, alias="pagesDeletedNonEnglish")
     chunks_upserted: int = Field(0, alias="chunksUpserted")
     error: str | None = None
     started_at_utc: datetime | None = Field(None, alias="startedAtUtc")
@@ -69,6 +74,7 @@ class ChunkHit(BaseModel):
     language: str
     text: str
     score: float
+    page_id: str | None = Field(None, alias="pageId")
     entity_name: str | None = Field(None, alias="entityName")
     entity_id: str | None = Field(None, alias="entityId")
     source_type: str | None = Field(None, alias="sourceType")
@@ -157,6 +163,67 @@ class AdTemplateHit(BaseModel):
 class AdTemplateQueryResponse(BaseModel):
     templates: list[AdTemplateHit]
     warning: str | None = None
+
+    model_config = {"populate_by_name": True, "ser_json_by_alias": True}
+
+
+class PageMarkdownResponse(BaseModel):
+    page_id: str = Field(..., alias="pageId")
+    run_id: str = Field(..., alias="runId")
+    url: str
+    final_url: str = Field(..., alias="finalUrl")
+    title: str | None = None
+    markdown: str
+    excerpt: str | None = None
+
+    model_config = {"populate_by_name": True, "ser_json_by_alias": True}
+
+
+class GenerateCitation(BaseModel):
+    page_id: str | None = Field(None, alias="pageId")
+    url: str
+    title: str | None = None
+    section_title: str | None = Field(None, alias="sectionTitle")
+    quote: str
+    crawl_type: str | None = Field(None, alias="crawlType")
+
+    model_config = {"populate_by_name": True, "ser_json_by_alias": True}
+
+
+class GenerateSource(BaseModel):
+    url: str
+    title: str | None = None
+    entity: str | None = None
+    crawl_type: str | None = Field(None, alias="crawlType")
+    kind: str | None = None
+    page_id: str | None = Field(None, alias="pageId")
+
+    model_config = {"populate_by_name": True, "ser_json_by_alias": True}
+
+
+class GenerateRequest(BaseModel):
+    writing_intent: str = Field(..., alias="writingIntent", min_length=1)
+    topic: str = Field(..., min_length=3)
+    partner_run_id: str | None = Field(None, alias="partnerRunId")
+    competitor_run_id: str | None = Field(None, alias="competitorRunId")
+    target_entities: list[str] | None = Field(None, alias="targetEntities")
+    ad_templates: list[AdTemplateUpsertItem] | None = Field(None, alias="adTemplates")
+    graph_enabled: bool = Field(True, alias="graphEnabled")
+
+    model_config = {"populate_by_name": True}
+
+
+class GenerateResponse(BaseModel):
+    intent: str
+    content: str | None = None
+    variations: list[str] | None = None
+    battlecard: dict[str, Any] | None = None
+    citations: list[GenerateCitation] = Field(default_factory=list)
+    sources: list[GenerateSource] = Field(default_factory=list)
+    themes: list[ThemeHit] | None = None
+    warnings: list[str] = Field(default_factory=list)
+    model_used: str | None = Field(None, alias="modelUsed")
+    retrieval: str | None = None
 
     model_config = {"populate_by_name": True, "ser_json_by_alias": True}
 

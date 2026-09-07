@@ -62,6 +62,7 @@ class QdrantStore:
             "sourceType",
             "entityName",
             "category",
+            "pageId",
         )
         for field in keyword_fields:
             try:
@@ -108,6 +109,24 @@ class QdrantStore:
             wait=True,
         )
         logger.info("Deleted Qdrant points for runId=%s", run_id)
+
+    async def delete_by_page_id(self, page_id: str) -> None:
+        if not page_id:
+            return
+        await self._client.delete(
+            collection_name=self._collection,
+            points_selector=qm.FilterSelector(
+                filter=qm.Filter(
+                    must=[
+                        qm.FieldCondition(
+                            key="pageId",
+                            match=qm.MatchValue(value=page_id),
+                        )
+                    ]
+                )
+            ),
+            wait=True,
+        )
 
     async def upsert(
         self,

@@ -26,6 +26,9 @@ and [`plans/rag-content-writing-pipeline.md`](./plans/rag-content-writing-pipeli
 | `POST` | `/v1/query` | Hybrid or graph retrieve (see below) |
 | `POST` | `/v1/templates/index` | Upsert ad-template exemplars (Content Creator owns corpus) |
 | `POST` | `/v1/templates/query` | Retrieve few-shot templates by need (+ channel/framework/tags) |
+| `GET` | `/v1/pages/{pageId}` | Mongo Markdown for citation reads |
+| `GET` | `/v1/pages?runId=&url=` | Same lookup by run + URL |
+| `POST` | `/v1/generate` | Citeable multi-step draft (retrieve → Markdown → draft → verify) |
 
 `POST /v1/query` body (camelCase; new fields optional / backward compatible):
 

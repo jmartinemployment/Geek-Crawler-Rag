@@ -13,13 +13,17 @@ from geek_crawler_rag.ad_templates import AdTemplateIndexService, normalize_upse
 from geek_crawler_rag.config import Settings, get_settings
 from geek_crawler_rag.indexer import IndexService
 from geek_crawler_rag.llama_engine import LlamaIndexEngine
+from geek_crawler_rag.generate import GenerateService
 from geek_crawler_rag.models import (
     AdTemplateIndexRequest,
     AdTemplateIndexResponse,
     AdTemplateQueryRequest,
     AdTemplateQueryResponse,
+    GenerateRequest,
+    GenerateResponse,
     IndexRunRequest,
     IndexStatusResponse,
+    PageMarkdownResponse,
     QueryRequest,
     QueryResponse,
 )
@@ -42,6 +46,7 @@ class AppState:
     query: QueryService
     templates: AdTemplateIndexService
     webhook: IndexStatusWebhook
+    generate: GenerateService
 
 
 state = AppState()
@@ -89,15 +94,17 @@ async def lifespan(_app: FastAPI):
         state.store, settings, llama=state.llama, reranker=reranker
     )
     state.templates = AdTemplateIndexService(settings, state.llama)
+    state.generate = GenerateService(state.mongo, state.query, settings)
     await state.store.ensure_collection()
     await state.templates.ensure_collection()
     await state.indexer.start()
     logger.info(
-        "Geek-Crawler-Rag listening (collection=%s templates=%s engine=LlamaIndex webhook=%s rerank=%s)",
+        "Geek-Crawler-Rag listening (collection=%s templates=%s engine=LlamaIndex webhook=%s rerank=%s generate=%s)",
         settings.qdrant_collection,
         settings.qdrant_ad_templates_collection,
         "on" if state.webhook.enabled else "off",
         "on" if reranker.enabled else "off",
+        "on" if settings.generate_enabled else "off",
     )
     yield
     await state.indexer.stop()
@@ -115,7 +122,7 @@ app = FastAPI(
         "(English only; parent/child chunks; hybrid + optional Cohere rerank; "
         "graph themes + ad-template index)."
     ),
-    version="0.4.0",
+    version="0.5.0",
     lifespan=lifespan,
 )
 
@@ -154,7 +161,7 @@ async def health() -> JSONResponse:
         "mongo": mongo_ok,
         "qdrant": qdrant_ok,
         "engine": "llamaindex",
-        "features": ["hybrid", "graph", "ad-templates"],
+        "features": ["hybrid", "graph", "ad-templates", "pages", "generate"],
         "errors": errors or None,
     }
     return JSONResponse(body, status_code=200 if healthy else 503)
@@ -219,3 +226,64 @@ async def index_templates(body: AdTemplateIndexRequest) -> AdTemplateIndexRespon
 async def query_templates(body: AdTemplateQueryRequest) -> AdTemplateQueryResponse:
     """Retrieve top ad-template exemplars for short-form few-shot generate."""
     return await state.templates.query(body)
+
+
+@app.get(
+    "/v1/pages/{page_id}",
+    response_model=PageMarkdownResponse,
+    response_model_by_alias=True,
+    dependencies=[Depends(require_api_key)],
+)
+async def get_page_markdown(page_id: str) -> PageMarkdownResponse:
+    """Return Mongo Markdown for citation reads (404 if missing or empty)."""
+    page = await state.mongo.get_page(page_id)
+    if page is None or not page.markdown:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No Markdown for pageId={page_id}",
+        )
+    return PageMarkdownResponse(
+        page_id=page.id,
+        run_id=page.run_id,
+        url=page.url,
+        final_url=page.final_url or page.url,
+        title=page.title,
+        markdown=page.markdown,
+        excerpt=None,
+    )
+
+
+@app.get(
+    "/v1/pages",
+    response_model=PageMarkdownResponse,
+    response_model_by_alias=True,
+    dependencies=[Depends(require_api_key)],
+)
+async def get_page_markdown_by_url(run_id: str, url: str) -> PageMarkdownResponse:
+    """Lookup page Markdown by runId + Url/FinalUrl."""
+    page = await state.mongo.get_page_by_url(run_id=run_id, url=url)
+    if page is None or not page.markdown:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No Markdown for runId={run_id} url={url}",
+        )
+    return PageMarkdownResponse(
+        page_id=page.id,
+        run_id=page.run_id,
+        url=page.url,
+        final_url=page.final_url or page.url,
+        title=page.title,
+        markdown=page.markdown,
+        excerpt=None,
+    )
+
+
+@app.post(
+    "/v1/generate",
+    response_model=GenerateResponse,
+    response_model_by_alias=True,
+    dependencies=[Depends(require_api_key)],
+)
+async def generate(body: GenerateRequest) -> GenerateResponse:
+    """Citeable multi-step generate: retrieve → read Markdown → draft → verify."""
+    return await state.generate.generate(body)

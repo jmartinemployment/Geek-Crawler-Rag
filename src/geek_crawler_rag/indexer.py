@@ -15,9 +15,10 @@ from geek_crawler_rag.config import Settings
 from geek_crawler_rag.extract import host_from_origin_or_url
 from geek_crawler_rag.llama_nodes import page_to_nodes
 from geek_crawler_rag.models import TERMINAL_CRAWL_STATUSES, IndexState, IndexStatusResponse, utc_now
-from geek_crawler_rag.mongo import MongoCorpus
+from geek_crawler_rag.mongo import CrawlPage, MongoCorpus
 from geek_crawler_rag.qdrant_store import QdrantStore
 from geek_crawler_rag.status_store import IndexStatusStore
+from geek_crawler_rag.unusable import classify_unusable_page
 from geek_crawler_rag.webhook import IndexStatusWebhook
 
 logger = logging.getLogger(__name__)
@@ -149,6 +150,26 @@ class IndexService:
         except Exception:
             logger.exception("Failed to clean Qdrant points after failure for runId=%s", run_id)
 
+    async def _delete_unusable(self, page: CrawlPage, reason: str, status: IndexStatusResponse) -> None:
+        if reason == "locale":
+            status.pages_deleted_locale += 1
+        elif reason == "failure":
+            status.pages_deleted_failure += 1
+        elif reason == "non_english":
+            status.pages_deleted_non_english += 1
+            status.pages_skipped_lang += 1
+        else:
+            status.pages_deleted_empty += 1
+            status.pages_skipped_empty += 1
+        try:
+            await self._mongo.delete_page(page.id)
+        except Exception:
+            logger.exception("Failed deleting unusable Mongo page id=%s reason=%s", page.id, reason)
+        try:
+            await self._store.delete_by_page_id(page.id)
+        except Exception:
+            logger.debug("Qdrant pageId delete skipped id=%s", page.id, exc_info=True)
+
     async def _index_run(self, run_id: str) -> None:
         status = self._statuses.get(run_id) or IndexStatusResponse(
             run_id=run_id, state=IndexState.PENDING
@@ -162,6 +183,10 @@ class IndexService:
         status.pages_english = 0
         status.pages_skipped_lang = 0
         status.pages_skipped_empty = 0
+        status.pages_deleted_locale = 0
+        status.pages_deleted_failure = 0
+        status.pages_deleted_empty = 0
+        status.pages_deleted_non_english = 0
         status.chunks_upserted = 0
         await self._persist(status)
 
@@ -226,6 +251,16 @@ class IndexService:
             ):
                 for page in pages:
                     status.pages_seen += 1
+                    reject = classify_unusable_page(
+                        url=page.url,
+                        final_url=page.final_url,
+                        failure_reason=page.failure_reason,
+                        robots_allowed=page.robots_allowed,
+                    )
+                    if reject:
+                        await self._delete_unusable(page, reject, status)
+                        continue
+
                     host_key = host_from_origin_or_url(page.origin, page.url)
                     if host_key not in entity_cache:
                         entity_cache[host_key] = await self._mongo.resolve_entity(
@@ -240,10 +275,10 @@ class IndexService:
                         settings=self._settings,
                     )
                     if skip == "empty":
-                        status.pages_skipped_empty += 1
+                        await self._delete_unusable(page, "extract_empty", status)
                         continue
                     if skip == "lang":
-                        status.pages_skipped_lang += 1
+                        await self._delete_unusable(page, "non_english", status)
                         continue
 
                     status.pages_english += 1
@@ -275,11 +310,14 @@ class IndexService:
             status.error = "No English pages to embed"
             status.finished_at_utc = utc_now()
             logger.warning(
-                "Index skipped for runId=%s — pagesSeen=%s skippedLang=%s skippedEmpty=%s",
+                "Index skipped for runId=%s — pagesSeen=%s deletedLocale=%s "
+                "deletedFailure=%s deletedEmpty=%s deletedNonEnglish=%s",
                 run_id,
                 status.pages_seen,
-                status.pages_skipped_lang,
-                status.pages_skipped_empty,
+                status.pages_deleted_locale,
+                status.pages_deleted_failure,
+                status.pages_deleted_empty,
+                status.pages_deleted_non_english,
             )
             await self._persist(status)
             return
@@ -287,9 +325,14 @@ class IndexService:
         status.state = IndexState.COMPLETE
         status.finished_at_utc = utc_now()
         logger.info(
-            "Index complete for runId=%s chunksUpserted=%s pagesEnglish=%s engine=LlamaIndex",
+            "Index complete for runId=%s chunksUpserted=%s pagesEnglish=%s "
+            "deletedLocale=%s deletedFailure=%s deletedEmpty=%s deletedNonEnglish=%s",
             run_id,
             status.chunks_upserted,
             status.pages_english,
+            status.pages_deleted_locale,
+            status.pages_deleted_failure,
+            status.pages_deleted_empty,
+            status.pages_deleted_non_english,
         )
         await self._persist(status)

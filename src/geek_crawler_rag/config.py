@@ -46,6 +46,14 @@ class Settings(BaseSettings):
     index_status_webhook_url: str | None = None
     index_status_webhook_key: str | None = None
 
+    # Citeable generate (Phase 2) — OpenAI chat models; empty key → generate returns warning.
+    openai_longform_model: str = "o3"
+    openai_standard_model: str = "gpt-4o"
+    generate_min_quality: float = 0.35
+    generate_max_pages: int = 8
+    generate_markdown_chars: int = 12000
+    generate_enabled: bool = True
+
     host: str = "0.0.0.0"
     port: int = 8080
     log_level: str = "INFO"

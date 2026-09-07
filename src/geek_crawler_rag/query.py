@@ -172,6 +172,7 @@ class QueryService:
             text = _return_text(payload, request)
             if not text:
                 continue
+            page_id = payload.get("pageId")
             chunks.append(
                 ChunkHit(
                     run_id=str(payload.get("runId") or request.run_id),
@@ -184,6 +185,7 @@ class QueryService:
                     language=str(payload.get("language") or "en"),
                     text=text,
                     score=float(rerank_score),
+                    page_id=str(page_id) if page_id else None,
                     entity_name=payload.get("entityName"),
                     entity_id=str(payload["entityId"])
                     if payload.get("entityId") is not None

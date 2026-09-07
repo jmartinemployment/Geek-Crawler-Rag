@@ -1,6 +1,6 @@
 # RAG pipeline upgrades (Geek-Crawler-Rag scope)
 
-Status: **Phase 0 + B + E + D implemented** (LlamaIndex under FastAPI; GraphRAG themes; ad-template index); **Phase M (markdown backfill) next**.  
+Status: **Phase 0 + B + E + D implemented**; **Phase M backfill running against Hostinger Mongo** (Readability → markdownify).  
 Sibling plans: Geek-Crawler-v2 (markdown ingest), GeekBackend (`/api/rag/generate`), content-creator-v2 (consume generate).
 
 ## This repo owns
@@ -31,7 +31,7 @@ Sibling plans: Geek-Crawler-v2 (markdown ingest), GeekBackend (`/api/rag/generat
 - **Adopt LlamaIndex in this repo** (Phase E) — current custom index/query is an interim shape, not the end state
 - Hybrid retrieval (vector + BM25 + RRF) stays required; implement/keep it via LlamaIndex (or LlamaIndex + Qdrant) under the existing `v1/*` contracts
 - Crawlee stays the crawler (Firecrawl not adopted)
-- OpenAI remains the writer (in GeekAPI), not in this service — Claude/Gemini from research are optional later, not blocking
+- OpenAI writer for **citeable** drafts lives in this service (`POST /v1/generate`); GeekAPI proxies. Legacy one-shot remains as GeekAPI fallback.
 
 ## Phase 0 (shared gate — data first)
 
@@ -112,10 +112,19 @@ Draft-research cleaning for **existing** Mongo HTML (no re-crawl). New crawls al
 1. Script: `scripts/backfill_markdown.py` (deps: `readability-lxml`, `markdownify`)
 2. For pages with `Html` and empty `Markdown`: extract → write `Title` / `Markdown` / `Excerpt` / `MarkdownBackfilledAt`
 3. Locale filter ported from Crawler-v2 `locale-path.ts` (KEEP `/us/`, DROP foreign regions/non-English)
-4. Dry-run first, then write; skip robots-denied / failures / already-backfilled
+4. Dry-run first, then write; **delete** robots-denied / failures / locale / extract-empty (do not leave skip-marked junk)
 5. After write: operators reindex affected runs via `POST /v1/index`
 
 Prerequisite: GeekBackend page docs accept those fields on ingest (and script may write Mongo directly on Hostinger).
+
+## Phase C — Unusable corpus cleanup (this repo)
+
+Sweeper when junk leaks past Crawler-v2. See [`cleanup-unusable-pages.md`](./cleanup-unusable-pages.md).
+
+1. Shared classify: `src/geek_crawler_rag/unusable.py`
+2. Bulk: `scripts/cleanup_unusable_pages.py --write`
+3. Index: delete locale / failure / empty / non-English pages during `POST /v1/index` + report delete counts
+4. Cascade `crawl_links`; optional Qdrant `pageId` delete
 
 ## Phase D — GraphRAG + few-shot ad template index (this repo — done)
 
@@ -137,7 +146,6 @@ Prerequisite: GeekBackend page docs accept those fields on ingest (and script ma
 - GeekAPI `/api/rag/generate` prompts and **OpenAI o1/o3 model routing** (Backend)
 - Content Creator **template product ownership** / picker UX (content-creator-v2) — this repo only indexes what it sends
 - Replacing Crawlee
-- Deleting historical dirty crawl URLs
 - Running LlamaIndex from Geek-Crawler-v2 or content-creator-v2
 
 ## Success criteria
@@ -150,5 +158,7 @@ Prerequisite: GeekBackend page docs accept those fields on ingest (and script ma
 - [x] Phase D1: GraphRAG retrieval usable for slide/strategy intents (`retrievalMode: graph` → `themes`)
 - [x] Phase D2: Ad template index query returns few-shot exemplars for short-form (`/v1/templates/*`)
 - [ ] Phase M: one-time Readability markdown backfill over existing HTML; dry-run then write
+- [x] Phase C: unusable pages deleted via cleanup script + index/backfill sweepers ([`cleanup-unusable-pages.md`](./cleanup-unusable-pages.md))
+- [x] Citeable: `pageId` on hits, `GET /v1/pages/*`, `POST /v1/generate` workflow ([`citeable-rag-output.md`](./citeable-rag-output.md))
 
-**Ops note:** Deploy new image, then `POST /v1/index` for runs that should get parent/child payloads. Pre-B points lack new fields; hybrid/filters degrade gracefully.
+**Ops note:** Deploy new image, then markdown backfill + `POST /v1/index` for runs that should get Markdown-backed chunks. See [`citeable-rag-output.md`](./citeable-rag-output.md) and `scripts/markdown_coverage_report.py`.

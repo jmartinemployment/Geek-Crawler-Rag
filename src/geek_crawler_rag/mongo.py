@@ -1,7 +1,8 @@
-"""Read-only Mongo access to geek_crawler crawl_pages / crawl_runs / entities.
+"""Mongo access to geek_crawler crawl_pages / crawl_runs / entities.
 
 GeekRepository stores PG-export-shaped documents: PascalCase fields, Guid as
-string ("d" format). We never write crawl HTML.
+string ("d" format). Corpus reads are primary; deletes remove unusable pages
+that leaked past the crawler (locale / failure / extract-empty).
 """
 
 from __future__ import annotations
@@ -35,6 +36,8 @@ class CrawlPage:
     markdown: str | None = None
     title: str | None = None
     crawled_at: str | None = None
+    failure_reason: str | None = None
+    robots_allowed: bool | None = None
 
 
 class MongoCorpus:
@@ -86,6 +89,8 @@ class MongoCorpus:
             "Title": 1,
             "title": 1,
             "CrawledAtUtc": 1,
+            "FailureReason": 1,
+            "RobotsAllowed": 1,
             "_id": 0,
         }
         cursor = (
@@ -144,6 +149,72 @@ class MongoCorpus:
         logger.info("Loaded %s entities for domain matching", len(self._entity_cache))
         return self._entity_cache
 
+    async def get_page(self, page_id: str) -> CrawlPage | None:
+        """Load one page by Id (Guid string). Includes Markdown for citation reads."""
+        if not page_id:
+            return None
+        projection = {
+            "Id": 1,
+            "RunId": 1,
+            "Origin": 1,
+            "Url": 1,
+            "FinalUrl": 1,
+            "Html": 1,
+            "Markdown": 1,
+            "markdown": 1,
+            "Title": 1,
+            "title": 1,
+            "Excerpt": 1,
+            "CrawledAtUtc": 1,
+            "FailureReason": 1,
+            "RobotsAllowed": 1,
+            "_id": 0,
+        }
+        doc = await self._db["crawl_pages"].find_one({"Id": page_id}, projection)
+        if doc is None:
+            return None
+        return _page_from_doc(doc, str(doc.get("RunId") or ""))
+
+    async def get_page_by_url(self, *, run_id: str, url: str) -> CrawlPage | None:
+        """Lookup by run + Url or FinalUrl (exact match)."""
+        if not run_id or not url:
+            return None
+        projection = {
+            "Id": 1,
+            "RunId": 1,
+            "Origin": 1,
+            "Url": 1,
+            "FinalUrl": 1,
+            "Html": 1,
+            "Markdown": 1,
+            "markdown": 1,
+            "Title": 1,
+            "title": 1,
+            "Excerpt": 1,
+            "CrawledAtUtc": 1,
+            "FailureReason": 1,
+            "RobotsAllowed": 1,
+            "_id": 0,
+        }
+        doc = await self._db["crawl_pages"].find_one(
+            {
+                "RunId": run_id,
+                "$or": [{"Url": url}, {"FinalUrl": url}],
+            },
+            projection,
+        )
+        if doc is None:
+            return None
+        return _page_from_doc(doc, run_id)
+
+    async def delete_page(self, page_id: str) -> int:
+        """Delete one crawl_pages doc and its crawl_links. Returns links removed."""
+        if not page_id:
+            return 0
+        link_res = await self._db["crawl_links"].delete_many({"PageId": page_id})
+        await self._db["crawl_pages"].delete_one({"Id": page_id})
+        return int(link_res.deleted_count)
+
 
 def _page_from_doc(doc: dict[str, Any], run_id: str) -> CrawlPage:
     html = doc.get("Html")
@@ -163,6 +234,10 @@ def _page_from_doc(doc: dict[str, Any], run_id: str) -> CrawlPage:
     crawled_at = None
     if crawled is not None:
         crawled_at = crawled.isoformat() if hasattr(crawled, "isoformat") else str(crawled)
+    failure = doc.get("FailureReason")
+    failure_reason = failure.strip() if isinstance(failure, str) and failure.strip() else None
+    robots = doc.get("RobotsAllowed")
+    robots_allowed = robots if isinstance(robots, bool) else None
     return CrawlPage(
         id=str(doc.get("Id") or ""),
         run_id=str(doc.get("RunId") or run_id),
@@ -173,4 +248,6 @@ def _page_from_doc(doc: dict[str, Any], run_id: str) -> CrawlPage:
         markdown=markdown.strip() if isinstance(markdown, str) and markdown.strip() else None,
         title=title.strip() if isinstance(title, str) and title.strip() else None,
         crawled_at=crawled_at,
+        failure_reason=failure_reason,
+        robots_allowed=robots_allowed,
     )
