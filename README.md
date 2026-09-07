@@ -55,6 +55,7 @@ Geek-Crawler-v2 → MongoDB → Geek-Crawler-Rag/Qdrant
 | `GET` | `/health` | Mongo + Qdrant liveness (`engine`, `features`) |
 | `POST` | `/v1/index` | Enqueue full-run index `{ "runId": "…" }` |
 | `GET` | `/v1/index/{runId}` | Index job status (ops/debug; UI uses SignalR, not polling) |
+| `GET` | `/v1/index-scheduler` | Persisted scheduler cadence, next run, and last enqueue |
 | `POST` | `/v1/query` | Hybrid or graph retrieve (see below) |
 | `POST` | `/v1/templates/index` | Upsert ad-template exemplars (Content Creator owns corpus) |
 | `POST` | `/v1/templates/query` | Retrieve few-shot templates by need (+ channel/framework/tags) |
@@ -112,6 +113,29 @@ Optional auth: set `API_KEY` and send header `X-Api-Key`.
 Index concurrency is **1**. Rebuild deletes all Qdrant points for `runId`, then reindexes.
 At index start the service logs **`mongoPageCount`**. Runs with `mongoPageCount` above **50 000** are skipped (Hostinger safety cap).
 
+### Scheduled indexing and OpenAI rate limits
+
+Production schedules one eligible run every **7,200 seconds (2 hours)**. The
+scheduler persists its next due time in Mongo, takes an atomic lease, and chooses
+the smallest completed run that has Markdown and is not already indexed. Index
+jobs also use Mongo leases, heartbeats, stale-job recovery, bounded retries, and
+a maximum attempt count.
+
+All corpus, query, and ad-template embeddings pass through one rolling
+token-per-minute limiter. Calls are sequentially partitioned by item and token
+count; transient OpenAI 429 responses honor `Retry-After` and retry with bounded
+jitter. `insufficient_quota` remains a terminal error. Defaults:
+
+- `OPENAI_EMBEDDING_TOKENS_PER_MINUTE=700000`
+- `OPENAI_EMBEDDING_MAX_BATCH_TOKENS=50000`
+- `EMBED_BATCH_SIZE=32`
+- `OPENAI_EMBEDDING_MAX_RETRIES=8`
+- `INDEX_SCHEDULER_INTERVAL_SECONDS=7200`
+
+`GET /health` reports current throttle counters and scheduler state. Per-job
+status includes `attempt`, `trigger`, `embeddingRateLimitRetries`, and
+`embeddingWaitSeconds`.
+
 ### Index status push (no UI polling)
 
 On status transitions the API POSTs to GeekAPI (optional):
@@ -145,6 +169,7 @@ Live stack on KVM 2 (alongside Mongo):
 - Compose: [`deploy/hostinger-compose.yml`](./deploy/hostinger-compose.yml) (Qdrant + API; Mongo via `host.docker.internal`)
 
 Caps: Qdrant `mem_limit: 3g` + `MAX_SEARCH_THREADS=1`, API `mem_limit: 2g`.
+The Hostinger compose enables the two-hour scheduler by default.
 Point `MONGO_CRAWLER_URL` at the existing Hostinger Mongo `geek_crawler` database. Normal indexing reads the corpus; controlled cleanup procedures may delete unusable crawl pages and related links.
 
 GeekAPI: set `GEEK_CRAWLER_RAG_URL` / optional `GEEK_CRAWLER_RAG_API_KEY`.

@@ -26,6 +26,12 @@ class CrawlRun:
 
 
 @dataclass(frozen=True)
+class SchedulableRun:
+    id: str
+    page_count: int
+
+
+@dataclass(frozen=True)
 class CrawlPage:
     id: str
     run_id: str
@@ -69,6 +75,46 @@ class MongoCorpus:
 
     async def count_pages(self, run_id: str) -> int:
         return int(await self._db["crawl_pages"].count_documents({"RunId": run_id}))
+
+    async def find_smallest_markdown_ready_run(
+        self,
+        *,
+        excluded_run_ids: set[str],
+        maximum_pages: int = 50_000,
+    ) -> SchedulableRun | None:
+        """Return the smallest completed, Markdown-ready crawl not yet indexed."""
+        run_filter: dict[str, Any] = {
+            "Status": {"$regex": "^(complete|external)$", "$options": "i"},
+            "Id": {"$type": "string", "$ne": ""},
+        }
+        if excluded_run_ids:
+            run_filter["Id"]["$nin"] = list(excluded_run_ids)
+        cursor = self._db["crawl_runs"].find(
+            run_filter,
+            {"Id": 1, "_id": 0},
+        ).limit(500)
+
+        candidates: list[SchedulableRun] = []
+        async for doc in cursor:
+            run_id = str(doc.get("Id") or "")
+            if not run_id:
+                continue
+            ready = await self._db["crawl_pages"].find_one(
+                {
+                    "RunId": run_id,
+                    "$or": [
+                        {"Markdown": {"$type": "string", "$ne": ""}},
+                        {"markdown": {"$type": "string", "$ne": ""}},
+                    ],
+                },
+                {"_id": 1},
+            )
+            if ready is None:
+                continue
+            page_count = await self.count_pages(run_id)
+            if 0 < page_count <= maximum_pages:
+                candidates.append(SchedulableRun(run_id, page_count))
+        return min(candidates, key=lambda item: (item.page_count, item.id)) if candidates else None
 
     async def iter_pages(
         self,

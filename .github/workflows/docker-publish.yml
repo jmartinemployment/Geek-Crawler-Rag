@@ -18,6 +18,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Run tests
+        run: uv run --all-groups pytest
+
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:

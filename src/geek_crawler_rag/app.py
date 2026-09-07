@@ -22,6 +22,7 @@ from geek_crawler_rag.models import (
     GenerateRequest,
     GenerateResponse,
     IndexRunRequest,
+    IndexSchedulerStatus,
     IndexStatusResponse,
     PageMarkdownResponse,
     QueryRequest,
@@ -31,6 +32,7 @@ from geek_crawler_rag.mongo import MongoCorpus
 from geek_crawler_rag.qdrant_store import QdrantStore
 from geek_crawler_rag.query import QueryService
 from geek_crawler_rag.rerank import Reranker
+from geek_crawler_rag.scheduler import IndexScheduler
 from geek_crawler_rag.status_store import IndexStatusStore
 from geek_crawler_rag.webhook import IndexStatusWebhook
 
@@ -47,6 +49,7 @@ class AppState:
     templates: AdTemplateIndexService
     webhook: IndexStatusWebhook
     generate: GenerateService
+    scheduler: IndexScheduler
 
 
 state = AppState()
@@ -95,9 +98,17 @@ async def lifespan(_app: FastAPI):
     )
     state.templates = AdTemplateIndexService(settings, state.llama)
     state.generate = GenerateService(state.mongo, state.query, settings)
+    state.scheduler = IndexScheduler(
+        state.mongo,
+        status_store,
+        state.indexer,
+        settings,
+        owner=state.indexer.owner,
+    )
     await state.store.ensure_collection()
     await state.templates.ensure_collection()
     await state.indexer.start()
+    await state.scheduler.start()
     logger.info(
         "Geek-Crawler-Rag listening (collection=%s templates=%s engine=LlamaIndex webhook=%s rerank=%s generate=%s)",
         settings.qdrant_collection,
@@ -107,6 +118,7 @@ async def lifespan(_app: FastAPI):
         "on" if settings.generate_enabled else "off",
     )
     yield
+    await state.scheduler.stop()
     await state.indexer.stop()
     await state.webhook.close()
     await state.templates.close()
@@ -145,6 +157,7 @@ def require_api_key(
 async def health() -> JSONResponse:
     mongo_ok = False
     qdrant_ok = False
+    scheduler_status = None
     errors: list[str] = []
     try:
         mongo_ok = await state.mongo.ping()
@@ -154,6 +167,13 @@ async def health() -> JSONResponse:
         qdrant_ok = await state.store.ping()
     except Exception as ex:
         errors.append(f"qdrant: {ex}")
+    if mongo_ok:
+        try:
+            scheduler_status = (
+                await state.scheduler.status()
+            ).model_dump(by_alias=True, mode="json")
+        except Exception as ex:
+            errors.append(f"scheduler: {ex}")
 
     healthy = mongo_ok and qdrant_ok
     body = {
@@ -162,6 +182,8 @@ async def health() -> JSONResponse:
         "qdrant": qdrant_ok,
         "engine": "llamaindex",
         "features": ["hybrid", "graph", "ad-templates", "pages", "generate"],
+        "embeddingThrottle": state.llama.embedding_stats(),
+        "scheduler": scheduler_status,
         "errors": errors or None,
     }
     return JSONResponse(body, status_code=200 if healthy else 503)
@@ -189,6 +211,17 @@ async def index_status(run_id: str) -> IndexStatusResponse:
     if status_row is None:
         raise HTTPException(status_code=404, detail=f"No index job for runId={run_id}")
     return status_row
+
+
+@app.get(
+    "/v1/index-scheduler",
+    response_model=IndexSchedulerStatus,
+    response_model_by_alias=True,
+    dependencies=[Depends(require_api_key)],
+)
+async def index_scheduler_status() -> IndexSchedulerStatus:
+    """Return persisted scheduler cadence and most recent enqueue."""
+    return await state.scheduler.status()
 
 
 @app.post(

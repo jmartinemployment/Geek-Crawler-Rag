@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -16,9 +17,18 @@ from llama_index.core.vector_stores.types import (
 )
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.vector_stores.qdrant import QdrantVectorStore
+from openai import RateLimitError
 from qdrant_client import AsyncQdrantClient, QdrantClient
 
 from geek_crawler_rag.config import Settings
+from geek_crawler_rag.embedding_throttle import (
+    EmbeddingRetryExhausted,
+    EmbeddingThrottle,
+    embedding_token_count,
+    is_retryable_rate_limit,
+    partition_embedding_batches,
+    retry_after_seconds,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +45,12 @@ class LlamaIndexEngine:
             api_key=settings.openai_api_key,
             dimensions=settings.embedding_dimensions,
             embed_batch_size=settings.embed_batch_size,
+            max_retries=0,
         )
+        self._embedding_throttle = EmbeddingThrottle(
+            settings.openai_embedding_tokens_per_minute
+        )
+        self._embedding_call_lock = asyncio.Lock()
         client_kwargs: dict[str, Any] = {"url": settings.qdrant_url}
         if settings.qdrant_api_key:
             client_kwargs["api_key"] = settings.qdrant_api_key
@@ -58,6 +73,13 @@ class LlamaIndexEngine:
     def embed_model(self) -> OpenAIEmbedding:
         return self._embed_model
 
+    def embedding_stats(self) -> dict[str, float | int]:
+        return {
+            "tokensInWindow": self._embedding_throttle.tokens_in_window,
+            "rateLimitRetries": self._embedding_throttle.rate_limit_retries,
+            "waitSeconds": round(self._embedding_throttle.total_wait_seconds, 3),
+        }
+
     async def close(self) -> None:
         try:
             await self._aclient.close()
@@ -72,11 +94,69 @@ class LlamaIndexEngine:
         if not nodes:
             return 0
         texts = [n.get_content() for n in nodes]
-        embeddings = await self._embed_model.aget_text_embedding_batch(texts)
+        embeddings = await self.embed_texts(texts)
         for node, emb in zip(nodes, embeddings, strict=True):
             node.embedding = emb
         await self._vector_store.async_add(nodes)
         return len(nodes)
+
+    async def embed_texts(self, texts: list[str]) -> list[list[float]]:
+        embeddings: list[list[float]] = []
+        batches = partition_embedding_batches(
+            texts,
+            model=self._settings.openai_embedding_model,
+            max_items=self._settings.embed_batch_size,
+            max_tokens=self._settings.openai_embedding_max_batch_tokens,
+        )
+        for batch in batches:
+            result = await self._call_with_retry(
+                lambda: self._embed_model.aget_text_embedding_batch(batch.texts),
+                token_count=batch.token_count,
+            )
+            embeddings.extend(result)
+        return embeddings
+
+    async def embed_query(self, text: str) -> list[float]:
+        token_count = embedding_token_count(
+            [text], self._settings.openai_embedding_model
+        )
+        return await self._call_with_retry(
+            lambda: self._embed_model.aget_query_embedding(text),
+            token_count=token_count,
+        )
+
+    async def _call_with_retry(self, operation: Any, *, token_count: int) -> Any:
+        async with self._embedding_call_lock:
+            max_retries = self._settings.openai_embedding_max_retries
+            for attempt in range(max_retries + 1):
+                await self._embedding_throttle.acquire(token_count)
+                try:
+                    return await operation()
+                except asyncio.CancelledError:
+                    raise
+                except RateLimitError as exc:
+                    if not is_retryable_rate_limit(exc):
+                        raise
+                    if attempt >= max_retries:
+                        raise EmbeddingRetryExhausted(
+                            f"OpenAI embedding rate limit persisted after "
+                            f"{attempt + 1} attempts"
+                        ) from exc
+                    delay = retry_after_seconds(
+                        exc,
+                        attempt=attempt,
+                        maximum=self._settings.openai_embedding_retry_max_seconds,
+                    )
+                    self._embedding_throttle.rate_limit_retries += 1
+                    self._embedding_throttle.total_wait_seconds += delay
+                    logger.warning(
+                        "OpenAI embedding rate limited; retry=%s/%s wait=%.2fs",
+                        attempt + 1,
+                        max_retries,
+                        delay,
+                    )
+                    await asyncio.sleep(delay)
+        raise AssertionError("unreachable embedding retry loop")
 
     async def dense_query(
         self,
@@ -92,7 +172,7 @@ class LlamaIndexEngine:
         categories: list[str] | None = None,
         min_quality: float | None = None,
     ) -> list[NodeWithScore]:
-        query_embedding = await self._embed_model.aget_query_embedding(need)
+        query_embedding = await self.embed_query(need)
         filters = build_metadata_filters(
             run_id=run_id,
             crawl_type=crawl_type,

@@ -38,9 +38,24 @@ class IndexStatusResponse(BaseModel):
     pages_deleted_empty: int = Field(0, alias="pagesDeletedEmpty")
     pages_deleted_non_english: int = Field(0, alias="pagesDeletedNonEnglish")
     chunks_upserted: int = Field(0, alias="chunksUpserted")
+    attempt: int = 0
+    trigger: str = "manual"
+    embedding_rate_limit_retries: int = Field(0, alias="embeddingRateLimitRetries")
+    embedding_wait_seconds: float = Field(0.0, alias="embeddingWaitSeconds")
     error: str | None = None
     started_at_utc: datetime | None = Field(None, alias="startedAtUtc")
     finished_at_utc: datetime | None = Field(None, alias="finishedAtUtc")
+
+    model_config = {"populate_by_name": True, "ser_json_by_alias": True}
+
+
+class IndexSchedulerStatus(BaseModel):
+    enabled: bool
+    interval_seconds: int = Field(..., alias="intervalSeconds")
+    next_run_at_utc: datetime | None = Field(None, alias="nextRunAtUtc")
+    last_enqueued_at_utc: datetime | None = Field(None, alias="lastEnqueuedAtUtc")
+    last_run_id: str | None = Field(None, alias="lastRunId")
+    last_error: str | None = Field(None, alias="lastError")
 
     model_config = {"populate_by_name": True, "ser_json_by_alias": True}
 

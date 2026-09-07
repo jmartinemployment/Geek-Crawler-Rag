@@ -104,7 +104,7 @@ class AdTemplateIndexService:
 
         # Embed via shared OpenAI embed model, upsert into templates collection.
         texts = [n.get_content() for n in nodes]
-        embeddings = await self._llama.embed_model.aget_text_embedding_batch(texts)
+        embeddings = await self._llama.embed_texts(texts)
         points = [
             qm.PointStruct(id=pid, vector=vec, payload=node.metadata)
             for pid, vec, node in zip(ids, embeddings, nodes, strict=True)
@@ -114,7 +114,7 @@ class AdTemplateIndexService:
 
     async def query(self, request: AdTemplateQueryRequest) -> AdTemplateQueryResponse:
         await self.ensure_collection()
-        query_vec = await self._llama.embed_model.aget_query_embedding(request.need)
+        query_vec = await self._llama.embed_query(request.need)
         must: list[qm.Condition] = []
         if request.channel:
             must.append(

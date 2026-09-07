@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from typing import Protocol
 
 from llama_index.core.schema import TextNode
@@ -49,8 +50,21 @@ class IndexService:
         self._worker_task: asyncio.Task[None] | None = None
         self._lock = asyncio.Lock()
         self._enqueue_lock = asyncio.Lock()
+        self.owner = str(uuid.uuid4())
 
     async def start(self) -> None:
+        if self._status_store is not None:
+            await self._status_store.ensure_indexes()
+            recovered = await self._status_store.claim_recoverable(
+                owner=self.owner,
+                lease_seconds=self._settings.index_job_lease_seconds,
+                max_attempts=self._settings.index_scheduler_max_attempts,
+            )
+            for status in recovered:
+                self._statuses[status.run_id] = status
+                await self._queue.put(status.run_id)
+            if recovered:
+                logger.warning("Recovered %s stale index job(s)", len(recovered))
         if self._worker_task is None or self._worker_task.done():
             self._worker_task = asyncio.create_task(self._worker_loop(), name="index-worker")
 
@@ -81,6 +95,16 @@ class IndexService:
         return loaded
 
     async def enqueue(self, run_id: str) -> IndexStatusResponse:
+        status, _ = await self._enqueue(run_id, trigger="manual", force=True)
+        return status
+
+    async def enqueue_scheduled(self, run_id: str) -> bool:
+        _, accepted = await self._enqueue(run_id, trigger="scheduled", force=False)
+        return accepted
+
+    async def _enqueue(
+        self, run_id: str, *, trigger: str, force: bool
+    ) -> tuple[IndexStatusResponse, bool]:
         run_id = run_id.strip()
         if not run_id:
             raise ValueError("runId is required")
@@ -92,17 +116,36 @@ class IndexService:
                 if existing is not None:
                     self._statuses[run_id] = existing
             if existing and existing.state in (IndexState.PENDING, IndexState.RUNNING):
-                return existing
+                return existing, False
 
-            status = IndexStatusResponse(
-                run_id=run_id,
-                state=IndexState.PENDING,
-            )
+            if self._status_store is not None:
+                claimed = await self._status_store.claim(
+                    run_id,
+                    owner=self.owner,
+                    lease_seconds=self._settings.index_job_lease_seconds,
+                    trigger=trigger,
+                    force=force,
+                )
+                if claimed is None:
+                    existing = await self._status_store.get(run_id)
+                    if existing is None:
+                        raise RuntimeError(f"Could not claim index job runId={run_id}")
+                    self._statuses[run_id] = existing
+                    return existing, False
+                status = claimed
+            else:
+                status = IndexStatusResponse(
+                    run_id=run_id,
+                    state=IndexState.PENDING,
+                    attempt=(existing.attempt + 1 if existing else 1),
+                    trigger=trigger,
+                )
+
             self._statuses[run_id] = status
             await self._persist(status)
             await self._queue.put(run_id)
-            logger.info("Enqueued index job for runId=%s", run_id)
-            return status
+            logger.info("Enqueued index job for runId=%s trigger=%s", run_id, trigger)
+            return status, True
 
     async def _persist(self, status: IndexStatusResponse) -> None:
         if self._status_store is not None:
@@ -117,8 +160,14 @@ class IndexService:
         logger.info("Index worker started (concurrency=1, engine=LlamaIndex)")
         while True:
             run_id = await self._queue.get()
+            heartbeat: asyncio.Task[None] | None = None
             try:
                 async with self._lock:
+                    if self._status_store is not None:
+                        heartbeat = asyncio.create_task(
+                            self._heartbeat_loop(run_id),
+                            name=f"index-heartbeat-{run_id}",
+                        )
                     await self._index_run(run_id)
             except asyncio.CancelledError:
                 status = self._statuses.get(run_id)
@@ -141,7 +190,51 @@ class IndexService:
                     await self._safe_cleanup(run_id)
                     await self._persist(status)
             finally:
+                if heartbeat is not None:
+                    heartbeat.cancel()
+                    try:
+                        await heartbeat
+                    except asyncio.CancelledError:
+                        pass
+                if self._status_store is not None:
+                    await self._status_store.release(
+                        run_id,
+                        owner=self.owner,
+                        retry_seconds=self._settings.index_scheduler_retry_seconds,
+                    )
                 self._queue.task_done()
+
+    async def _heartbeat_loop(self, run_id: str) -> None:
+        while True:
+            await asyncio.sleep(self._settings.index_job_heartbeat_seconds)
+            if self._status_store is None:
+                return
+            renewed = await self._status_store.heartbeat(
+                run_id,
+                owner=self.owner,
+                lease_seconds=self._settings.index_job_lease_seconds,
+            )
+            if not renewed:
+                logger.error("Lost index job lease for runId=%s", run_id)
+                return
+
+    def _embedding_stats(self) -> tuple[int, float]:
+        getter = getattr(self._llama, "embedding_stats", None)
+        if not callable(getter):
+            return 0, 0.0
+        stats = getter()
+        return int(stats.get("rateLimitRetries", 0)), float(
+            stats.get("waitSeconds", 0.0)
+        )
+
+    def _sync_embedding_stats(
+        self,
+        status: IndexStatusResponse,
+        baseline: tuple[int, float],
+    ) -> None:
+        retries, wait = self._embedding_stats()
+        status.embedding_rate_limit_retries = max(0, retries - baseline[0])
+        status.embedding_wait_seconds = round(max(0.0, wait - baseline[1]), 3)
 
     async def _safe_cleanup(self, run_id: str) -> None:
         try:
@@ -185,6 +278,9 @@ class IndexService:
         status.pages_deleted_empty = 0
         status.pages_deleted_non_english = 0
         status.chunks_upserted = 0
+        status.embedding_rate_limit_retries = 0
+        status.embedding_wait_seconds = 0.0
+        embedding_baseline = self._embedding_stats()
         await self._persist(status)
 
         run = await self._mongo.get_run(run_id)
@@ -283,6 +379,7 @@ class IndexService:
                     if len(pending) >= self._settings.embed_batch_size:
                         n = await self._llama.embed_and_upsert(pending)
                         status.chunks_upserted += n
+                        self._sync_embedding_stats(status, embedding_baseline)
                         pending = []
                         if self._webhook is not None:
                             await self._webhook.notify(status)
@@ -290,10 +387,12 @@ class IndexService:
             if pending:
                 n = await self._llama.embed_and_upsert(pending)
                 status.chunks_upserted += n
+                self._sync_embedding_stats(status, embedding_baseline)
                 if self._webhook is not None:
                     await self._webhook.notify(status)
 
         except Exception as ex:
+            self._sync_embedding_stats(status, embedding_baseline)
             status.state = IndexState.FAILED
             status.error = str(ex)
             status.finished_at_utc = utc_now()
@@ -320,6 +419,7 @@ class IndexService:
             return
 
         status.state = IndexState.COMPLETE
+        self._sync_embedding_stats(status, embedding_baseline)
         status.finished_at_utc = utc_now()
         logger.info(
             "Index complete for runId=%s chunksUpserted=%s pagesEnglish=%s "
