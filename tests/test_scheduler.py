@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -7,6 +8,7 @@ import pytest
 from geek_crawler_rag.config import Settings
 from geek_crawler_rag.mongo import SchedulableRun
 from geek_crawler_rag.scheduler import IndexScheduler
+from geek_crawler_rag.status_store import _scheduler_from_doc
 
 
 @pytest.mark.asyncio
@@ -57,3 +59,14 @@ async def test_not_due_scheduler_does_not_scan_corpus():
 
     assert await scheduler.tick() is None
     assert not mongo.find_smallest_markdown_ready_run.called
+
+
+def test_scheduler_status_normalizes_mongo_naive_datetimes():
+    status = _scheduler_from_doc(
+        {"nextRunAtUtc": datetime(2026, 9, 8, 0, 0)},
+        enabled=True,
+        interval_seconds=7200,
+    )
+
+    assert status.next_run_at_utc is not None
+    assert status.next_run_at_utc.tzinfo == timezone.utc

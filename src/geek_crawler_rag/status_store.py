@@ -168,7 +168,7 @@ class IndexStatusStore:
                 ],
             },
             {"runId": 1, "_id": 0},
-        ).limit(100)
+        ).sort("claimedAtUtc", ASCENDING).limit(1)
         recovered: list[IndexStatusResponse] = []
         async for doc in cursor:
             claimed = await self.claim(
@@ -337,11 +337,19 @@ def _from_doc(doc: dict[str, Any]) -> IndexStatusResponse:
 def _scheduler_from_doc(
     doc: dict[str, Any], enabled: bool, interval_seconds: int
 ) -> IndexSchedulerStatus:
+    next_run_at = _as_utc(doc.get("nextRunAtUtc"))
+    last_enqueued_at = _as_utc(doc.get("lastEnqueuedAtUtc"))
     return IndexSchedulerStatus(
         enabled=bool(doc.get("enabled", enabled)),
         interval_seconds=int(doc.get("intervalSeconds") or interval_seconds),
-        next_run_at_utc=doc.get("nextRunAtUtc"),
-        last_enqueued_at_utc=doc.get("lastEnqueuedAtUtc"),
+        next_run_at_utc=next_run_at,
+        last_enqueued_at_utc=last_enqueued_at,
         last_run_id=doc.get("lastRunId"),
         last_error=doc.get("lastError"),
     )
+
+
+def _as_utc(value: Any) -> Any:
+    if isinstance(value, datetime) and value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value
