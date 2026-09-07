@@ -1,0 +1,119 @@
+name: Cross-repository citation contract
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cross-repo-citation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
+
+jobs:
+  rag-deterministic:
+    name: RAG deterministic (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install locked dependencies
+        run: uv sync --locked --dev
+      - name: Run offline tests
+        run: uv run pytest
+
+  crawler-deterministic:
+    name: Crawler deterministic
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Geek-Crawler-v2
+        uses: actions/checkout@v4
+        with:
+          repository: jmartinemployment/Geek-Crawler-v2
+          token: ${{ secrets.CROSS_REPO_TOKEN || github.token }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - run: npm run test:all
+
+  backend-deterministic:
+    name: Backend RAG contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out GeekBackend
+        uses: actions/checkout@v4
+        with:
+          repository: jmartinemployment/GeekBackend
+          token: ${{ secrets.CROSS_REPO_TOKEN || github.token }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Run deterministic RAG contract tests
+        run: >-
+          dotnet test GeekBackend.Tests/GeekBackend.Tests.csproj
+          --configuration Release
+          --filter
+          "FullyQualifiedName~RagGenerateServiceTests|FullyQualifiedName~HttpGeekCrawlerRagClientTests|FullyQualifiedName~GccV2GeekCrawlerResearchResolverTests"
+      - name: Run deterministic cross-service protocol tests
+        run: >-
+          dotnet test GeekBackend.IntegrationTests/GeekBackend.IntegrationTests.csproj
+          --configuration Release
+          --filter
+          "FullyQualifiedName~RagClientContractTests|FullyQualifiedName~GeekCrawlerE2ETests"
+
+  creator-deterministic:
+    name: Creator deterministic
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out content-creator-v2
+        uses: actions/checkout@v4
+        with:
+          repository: jmartinemployment/content-creator-v2
+          token: ${{ secrets.CROSS_REPO_TOKEN || github.token }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - name: Install deterministic browser
+        run: npx playwright install --with-deps chromium
+      - run: npm run test:ci
+
+  staging-citation-smoke:
+    name: Staging citation smoke
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    env:
+      STAGING_RAG_URL: ${{ secrets.STAGING_RAG_URL }}
+      STAGING_RAG_API_KEY: ${{ secrets.STAGING_RAG_API_KEY }}
+      STAGING_RAG_RUN_ID: ${{ secrets.STAGING_RAG_RUN_ID }}
+      STAGING_RAG_QUERY: ${{ vars.STAGING_RAG_QUERY }}
+      STAGING_RAG_TOPIC: ${{ vars.STAGING_RAG_TOPIC }}
+      STAGING_RAG_WRITING_INTENT: ${{ vars.STAGING_RAG_WRITING_INTENT }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Detect optional staging configuration
+        id: staging-config
+        shell: bash
+        run: |
+          if [[ -n "$STAGING_RAG_URL" && -n "$STAGING_RAG_API_KEY" && -n "$STAGING_RAG_RUN_ID" ]]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Staging smoke skipped; STAGING_RAG_URL, STAGING_RAG_API_KEY, and STAGING_RAG_RUN_ID are optional but must all be configured."
+          fi
+      - name: Verify health, query, page, generate, and citation quote
+        if: steps.staging-config.outputs.configured == 'true'
+        run: python3 scripts/staging_citation_smoke.py

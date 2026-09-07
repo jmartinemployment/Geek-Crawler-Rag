@@ -1,4 +1,4 @@
-"""Geek-Crawler-Rag
+# Geek-Crawler-Rag
 
 Standalone **Python** retrieval product for the Geek-Crawler Mongo corpus.
 **FastAPI** exposes `v1/*`; **LlamaIndex** owns ingest/embed/dense retrieval into Qdrant
@@ -6,6 +6,38 @@ Standalone **Python** retrieval product for the Geek-Crawler Mongo corpus.
 
 See [`architecture.md`](./architecture.md), [`plans/geek-crawler-rag.md`](./plans/geek-crawler-rag.md),
 and [`plans/rag-content-writing-pipeline.md`](./plans/rag-content-writing-pipeline.md).
+
+## Product overview
+
+Geek-Crawler-Rag turns partner and competitor website crawls into searchable evidence and citation-backed content. It combines semantic and keyword retrieval, hierarchical context, entity-aware filtering, and source verification for technical articles, case studies, ads, battlecards, and strategy presentations.
+
+### Capabilities
+
+- English-only parent/child chunking for pinpoint and section-level context
+- OpenAI embeddings and deterministic Qdrant vector records
+- LlamaIndex dense retrieval combined with BM25/text search and reciprocal-rank fusion
+- Optional Cohere reranking
+- Entity, source, category, quality, host, and chunk-role filters
+- Graph-style entity/category/co-occurrence themes
+- Few-shot advertising-template indexing and retrieval
+- Full-page Markdown reads for source verification
+- Editable outlines and section-by-section generation
+- Citation validation that rejects quotes not found in source Markdown
+- Corpus hygiene, historical Markdown backfill, and idempotent run-level reindexing
+
+### Technology
+
+Python, FastAPI, Pydantic, LlamaIndex, MongoDB, Qdrant, OpenAI, BM25, Cohere, Readability, Docker, and GHCR.
+
+## Place in the Geek content platform
+
+```text
+Geek-Crawler-v2 → MongoDB → Geek-Crawler-Rag/Qdrant
+                                  ↓
+                         GeekAPI → Content Creator v2
+```
+
+**Geek-Crawler-v2** produces the clean crawl corpus. This service owns corpus hygiene, indexing, retrieval, themes, and citation-aware generation. **Content Creator v2** provides the operator-facing writing, editing, publishing, and export workflow.
 
 ## What this is / is not
 
@@ -113,7 +145,7 @@ Live stack on KVM 2 (alongside Mongo):
 - Compose: [`deploy/hostinger-compose.yml`](./deploy/hostinger-compose.yml) (Qdrant + API; Mongo via `host.docker.internal`)
 
 Caps: Qdrant `mem_limit: 3g` + `MAX_SEARCH_THREADS=1`, API `mem_limit: 2g`.
-Point `MONGO_CRAWLER_URL` at the existing Hostinger Mongo `geek_crawler` database (read-only for crawl HTML).
+Point `MONGO_CRAWLER_URL` at the existing Hostinger Mongo `geek_crawler` database. Normal indexing reads the corpus; controlled cleanup procedures may delete unusable crawl pages and related links.
 
 GeekAPI: set `GEEK_CRAWLER_RAG_URL` / optional `GEEK_CRAWLER_RAG_API_KEY`.
 
@@ -122,4 +154,3 @@ GeekAPI: set `GEEK_CRAWLER_RAG_URL` / optional `GEEK_CRAWLER_RAG_API_KEY`.
 - **gcc-v2 WRITE** (via GeekAPI): HTTP query client — resolve `runId`, call `/v1/query`, inject chunks; on miss **notify-and-skip** (do not block generate).
 - Thin trigger: `POST /v1/index` when a crawl reaches **`complete`**.
 - Progress: webhook → GeekAPI → SignalR (see above).
-"""
