@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 import uuid
 from typing import Protocol
 
@@ -23,6 +24,10 @@ from geek_crawler_rag.unusable import classify_unusable_page
 from geek_crawler_rag.webhook import IndexStatusWebhook
 
 logger = logging.getLogger(__name__)
+
+
+class LeaseLostError(RuntimeError):
+    """The worker no longer owns the Mongo index-job lease."""
 
 
 class NodeUpserter(Protocol):
@@ -84,15 +89,12 @@ class IndexService:
         self._worker_task = None
 
     async def get_status(self, run_id: str) -> IndexStatusResponse | None:
-        cached = self._statuses.get(run_id)
-        if cached is not None:
-            return cached
-        if self._status_store is None:
-            return None
-        loaded = await self._status_store.get(run_id)
-        if loaded is not None:
-            self._statuses[run_id] = loaded
-        return loaded
+        if self._status_store is not None:
+            loaded = await self._status_store.get(run_id)
+            if loaded is not None:
+                self._statuses[run_id] = loaded
+            return loaded
+        return self._statuses.get(run_id)
 
     async def enqueue(self, run_id: str) -> IndexStatusResponse:
         status, _ = await self._enqueue(run_id, trigger="manual", force=True)
@@ -115,7 +117,11 @@ class IndexService:
                 existing = await self._status_store.get(run_id)
                 if existing is not None:
                     self._statuses[run_id] = existing
-            if existing and existing.state in (IndexState.PENDING, IndexState.RUNNING):
+            if (
+                self._status_store is None
+                and existing
+                and existing.state in (IndexState.PENDING, IndexState.RUNNING)
+            ):
                 return existing, False
 
             if self._status_store is not None:
@@ -147,34 +153,43 @@ class IndexService:
             logger.info("Enqueued index job for runId=%s trigger=%s", run_id, trigger)
             return status, True
 
-    async def _persist(self, status: IndexStatusResponse) -> None:
+    async def _persist(self, status: IndexStatusResponse) -> bool:
         if self._status_store is not None:
             try:
-                await self._status_store.save(status)
+                saved = await self._status_store.save(status, owner=self.owner)
+                if not saved:
+                    logger.warning(
+                        "Rejected stale status write for runId=%s owner=%s",
+                        status.run_id,
+                        self.owner,
+                    )
+                    return False
             except Exception:
                 logger.exception("Failed to persist index status for runId=%s", status.run_id)
+                return False
         if self._webhook is not None:
             await self._webhook.notify(status)
+        return True
 
     async def _worker_loop(self) -> None:
         logger.info("Index worker started (concurrency=1, engine=LlamaIndex)")
         while True:
             run_id = await self._queue.get()
-            heartbeat: asyncio.Task[None] | None = None
             try:
                 async with self._lock:
-                    if self._status_store is not None:
-                        heartbeat = asyncio.create_task(
-                            self._heartbeat_loop(run_id),
-                            name=f"index-heartbeat-{run_id}",
-                        )
-                    await self._index_run(run_id)
+                    await self._run_claimed_job(run_id)
+            except LeaseLostError:
+                logger.error(
+                    "Stopped stale index worker after lease loss runId=%s",
+                    run_id,
+                )
             except asyncio.CancelledError:
                 status = self._statuses.get(run_id)
                 if status and status.state in (IndexState.PENDING, IndexState.RUNNING):
                     status.state = IndexState.FAILED
                     status.error = "Indexer cancelled while job was in flight"
                     status.finished_at_utc = utc_now()
+                    await self._safe_cleanup(run_id)
                     await self._persist(status)
                 raise
             except Exception:
@@ -190,33 +205,94 @@ class IndexService:
                     await self._safe_cleanup(run_id)
                     await self._persist(status)
             finally:
-                if heartbeat is not None:
-                    heartbeat.cancel()
-                    try:
-                        await heartbeat
-                    except asyncio.CancelledError:
-                        pass
                 if self._status_store is not None:
-                    await self._status_store.release(
-                        run_id,
-                        owner=self.owner,
-                        retry_seconds=self._settings.index_scheduler_retry_seconds,
-                    )
+                    try:
+                        await self._status_store.release(
+                            run_id,
+                            owner=self.owner,
+                            retry_seconds=self._settings.index_scheduler_retry_seconds,
+                        )
+                    except Exception:
+                        logger.exception(
+                            "Failed releasing index lease for runId=%s", run_id
+                        )
                 self._queue.task_done()
 
+    async def _run_claimed_job(self, run_id: str) -> None:
+        if self._status_store is None:
+            await self._index_run(run_id)
+            return
+        if not await self._status_store.is_owned(run_id, owner=self.owner):
+            raise LeaseLostError(f"Index lease expired before execution: {run_id}")
+
+        index_task = asyncio.create_task(
+            self._index_run(run_id), name=f"index-run-{run_id}"
+        )
+        heartbeat = asyncio.create_task(
+            self._heartbeat_loop(run_id), name=f"index-heartbeat-{run_id}"
+        )
+        try:
+            done, _ = await asyncio.wait(
+                {index_task, heartbeat},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if index_task in done:
+                await index_task
+                return
+            if heartbeat in done:
+                error = heartbeat.exception()
+                index_task.cancel()
+                try:
+                    await index_task
+                except asyncio.CancelledError:
+                    pass
+                if error is not None:
+                    raise error
+                raise LeaseLostError(f"Index heartbeat stopped: {run_id}")
+            await index_task
+        finally:
+            for task in (index_task, heartbeat):
+                if not task.done():
+                    task.cancel()
+            for task in (index_task, heartbeat):
+                try:
+                    await task
+                except (asyncio.CancelledError, LeaseLostError):
+                    pass
+                except Exception:
+                    pass
+
     async def _heartbeat_loop(self, run_id: str) -> None:
+        last_success = time.monotonic()
+        failure_limit = max(
+            1,
+            self._settings.index_job_lease_seconds
+            - self._settings.index_job_heartbeat_seconds,
+        )
         while True:
             await asyncio.sleep(self._settings.index_job_heartbeat_seconds)
             if self._status_store is None:
                 return
-            renewed = await self._status_store.heartbeat(
-                run_id,
-                owner=self.owner,
-                lease_seconds=self._settings.index_job_lease_seconds,
-            )
+            try:
+                renewed = await self._status_store.heartbeat(
+                    run_id,
+                    owner=self.owner,
+                    lease_seconds=self._settings.index_job_lease_seconds,
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                if time.monotonic() - last_success >= failure_limit:
+                    raise LeaseLostError(
+                        f"Could not renew index lease before expiry: {run_id}"
+                    )
+                logger.warning(
+                    "Transient index heartbeat error runId=%s", run_id, exc_info=True
+                )
+                continue
             if not renewed:
-                logger.error("Lost index job lease for runId=%s", run_id)
-                return
+                raise LeaseLostError(f"Lost index job lease: {run_id}")
+            last_success = time.monotonic()
 
     def _embedding_stats(self) -> tuple[int, float]:
         getter = getattr(self._llama, "embedding_stats", None)

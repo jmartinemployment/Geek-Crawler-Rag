@@ -46,9 +46,32 @@ class IndexStatusStore:
             return None
         return _from_doc(doc)
 
-    async def save(self, status: IndexStatusResponse) -> None:
+    async def save(
+        self, status: IndexStatusResponse, *, owner: str | None = None
+    ) -> bool:
         doc = status.model_dump(by_alias=True, mode="python")
-        await self._col.update_one({"runId": status.run_id}, {"$set": doc}, upsert=True)
+        query: dict[str, Any] = {"runId": status.run_id}
+        if owner is not None:
+            query["leaseOwner"] = owner
+        result = await self._col.update_one(
+            query,
+            {"$set": doc},
+            upsert=owner is None,
+        )
+        return result.matched_count == 1 or result.upserted_id is not None
+
+    async def is_owned(self, run_id: str, *, owner: str) -> bool:
+        now = datetime.now(timezone.utc)
+        doc = await self._col.find_one(
+            {
+                "runId": run_id,
+                "leaseOwner": owner,
+                "leaseUntil": {"$gt": now},
+                "state": {"$in": [IndexState.PENDING, IndexState.RUNNING]},
+            },
+            {"_id": 1},
+        )
+        return doc is not None
 
     async def claim(
         self,

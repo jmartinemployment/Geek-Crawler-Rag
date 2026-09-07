@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from llama_index.core.schema import TextNode
 
 from geek_crawler_rag.config import Settings
-from geek_crawler_rag.indexer import IndexService
+from geek_crawler_rag.indexer import IndexService, LeaseLostError
 from geek_crawler_rag.metadata import EntityRef
 from geek_crawler_rag.models import IndexState
 from geek_crawler_rag.mongo import CrawlPage, CrawlRun
@@ -198,3 +199,102 @@ async def test_enqueue_dedupes_pending():
     second = await svc.enqueue("same")
     assert first is second
     assert svc._queue.qsize() == 1
+
+
+@pytest.mark.asyncio
+async def test_status_store_is_authoritative_over_local_cache():
+    mongo = MagicMock()
+    store = MagicMock()
+    status_store = MagicMock()
+    persisted = MagicMock()
+    persisted.run_id = "shared"
+    persisted.state = IndexState.COMPLETE
+    status_store.get = AsyncMock(return_value=persisted)
+    svc = IndexService(
+        mongo,
+        store,
+        Settings(openai_api_key="test"),
+        llama=_llama_mock(),
+        status_store=status_store,
+    )
+    svc._statuses["shared"] = MagicMock(state=IndexState.RUNNING)
+
+    loaded = await svc.get_status("shared")
+
+    assert loaded is persisted
+    status_store.get.assert_awaited_once_with("shared")
+
+
+@pytest.mark.asyncio
+async def test_claim_is_revalidated_before_index_execution():
+    mongo = MagicMock()
+    store = MagicMock()
+    status_store = MagicMock()
+    status_store.is_owned = AsyncMock(return_value=False)
+    llama = _llama_mock()
+    svc = IndexService(
+        mongo,
+        store,
+        Settings(openai_api_key="test"),
+        llama=llama,
+        status_store=status_store,
+    )
+
+    with pytest.raises(LeaseLostError):
+        await svc._run_claimed_job("expired")
+
+    llama.embed_and_upsert.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_shutdown_cleans_partial_qdrant_index():
+    html = (
+        "<html><body>"
+        + ("This English documentation explains the partner API thoroughly. " * 40)
+        + "</body></html>"
+    )
+    mongo = MagicMock()
+    mongo.get_run = AsyncMock(
+        return_value=CrawlRun(id="shutdown", crawl_type="partner", status="complete")
+    )
+    mongo.count_pages = AsyncMock(return_value=1)
+    _entity_mock(mongo)
+
+    async def pages(_run_id, batch_size=25):
+        yield [
+            CrawlPage(
+                id="shutdown-page",
+                run_id="shutdown",
+                origin="https://partner.com",
+                url="https://partner.com/docs",
+                final_url="https://partner.com/docs",
+                html=html,
+            )
+        ]
+
+    mongo.iter_pages = pages
+    store = MagicMock()
+    store.ensure_collection = AsyncMock()
+    store.delete_by_run_id = AsyncMock()
+    started = asyncio.Event()
+    never = asyncio.Event()
+    llama = MagicMock()
+
+    async def blocked_embed(_nodes):
+        started.set()
+        await never.wait()
+
+    llama.embed_and_upsert = AsyncMock(side_effect=blocked_embed)
+    svc = IndexService(
+        mongo,
+        store,
+        Settings(openai_api_key="test", embed_batch_size=1),
+        llama=llama,
+    )
+    await svc.start()
+    await svc.enqueue("shutdown")
+    await started.wait()
+
+    await svc.stop()
+
+    assert store.delete_by_run_id.await_count >= 2
