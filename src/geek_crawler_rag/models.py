@@ -202,6 +202,14 @@ class GenerateSource(BaseModel):
     model_config = {"populate_by_name": True, "ser_json_by_alias": True}
 
 
+class GenerateOutlineSection(BaseModel):
+    key: str
+    heading: str
+    brief: str
+
+    model_config = {"populate_by_name": True, "ser_json_by_alias": True}
+
+
 class GenerateRequest(BaseModel):
     writing_intent: str = Field(..., alias="writingIntent", min_length=1)
     topic: str = Field(..., min_length=3)
@@ -210,6 +218,14 @@ class GenerateRequest(BaseModel):
     target_entities: list[str] | None = Field(None, alias="targetEntities")
     ad_templates: list[AdTemplateUpsertItem] | None = Field(None, alias="adTemplates")
     graph_enabled: bool = Field(True, alias="graphEnabled")
+    generation_stage: str = Field("complete", alias="generationStage")
+    outline: list[GenerateOutlineSection] | None = None
+    section_key: str | None = Field(None, alias="sectionKey")
+    section_heading: str | None = Field(None, alias="sectionHeading")
+    section_brief: str | None = Field(None, alias="sectionBrief")
+    completed_section_summaries: list[str] | None = Field(
+        None, alias="completedSectionSummaries"
+    )
 
     model_config = {"populate_by_name": True}
 
@@ -222,6 +238,7 @@ class GenerateResponse(BaseModel):
     citations: list[GenerateCitation] = Field(default_factory=list)
     sources: list[GenerateSource] = Field(default_factory=list)
     themes: list[ThemeHit] | None = None
+    outline: list[GenerateOutlineSection] | None = None
     warnings: list[str] = Field(default_factory=list)
     model_used: str | None = Field(None, alias="modelUsed")
     retrieval: str | None = None

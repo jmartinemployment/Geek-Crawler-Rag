@@ -17,6 +17,7 @@ from geek_crawler_rag.config import Settings
 from geek_crawler_rag.models import (
     ChunkHit,
     GenerateCitation,
+    GenerateOutlineSection,
     GenerateRequest,
     GenerateResponse,
     GenerateSource,
@@ -54,6 +55,7 @@ class DraftedEvent(Event):
     content: str | None
     variations: list[str] | None
     battlecard: dict[str, Any] | None
+    outline: list[GenerateOutlineSection] | None
     citations: list[GenerateCitation]
     sources: list[GenerateSource]
     themes: list[ThemeHit]
@@ -71,6 +73,11 @@ def _family(intent: str) -> str:
     if key in _SLIDES:
         return "slides"
     return "long"
+
+
+def _stage(request: GenerateRequest) -> str:
+    stage = (request.generation_stage or "complete").strip().lower()
+    return stage if stage in {"complete", "outline", "section"} else "complete"
 
 
 def _normalize_ws(text: str) -> str:
@@ -135,6 +142,8 @@ class CiteableGenerateWorkflow(Workflow):
                 f"{'competitor differentiation' if crawl_type == 'competitors' else 'partner tool'} "
                 f"research; writing intent: {req.writing_intent}; topic: {req.topic[:200]}"
             )
+            if _stage(req) == "section" and req.section_heading:
+                need += f"; section: {req.section_heading[:160]}"
             if entities:
                 need += f"; entities: {', '.join(entities[:8])}"
             qreq = QueryRequest(
@@ -245,6 +254,7 @@ class CiteableGenerateWorkflow(Workflow):
                 content=None,
                 variations=None,
                 battlecard=None,
+                outline=None,
                 citations=[],
                 sources=_sources_from_pages(ev.pages),
                 themes=ev.themes,
@@ -258,6 +268,7 @@ class CiteableGenerateWorkflow(Workflow):
                 content=None,
                 variations=None,
                 battlecard=None,
+                outline=None,
                 citations=[],
                 sources=[],
                 themes=ev.themes,
@@ -281,11 +292,22 @@ class CiteableGenerateWorkflow(Workflow):
             for c in parsed.get("citations") or []
             if str(c.get("quote") or "").strip() and str(c.get("url") or "").strip()
         ]
+        outline = [
+            GenerateOutlineSection(
+                key=str(section.get("key") or f"section-{i + 1}"),
+                heading=str(section.get("heading") or "").strip(),
+                brief=str(section.get("brief") or "").strip(),
+            )
+            for i, section in enumerate(parsed.get("outline") or [])
+            if isinstance(section, dict)
+            and str(section.get("heading") or "").strip()
+        ][:12]
 
         return DraftedEvent(
             content=parsed.get("content"),
             variations=parsed.get("variations"),
             battlecard=parsed.get("battlecard"),
+            outline=outline or None,
             citations=citations,
             sources=_sources_from_pages(ev.pages),
             themes=ev.themes,
@@ -329,6 +351,7 @@ class CiteableGenerateWorkflow(Workflow):
                 content=ev.content,
                 variations=ev.variations,
                 battlecard=ev.battlecard,
+                outline=ev.outline,
                 citations=kept,
                 sources=ev.sources,
                 themes=ev.themes or None,
@@ -424,7 +447,22 @@ def _build_prompts(
         "Never use meta descriptions or marketing fluff as quotes when a concrete claim exists."
     )
 
-    shape = {
+    stage = _stage(req)
+    if stage == "outline":
+        shape = (
+            '{"outline":[{"key":"stable-slug","heading":"section heading",'
+            '"brief":"what this section must accomplish"}],'
+            '"citations":[{"pageId":"","url":"","title":"","sectionTitle":"",'
+            '"quote":"verbatim span","crawlType":""}]}'
+        )
+    elif stage == "section":
+        shape = (
+            '{"content":"markdown for this section only",'
+            '"citations":[{"pageId":"","url":"","title":"","sectionTitle":"",'
+            '"quote":"verbatim span","crawlType":""}]}'
+        )
+    else:
+        shape = {
         "long": (
             '{"content":"markdown article","citations":[{"pageId":"","url":"","title":"",'
             '"sectionTitle":"","quote":"verbatim span","crawlType":""}]}'
@@ -443,7 +481,7 @@ def _build_prompts(
             '{"content":"markdown slide outline","citations":[{"pageId":"","url":"",'
             '"title":"","sectionTitle":"","quote":"verbatim span","crawlType":""}]}'
         ),
-    }[family]
+        }[family]
 
     templates = ""
     if family == "short" and req.ad_templates:
@@ -453,11 +491,35 @@ def _build_prompts(
         if bodies:
             templates = f"\nFew-shot ad templates:\n{bodies}\n"
 
+    stage_instructions = ""
+    if stage == "outline":
+        stage_instructions = (
+            "\nGeneration stage: OUTLINE. Return 5–10 ordered sections. "
+            "Each brief must define a distinct job and identify facts/evidence needed. "
+            "Do not draft the article yet.\n"
+        )
+    elif stage == "section":
+        outline = "\n".join(
+            f"- {s.key}: {s.heading} — {s.brief}" for s in (req.outline or [])
+        )
+        completed = "\n".join(
+            f"- {summary[:500]}" for summary in (req.completed_section_summaries or [])[:10]
+        )
+        stage_instructions = (
+            "\nGeneration stage: SECTION. Draft only the requested section; do not repeat "
+            "other sections, the requested heading, or a document title.\n"
+            f"Requested key: {req.section_key or '(none)'}\n"
+            f"Requested heading: {req.section_heading or '(none)'}\n"
+            f"Section brief: {req.section_brief or '(none)'}\n"
+            f"Full outline:\n{outline or '(none)'}\n"
+            f"Previously completed section summaries:\n{completed or '(none)'}\n"
+        )
+
     user = (
         f"Writing intent: {req.writing_intent}\n"
         f"Topic: {req.topic}\n"
         f"Entities: {', '.join(req.target_entities or []) or '(none)'}\n"
-        f"{templates}\n"
+        f"{templates}{stage_instructions}\n"
         f"Sources:\n{corpus}\n\n"
         f"JSON shape: {shape}\n"
         "Each citations[].quote MUST be copied verbatim from that source's markdown."

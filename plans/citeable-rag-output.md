@@ -59,7 +59,10 @@ flowchart LR
 ## Phase 4 — Creator display
 
 1. `/rag` UI: show quote + link from `citations[]` (not title-only chips).
-2. No agent UX required for this miss-fix (D4 UX can follow later).
+2. D4 now adds optional guided long-form generation:
+   - `generationStage=outline` returns editable outline sections.
+   - `generationStage=section` drafts one section and verifies its citations against full Mongo Markdown.
+   - Creator orchestrates calls and assembles Markdown; all retrieval, drafting, and citation verification remain in Rag.
 
 ## Non-goals
 
