@@ -1,6 +1,6 @@
 # RAG pipeline upgrades (Geek-Crawler-Rag scope)
 
-Status: **Phase 0 + B + E + D implemented** (LlamaIndex under FastAPI; GraphRAG themes; ad-template index).  
+Status: **Phase 0 + B + E + D implemented** (LlamaIndex under FastAPI; GraphRAG themes; ad-template index); **Phase M (markdown backfill) next**.  
 Sibling plans: Geek-Crawler-v2 (markdown ingest), GeekBackend (`/api/rag/generate`), content-creator-v2 (consume generate).
 
 ## This repo owns
