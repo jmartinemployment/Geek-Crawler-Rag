@@ -457,6 +457,10 @@ class IndexService:
                         status.chunks_upserted += n
                         self._sync_embedding_stats(status, embedding_baseline)
                         pending = []
+                        if self._settings.qdrant_upsert_delay_seconds > 0:
+                            await asyncio.sleep(
+                                self._settings.qdrant_upsert_delay_seconds
+                            )
                         if self._webhook is not None:
                             await self._webhook.notify(status)
 

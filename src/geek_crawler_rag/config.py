@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     qdrant_api_key: str | None = None
     qdrant_collection: str = "geek_crawler_chunks"
     qdrant_ad_templates_collection: str = "geek_ad_templates"
+    qdrant_upsert_delay_seconds: float = 0.0
 
     openai_api_key: str = ""
     openai_embedding_model: str = "text-embedding-3-small"

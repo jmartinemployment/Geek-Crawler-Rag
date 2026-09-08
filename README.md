@@ -130,6 +130,7 @@ jitter. `insufficient_quota` remains a terminal error. Defaults:
 - `OPENAI_EMBEDDING_MAX_BATCH_TOKENS=50000`
 - `EMBED_BATCH_SIZE=32`
 - `OPENAI_EMBEDDING_MAX_RETRIES=8`
+- `QDRANT_UPSERT_DELAY_SECONDS=2`
 - `INDEX_SCHEDULER_INTERVAL_SECONDS=7200`
 
 `GET /health` reports current throttle counters and scheduler state. Per-job
@@ -168,7 +169,8 @@ Live stack on KVM 2 (alongside Mongo):
 - Image: `ghcr.io/jmartinemployment/geek-crawler-rag:latest`
 - Compose: [`deploy/hostinger-compose.yml`](./deploy/hostinger-compose.yml) (Qdrant + API; Mongo via `host.docker.internal`)
 
-Caps: Qdrant `mem_limit: 3g` + `MAX_SEARCH_THREADS=1`, API `mem_limit: 2g`.
+Caps: Qdrant `mem_limit: 3g`, `cpus: 0.5`, `MAX_SEARCH_THREADS=1`; API
+`mem_limit: 2g`. Corpus indexing pauses two seconds between Qdrant batches.
 The Hostinger compose enables the two-hour scheduler by default.
 Point `MONGO_CRAWLER_URL` at the existing Hostinger Mongo `geek_crawler` database. Normal indexing reads the corpus; controlled cleanup procedures may delete unusable crawl pages and related links.
 
