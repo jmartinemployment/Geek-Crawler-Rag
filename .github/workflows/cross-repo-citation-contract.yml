@@ -46,6 +46,8 @@ jobs:
           node-version: "24"
           cache: npm
       - run: npm ci
+      - name: Install deterministic crawler browser
+        run: npx playwright install --with-deps chromium
       - run: npm run test:all
 
   backend-deterministic:
