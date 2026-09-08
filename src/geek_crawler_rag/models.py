@@ -56,6 +56,7 @@ class IndexSchedulerStatus(BaseModel):
     last_enqueued_at_utc: datetime | None = Field(None, alias="lastEnqueuedAtUtc")
     last_run_id: str | None = Field(None, alias="lastRunId")
     last_error: str | None = Field(None, alias="lastError")
+    last_selection_reason: str | None = Field(None, alias="lastSelectionReason")
 
     model_config = {"populate_by_name": True, "ser_json_by_alias": True}
 

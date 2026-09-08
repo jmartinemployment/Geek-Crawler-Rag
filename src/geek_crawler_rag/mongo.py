@@ -32,6 +32,29 @@ class SchedulableRun:
 
 
 @dataclass(frozen=True)
+class SchedulableRunScan:
+    candidate: SchedulableRun | None
+    missing_ready_marker: int = 0
+    zero_pages: int = 0
+    safety_cap: int = 0
+    excluded: int = 0
+
+    def summary(self) -> str:
+        if self.candidate is not None:
+            return (
+                f"candidate runId={self.candidate.id} "
+                f"pages={self.candidate.page_count}"
+            )
+        return (
+            "no_candidate "
+            f"missing_ready_marker={self.missing_ready_marker} "
+            f"zero_pages={self.zero_pages} "
+            f"safety_cap={self.safety_cap} "
+            f"excluded={self.excluded}"
+        )
+
+
+@dataclass(frozen=True)
 class CrawlPage:
     id: str
     run_id: str
@@ -65,6 +88,10 @@ class MongoCorpus:
 
     async def ensure_indexes(self) -> None:
         """Create RAG-owned covered indexes without indexing large page bodies."""
+        await self._db["crawl_runs"].create_index(
+            [("Status", 1), ("MarkdownReadyAt", 1), ("Id", 1)],
+            name="ix_crawl_runs_markdown_ready",
+        )
         await self._db["crawl_pages"].create_index(
             [("RunId", 1), ("MarkdownBackfilledAt", 1)],
             name="ix_crawl_pages_run_markdown_ready",
@@ -89,38 +116,59 @@ class MongoCorpus:
         *,
         excluded_run_ids: set[str],
         maximum_pages: int = 50_000,
-    ) -> SchedulableRun | None:
+    ) -> SchedulableRunScan:
         """Return the smallest completed, Markdown-ready crawl not yet indexed."""
         run_filter: dict[str, Any] = {
-            "Status": {"$regex": "^(complete|external)$", "$options": "i"},
+            "Status": {"$in": ["complete", "external"]},
+            "MarkdownReadyAt": {"$exists": True, "$nin": [None, ""]},
             "Id": {"$type": "string", "$ne": ""},
         }
-        if excluded_run_ids:
-            run_filter["Id"]["$nin"] = list(excluded_run_ids)
+        missing_ready_marker = await self._db["crawl_runs"].count_documents(
+            {
+                "Status": {"$in": ["complete", "external"]},
+                "$or": [
+                    {"MarkdownReadyAt": {"$exists": False}},
+                    {"MarkdownReadyAt": None},
+                    {"MarkdownReadyAt": ""},
+                ],
+            }
+        )
         cursor = self._db["crawl_runs"].find(
             run_filter,
             {"Id": 1, "_id": 0},
+            hint="ix_crawl_runs_markdown_ready",
         ).limit(500)
 
         candidates: list[SchedulableRun] = []
+        zero_pages = 0
+        safety_cap = 0
+        excluded = 0
         async for doc in cursor:
             run_id = str(doc.get("Id") or "")
             if not run_id:
                 continue
-            ready = await self._db["crawl_pages"].find_one(
-                {
-                    "RunId": run_id,
-                    "MarkdownBackfilledAt": {"$type": "date"},
-                },
-                {"RunId": 1, "_id": 0},
-                hint="ix_crawl_pages_run_markdown_ready",
-            )
-            if ready is None:
+            if run_id in excluded_run_ids:
+                excluded += 1
                 continue
             page_count = await self.count_pages(run_id)
-            if 0 < page_count <= maximum_pages:
+            if page_count <= 0:
+                zero_pages += 1
+            elif page_count > maximum_pages:
+                safety_cap += 1
+            else:
                 candidates.append(SchedulableRun(run_id, page_count))
-        return min(candidates, key=lambda item: (item.page_count, item.id)) if candidates else None
+        candidate = (
+            min(candidates, key=lambda item: (item.page_count, item.id))
+            if candidates
+            else None
+        )
+        return SchedulableRunScan(
+            candidate=candidate,
+            missing_ready_marker=int(missing_ready_marker),
+            zero_pages=zero_pages,
+            safety_cap=safety_cap,
+            excluded=excluded,
+        )
 
     async def iter_pages(
         self,

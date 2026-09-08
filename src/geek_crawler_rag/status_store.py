@@ -313,11 +313,13 @@ class IndexStatusStore:
         interval_seconds: int,
         run_id: str | None,
         error: str | None,
+        selection_reason: str | None = None,
     ) -> None:
         now = datetime.now(timezone.utc)
         update: dict[str, Any] = {
             "nextRunAtUtc": now + timedelta(seconds=interval_seconds),
             "lastError": error,
+            "lastSelectionReason": selection_reason,
             "leaseOwner": None,
             "leaseUntil": now,
         }
@@ -369,6 +371,7 @@ def _scheduler_from_doc(
         last_enqueued_at_utc=last_enqueued_at,
         last_run_id=doc.get("lastRunId"),
         last_error=doc.get("lastError"),
+        last_selection_reason=doc.get("lastSelectionReason"),
     )
 
 

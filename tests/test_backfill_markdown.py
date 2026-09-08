@@ -10,7 +10,11 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from backfill_markdown import extract_clean_content, should_exclude_locale_path  # noqa: E402
+from backfill_markdown import (  # noqa: E402
+    _missing_markdown_query,
+    extract_clean_content,
+    should_exclude_locale_path,
+)
 
 
 def test_locale_keeps_us_and_bare() -> None:
@@ -42,3 +46,9 @@ def test_extract_readability_article() -> None:
     assert markdown
     assert "Vendor Tool" in markdown or "automate" in markdown.lower()
     assert "Cookie banner" not in markdown
+
+
+def test_missing_markdown_query_requires_both_supported_fields_empty() -> None:
+    query = _missing_markdown_query("run-1")
+    assert query["RunId"] == "run-1"
+    assert len(query["$and"]) == 2

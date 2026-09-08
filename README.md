@@ -117,9 +117,10 @@ At index start the service logs **`mongoPageCount`**. Runs with `mongoPageCount`
 
 Production schedules one eligible run every **7,200 seconds (2 hours)**. The
 scheduler persists its next due time in Mongo, takes an atomic lease, and chooses
-the smallest completed run that has Markdown and is not already indexed. Index
-jobs also use Mongo leases, heartbeats, stale-job recovery, bounded retries, and
-a maximum attempt count.
+the smallest completed run whose crawl-level `MarkdownReadyAt` confirms every
+persisted page has Markdown and which is not already indexed. Index jobs also use
+Mongo leases, heartbeats, stale-job recovery, bounded retries, and a maximum
+attempt count.
 
 All corpus, query, and ad-template embeddings pass through one rolling
 token-per-minute limiter. Calls are sequentially partitioned by item and token
@@ -135,7 +136,14 @@ jitter. `insufficient_quota` remains a terminal error. Defaults:
 
 `GET /health` reports current throttle counters and scheduler state. Per-job
 status includes `attempt`, `trigger`, `embeddingRateLimitRetries`, and
-`embeddingWaitSeconds`.
+`embeddingWaitSeconds`; scheduler status includes `lastSelectionReason`.
+
+Historical readiness is reconciled sequentially and safely (dry-run by default):
+
+```bash
+uv run python scripts/reconcile_markdown_readiness.py --max-runs 20
+uv run python scripts/reconcile_markdown_readiness.py --write
+```
 
 ### Index status push (no UI polling)
 

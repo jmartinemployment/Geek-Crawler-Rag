@@ -55,6 +55,7 @@ class Counts:
     skipped_no_html: int = 0
     already_markdown: int = 0
     missing_doc: int = 0
+    runs_marked_ready: int = 0
 
     def as_dict(self) -> dict[str, int]:
         return {
@@ -66,6 +67,7 @@ class Counts:
             "deleted_links": self.deleted_links,
             "already_markdown": self.already_markdown,
             "missing_doc": self.missing_doc,
+            "runs_marked_ready": self.runs_marked_ready,
         }
 
 
@@ -117,6 +119,28 @@ def _mongo_url_from_env(cli_url: str | None) -> str:
     return (cli_url or os.environ.get("MONGO_CRAWLER_URL") or "mongodb://localhost:27017").strip()
 
 
+def _missing_markdown_query(run_id: str) -> dict[str, Any]:
+    return {
+        "RunId": run_id,
+        "$and": [
+            {
+                "$or": [
+                    {"Markdown": {"$exists": False}},
+                    {"Markdown": None},
+                    {"Markdown": ""},
+                ]
+            },
+            {
+                "$or": [
+                    {"markdown": {"$exists": False}},
+                    {"markdown": None},
+                    {"markdown": ""},
+                ]
+            },
+        ],
+    }
+
+
 def backfill(
     *,
     mongo_url: str,
@@ -138,6 +162,7 @@ def backfill(
     db = client[db_name]
     pages = db["crawl_pages"]
     links = db["crawl_links"]
+    runs = db["crawl_runs"]
 
     query: dict[str, Any] = {
         "Html": {"$exists": True, "$type": "string"},
@@ -295,6 +320,26 @@ def backfill(
                 )
                 counts.updated -= len(pending_updates)
                 break
+
+    if run_id and limit is None:
+        total_pages = pages.count_documents({"RunId": run_id})
+        missing_markdown = pages.count_documents(
+            _missing_markdown_query(run_id), limit=1
+        )
+        run = runs.find_one({"Id": run_id}, {"Status": 1, "_id": 0}) or {}
+        terminal = str(run.get("Status") or "").lower() in {"complete", "external"}
+        if total_pages > 0 and missing_markdown == 0 and terminal:
+            counts.runs_marked_ready = 1
+            if write:
+                runs.update_one(
+                    {"Id": run_id},
+                    {"$set": {"MarkdownReadyAt": now.isoformat()}},
+                )
+        elif write:
+            runs.update_one(
+                {"Id": run_id},
+                {"$unset": {"MarkdownReadyAt": ""}},
+            )
 
     client.close()
     return counts

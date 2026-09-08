@@ -97,8 +97,10 @@ class IndexScheduler:
 
         run_id: str | None = None
         error: str | None = None
+        selection_reason: str | None = None
         try:
             if await self._status_store.has_active_job():
+                selection_reason = "active_job"
                 logger.info(
                     "Index scheduler skipped due tick because a job is active"
                 )
@@ -106,15 +108,21 @@ class IndexScheduler:
             excluded = await self._status_store.excluded_run_ids(
                 max_attempts=self._settings.index_scheduler_max_attempts
             )
-            candidate = await self._mongo.find_smallest_markdown_ready_run(
+            scan = await self._mongo.find_smallest_markdown_ready_run(
                 excluded_run_ids=excluded
             )
+            candidate = scan.candidate
             if candidate is None:
-                logger.info("Index scheduler found no eligible Markdown-ready run")
+                selection_reason = scan.summary()
+                logger.info(
+                    "Index scheduler found no eligible Markdown-ready run: %s",
+                    selection_reason,
+                )
                 return None
             accepted = await self._indexer.enqueue_scheduled(candidate.id)
             if accepted:
                 run_id = candidate.id
+                selection_reason = scan.summary()
                 logger.info(
                     "Index scheduler enqueued runId=%s pages=%s",
                     candidate.id,
@@ -122,6 +130,7 @@ class IndexScheduler:
                 )
             else:
                 error = f"Atomic index claim rejected for runId={candidate.id}"
+                selection_reason = "claim_rejected"
                 logger.warning(error)
             return run_id
         except asyncio.CancelledError:
@@ -136,4 +145,5 @@ class IndexScheduler:
                 interval_seconds=self._settings.index_scheduler_interval_seconds,
                 run_id=run_id,
                 error=error,
+                selection_reason=selection_reason,
             )
