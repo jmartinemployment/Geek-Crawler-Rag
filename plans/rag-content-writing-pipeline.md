@@ -1,7 +1,15 @@
 # RAG pipeline upgrades (Geek-Crawler-Rag scope)
 
-Status: **Phase 0 + B + E + D implemented**; **Phase M backfill running against Hostinger Mongo** (Readability → markdownify).  
+Status: **Phase 0 + B + E + D implemented**; **Phase M backfill running against Hostinger Mongo** (Readability → markdownify); **Phase U unified content pipeline implementation in progress, cross-repository verification pending**.
 Sibling plans: Geek-Crawler-v2 (markdown ingest), GeekBackend (`/api/rag/generate`), content-creator-v2 (consume generate).
+
+## Governing principle
+
+> Use every available signal and the strongest appropriate technology to create the highest-quality content possible, while preserving editorial control and verifiable evidence.
+
+The RAG service is one component of a single content-creation product. Crawler, RAG, GeekBackend, the canonical brief, PLAN/WRITE/VALIDATE, Canvas, model policy, citations, exports, and publishing must work as one quality system.
+
+This is a new unified implementation informed by the history and proven capabilities of the existing projects. Existing contracts remain compatible only where that does not preserve an accidental product boundary or silently reduce quality.
 
 ## This repo owns
 
@@ -31,7 +39,11 @@ Sibling plans: Geek-Crawler-v2 (markdown ingest), GeekBackend (`/api/rag/generat
 - **Adopt LlamaIndex in this repo** (Phase E) — current custom index/query is an interim shape, not the end state
 - Hybrid retrieval (vector + BM25 + RRF) stays required; implement/keep it via LlamaIndex (or LlamaIndex + Qdrant) under the existing `v1/*` contracts
 - Crawlee stays the crawler (Firecrawl not adopted)
-- OpenAI writer for **citeable** drafts lives in this service (`POST /v1/generate`); GeekAPI proxies. Legacy one-shot remains as GeekAPI fallback.
+- OpenAI writer for **citeable** drafts lives in this service (`POST /v1/generate`); GeekAPI orchestrates and proxies.
+- Canonical PLAN/WRITE jobs **never silently fall back** to GeekAPI one-shot or a weaker model. Missing RAG, evidence, or model prerequisites produce an actionable job state.
+- The complete versioned Creator brief—not `topic + writingIntent` alone—is the generation quality contract.
+- Model selection is explicit and stage-aware: o1-pro and o3 are first-class policy choices, enforced independently by Backend and this service.
+- Operator-controlled downgrade is permitted only through an audited UI action; citation and validation standards never downgrade.
 
 ## Phase 0 (shared gate — data first)
 
@@ -141,12 +153,210 @@ Sweeper when junk leaks past Crawler-v2. See [`cleanup-unusable-pages.md`](./cle
 - `POST /v1/templates/query` — retrieve exemplars by need + optional channel/framework/entityTags
 - Metadata: channel, framework, tone, entityTags
 
+## Phase U — Unified content-creation contract
+
+Phase U connects the completed RAG infrastructure to the canonical `/creates/new` → persisted job → Canvas product. It replaces the standalone `/rag` workbench as a user-facing creation path without removing any RAG capability.
+
+### U1. Canonical brief contract
+
+`POST /v1/generate` accepts a structured `canonicalBrief` object. It remains backward-compatible with historical standalone requests, but canonical jobs always provide the full object.
+
+Required contract:
+
+```json
+{
+  "canonicalBrief": {
+    "version": "gcc-v2-generation-brief.v1",
+    "title": "...",
+    "targetKeyword": "...",
+    "contentType": "pillar",
+    "primaryIntent": "...",
+    "audience": {},
+    "buyingStage": "...",
+    "toneOfVoice": ["..."],
+    "brandKit": {},
+    "paaQuestions": ["..."],
+    "requiredTopics": ["..."],
+    "operatorInstructions": ["..."],
+    "exclusions": ["..."],
+    "hierarchy": {},
+    "internalLinks": [],
+    "outputRequirements": {},
+    "channelRequirements": {},
+    "ctaRequirements": {},
+    "conversionObjective": "...",
+    "publishingDestination": "..."
+  }
+}
+```
+
+The brief drives retrieval needs, evidence allocation, outline strategy, section drafting, repair, validation, repurposing, and final editorial synthesis. Unknown additive brief fields are preserved for forward compatibility.
+
+Before PLAN, GeekBackend assembles an inspectable research/evidence manifest:
+
+- first-party, partner, competitor, and external sources
+- source authority/freshness and crawl/index readiness
+- exact quote-level evidence and candidate claims
+- evidence gaps and conflicting claims
+- internal-link and product-proof opportunities
+
+Missing required evidence is a visible quality gate, not permission to generate unsupported prose.
+
+### U2. Exact cross-repository generate contract
+
+Canonical request fields:
+
+```text
+writingIntent, topic, partnerRunId, competitorRunId,
+targetEntities, adTemplates, graphEnabled,
+generationStage, outline, sectionKey, sectionHeading,
+sectionBrief, completedSectionSummaries,
+canonicalBrief, modelPolicyPreset, modelPolicyVersion,
+stageModelOverrides
+```
+
+Canonical response fields:
+
+```text
+intent, content, variations, battlecard, themes, outline,
+sources, citations, warnings, evidenceWarnings,
+modelUsed, retrieval, provenance
+```
+
+Additional structured requirements:
+
+- `outline[].evidenceIds` allocates evidence during PLAN.
+- `citations[]` contains `pageId`, URL, title, section title, exact quote, and crawl type.
+- `provenance` contains generation stage, effective model, model-policy version, prompt version, retrieval strategy, and evidence IDs.
+- GeekBackend forwards these fields without renaming or flattening away information.
+- Contract versions and field names are identical in Python, C#, TypeScript, deterministic fixtures, and staging smoke tests.
+
+Canonical model-policy version: `content-model-policy.v1`.
+
+### U3. Explicit o1-pro/o3 model policy
+
+Initial best-quality policy:
+
+| Stage | Default model | Purpose |
+|-------|---------------|---------|
+| Research planning | o3 | Form retrieval needs, compare sources, find evidence gaps |
+| Outline | o1-pro | Interpret the complete brief and design high-value long-form strategy |
+| Section | o3 | Evidence allocation and citation-grounded drafting |
+| Repair | o3 | Correct unsupported, repetitive, or weak sections |
+| Validation | o3 | Structured evidence, contradiction, brand, SEO, and GEO review |
+| Final synthesis | o1-pro | Whole-document editorial coherence without altering verified evidence |
+
+Supported presets:
+
+- `best-quality`: stage-aware o1-pro + o3 policy
+- `o3-only`: explicit operator downgrade to o3 for reasoning stages
+- `custom`: approved per-stage o1-pro/o3 overrides
+
+Rules:
+
+- No silent model substitution.
+- This service rejects unknown policy versions, presets, stages, or models with actionable errors.
+- Reasoning models use `max_completion_tokens`, omit unsupported temperature settings, and run in cancellable jobs with appropriate timeouts.
+- Responses always identify `modelUsed`; Backend rejects a result whose effective model differs from the requested policy.
+- Model/prompt/retrieval versions, evidence IDs, latency, tokens, warnings, and retry lineage are persisted.
+- Cost and latency are observable, but do not silently control quality routing.
+
+### U4. Operator-controlled model downgrade
+
+Content Creator provides:
+
+- Create-level **Model policy** selector: Best quality, o3 only, or approved custom per-stage models.
+- Canvas **Change model / Retry with another model** action for a failed or delayed stage.
+- Explicit quality/capability/cost/latency tradeoff disclosure and confirmation.
+
+GeekBackend provides:
+
+- `modelPolicyVersion` and `approvedStageModels` through RAG status.
+- Authenticated and owner-authorized `POST /api/geek-content-creator-v2/jobs/{jobId}/retry-model`.
+- Durable model override, reason, operator ID, timestamp, replaced attempt ID, and retry lineage.
+- Affected-stage-only retry; approved work is not discarded without confirmation.
+
+Model downgrade never disables evidence requirements, citation verification, validation gates, or editorial approval.
+
+### U5. All 17 canonical content types
+
+Creator content types remain the product taxonomy. RAG writing intents become internal strategies:
+
+| Canonical content types | RAG strategy |
+|-------------------------|--------------|
+| pillar, blog, guide, tech-article, case-study, whitepaper, listicle | Long-form outline + section generation |
+| comparison, alternatives | Partner/competitor battlecard retrieval + section generation |
+| ads, social, email | Short-form evidence + approved ad-template exemplars |
+| linkedin-document | Slide strategy + GraphRAG themes |
+| tool, service, local | Long-form evidence with existing specialized product/page requirements |
+| image-prompt | Evidence- and brand-grounded visual brief with specialized validation |
+
+No canonical content type silently returns to a legacy writer. Specialized output formatting may remain in GeekBackend, but its claims and strategic inputs come from the canonical brief and citeable RAG evidence.
+
+### U6. PLAN, WRITE, VALIDATE, and Canvas
+
+- PLAN calls `generationStage=outline`; outline approval remains an editorial gate.
+- WRITE calls `generationStage=section` with the full outline and completed-section summaries.
+- REPAIR and Canvas rewrite/expand/re-tone re-run only the affected section through citeable RAG.
+- VALIDATE gates citation integrity, unsupported claims, source conflicts, originality/overlap, brief alignment, brand voice, SEO, GEO, readability, usefulness, CTA quality, and content-type requirements.
+- Section citations and provenance persist in stage/job JSON and are returned by Canvas APIs.
+- Canvas shows evidence, exact quote citations, model/prompt/retrieval provenance, warnings, and retry lineage.
+- Existing BrandKit, outline editing, section controls, validation, remix, carousel, CMS publish, and export capabilities remain.
+
+### U7. One product surface
+
+- `/creates/new` → persisted jobs → Canvas is the only content-creation experience.
+- The complete existing brief is retained and expanded.
+- Entities, templates, guided outlines, battlecards, variations, slides, strategy themes, and citations move into Create/Canvas based on canonical content type.
+- Standalone `/rag` navigation is removed.
+- `/rag` preserves authentication, migrates useful topic/intent/content-type query parameters, and redirects to `/creates/new`.
+- `/api/rag/*` may remain as an internal BFF namespace; it is not a separate product workflow.
+
+### U8. Contract and quality verification
+
+Required deterministic checks:
+
+1. Python contract tests for canonical brief propagation, stage-aware model enforcement, reasoning-model request constraints, and citation verification.
+2. GeekBackend tests proving all content types map correctly, PLAN/WRITE use citeable RAG, model substitution is rejected, citations/provenance persist, and explicit retry is authorized/audited.
+3. Creator Playwright tests covering all 17 type options, model downgrade confirmation, create → outline approval → WRITE → Canvas citations/provenance, legacy redirect, and RAG-unavailable quality gating.
+4. A true cross-repository contract fixture using the same checked-in request/response examples in Python, C#, and TypeScript so mocks cannot drift.
+5. Optional staging smoke covering deployed OAuth, crawl/index readiness, o1-pro/o3 routing, exact quote verification against Mongo Markdown, persistence, and Canvas display.
+
+Quality evaluation corpus:
+
+- representative briefs across all 17 content types
+- strong, weak, missing, and conflicting evidence
+- varied brand voices, intents, buying stages, and partner/competitor scenarios
+- o1-pro versus o3 stage bakeoffs
+
+Promotion gates:
+
+- factual/citation accuracy
+- evidence coverage and source quality
+- brief/audience/intent alignment
+- strategic depth and usefulness
+- originality and non-repetition
+- brand and editorial coherence
+- SEO/GEO quality
+- human editor preference and editing effort
+
+No model, prompt, or retrieval-policy change is promoted solely because it is newer, faster, or cheaper.
+
+## Ownership boundaries
+
+- Geek-Crawler-Rag owns retrieval, full-page reads, generation prompts, model-policy enforcement, citation verification, and generate provenance.
+- GeekBackend owns canonical brief assembly, content-type strategy mapping, job orchestration, policy authorization, durable overrides/retries, stage/job persistence, validation orchestration, and the thin RAG proxy.
+- content-creator-v2 owns the brief/model controls, template product corpus and picker, Canvas editorial workflow, citations/provenance display, and explicit downgrade confirmation.
+- Geek-Crawler-v2 owns crawl acquisition and clean Markdown ingest.
+
 ## Out of scope here
 
-- GeekAPI `/api/rag/generate` prompts and **OpenAI o1/o3 model routing** (Backend)
-- Content Creator **template product ownership** / picker UX (content-creator-v2) — this repo only indexes what it sends
 - Replacing Crawlee
 - Running LlamaIndex from Geek-Crawler-v2 or content-creator-v2
+- Replacing Qdrant or the required hybrid retrieval path
+- Maintaining standalone `/rag` as a peer creation product
+- Silently falling back to GeekAPI one-shot or a weaker model for canonical jobs
+- Reducing the canonical brief to topic/intent
 
 ## Success criteria
 
@@ -160,5 +370,9 @@ Sweeper when junk leaks past Crawler-v2. See [`cleanup-unusable-pages.md`](./cle
 - [ ] Phase M: one-time Readability markdown backfill over existing HTML; dry-run then write
 - [x] Phase C: unusable pages deleted via cleanup script + index/backfill sweepers ([`cleanup-unusable-pages.md`](./cleanup-unusable-pages.md))
 - [x] Citeable: `pageId` on hits, `GET /v1/pages/*`, `POST /v1/generate` workflow ([`citeable-rag-output.md`](./citeable-rag-output.md))
+- [ ] Phase U1-U2: canonical brief and exact cross-repository contract verified end to end
+- [ ] Phase U3-U4: o1-pro/o3 policy and audited downgrade/retry verified
+- [ ] Phase U5-U7: all 17 content types use the unified Create/Canvas product with no legacy writer
+- [ ] Phase U8: shared contract fixtures, canonical E2E, staging smoke, and quality evaluation gates pass
 
 **Ops note:** Deploy new image, then markdown backfill + `POST /v1/index` for runs that should get Markdown-backed chunks. See [`citeable-rag-output.md`](./citeable-rag-output.md) and `scripts/markdown_coverage_report.py`.

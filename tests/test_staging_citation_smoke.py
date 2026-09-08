@@ -49,6 +49,16 @@ class FakeClient:
         if path == "/v1/generate":
             return {
                 "content": "Draft",
+                "modelUsed": "o3",
+                "provenance": {
+                    "generationStage": "complete",
+                    "modelUsed": "o3",
+                    "modelPolicyPreset": "best-quality",
+                    "modelPolicyVersion": "content-model-policy.v1",
+                    "promptVersion": "citeable-generate.v2",
+                    "retrieval": "hybrid",
+                    "evidenceIds": ["citation-page"],
+                },
                 "citations": [
                     {
                         "pageId": "citation-page",
@@ -93,6 +103,14 @@ def test_smoke_is_read_only_and_verifies_exact_quote():
         method == "GET" or path in {"/v1/query", "/v1/generate"}
         for method, path, _ in client.calls
     )
+    generate_body = next(
+        body for method, path, body in client.calls
+        if method == "POST" and path == "/v1/generate"
+    )
+    assert generate_body is not None
+    assert generate_body["modelPolicyPreset"] == "best-quality"
+    assert generate_body["modelPolicyVersion"] == "content-model-policy.v1"
+    assert generate_body["canonicalBrief"]["contentType"] == "tech-article"
 
 
 def test_smoke_rejects_quote_that_is_not_exact_substring():
@@ -100,6 +118,20 @@ def test_smoke_rejects_quote_that_is_not_exact_substring():
 
     with pytest.raises(SmokeFailure, match="not an exact substring"):
         run_smoke(config(), client)  # type: ignore[arg-type]
+
+
+def test_smoke_rejects_missing_model_provenance():
+    class MissingProvenanceClient(FakeClient):
+        def request(
+            self, method: str, path: str, body: dict[str, Any] | None = None
+        ) -> dict[str, Any]:
+            response = super().request(method, path, body)
+            if path == "/v1/generate":
+                response.pop("provenance")
+            return response
+
+    with pytest.raises(SmokeFailure, match="no provenance"):
+        run_smoke(config(), MissingProvenanceClient())  # type: ignore[arg-type]
 
 
 def test_config_rejects_unsafe_url_and_out_of_bounds(monkeypatch: pytest.MonkeyPatch):

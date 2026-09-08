@@ -44,6 +44,8 @@ class SmokeConfig:
     query: str
     topic: str
     writing_intent: str
+    model_policy_version: str = "content-model-policy.v1"
+    model_policy_preset: str = "best-quality"
     top_k: int = 3
     timeout_seconds: int = 30
     max_response_bytes: int = 2_000_000
@@ -205,8 +207,39 @@ def run_smoke(config: SmokeConfig, client: JsonHttpClient) -> dict[str, int]:
             "topic": config.topic,
             "partnerRunId": config.run_id,
             "generationStage": "complete",
+            "canonicalBrief": {
+                "version": "gcc-v2-generation-brief.v1",
+                "title": config.topic,
+                "targetKeyword": config.query,
+                "contentType": "tech-article",
+                "primaryIntent": "inform",
+                "outputRequirements": {
+                    "purpose": "Verify the deployed unified content-generation contract"
+                },
+            },
+            "modelPolicyPreset": config.model_policy_preset,
+            "modelPolicyVersion": config.model_policy_version,
         },
     )
+    provenance = generated.get("provenance")
+    if not isinstance(provenance, dict):
+        raise SmokeFailure("generate returned no provenance object")
+    if provenance.get("generationStage") != "complete":
+        raise SmokeFailure("generate provenance did not confirm the complete stage")
+    if provenance.get("modelPolicyVersion") != config.model_policy_version:
+        raise SmokeFailure("generate provenance did not confirm the model policy version")
+    if provenance.get("modelPolicyPreset") != config.model_policy_preset:
+        raise SmokeFailure("generate provenance did not confirm the model policy preset")
+    model_used = _required_string(
+        provenance.get("modelUsed"), "generate provenance modelUsed", 100
+    )
+    if model_used != "o3":
+        raise SmokeFailure(
+            f"best-quality complete generation must use o3, got {model_used!r}"
+        )
+    if generated.get("modelUsed") != model_used:
+        raise SmokeFailure("top-level modelUsed does not match provenance")
+
     citations = generated.get("citations")
     if not isinstance(citations, list) or not citations:
         raise SmokeFailure("generate returned no citations")

@@ -1,0 +1,91 @@
+{
+  "request": {
+    "writingIntent": "Technical Article",
+    "topic": "Reliable CRM synchronization",
+    "partnerRunId": "partner-run",
+    "generationStage": "finalSynthesis",
+    "draftContent": "# Reliable CRM synchronization\n\n## Resolve conflicts\n\nAcme uses timestamps to resolve record conflicts.\n\n## Monitor updates\n\nAcme records every synchronization attempt.",
+    "canonicalBrief": {
+      "version": "gcc-v2-generation-brief.v1",
+      "title": "Reliable CRM synchronization",
+      "targetKeyword": "CRM synchronization",
+      "contentType": "tech-article",
+      "primaryIntent": "inform",
+      "audience": {"role": "RevOps leader"},
+      "buyingStage": "consideration",
+      "toneOfVoice": ["expert", "direct"],
+      "brandKit": {"name": "Geek"},
+      "paaQuestions": ["How are CRM conflicts resolved?"],
+      "requiredTopics": ["conflict resolution", "monitoring"],
+      "operatorInstructions": ["Prefer operational detail"],
+      "exclusions": ["Unsupported performance claims"],
+      "hierarchy": {"parent": "/guides"},
+      "internalLinks": [{"url": "/crm", "anchor": "CRM services"}],
+      "outputRequirements": {"format": "markdown"},
+      "channelRequirements": {"channel": "website"},
+      "ctaRequirements": {"action": "Book a consultation"},
+      "conversionObjective": "qualified consultation",
+      "publishingDestination": "primary website"
+    },
+    "sources": [
+      {
+        "pageId": "page-conflicts",
+        "url": "https://example.test/conflicts",
+        "title": "Conflict resolution",
+        "crawlType": "partner"
+      },
+      {
+        "pageId": "page-monitoring",
+        "url": "https://example.test/monitoring",
+        "title": "Synchronization monitoring",
+        "crawlType": "partner"
+      }
+    ],
+    "modelPolicyPreset": "best-quality",
+    "modelPolicyVersion": "content-model-policy.v1"
+  },
+  "pages": [
+    {
+      "pageId": "page-conflicts",
+      "url": "https://example.test/conflicts",
+      "markdown": "Acme uses timestamps to resolve record conflicts."
+    },
+    {
+      "pageId": "page-monitoring",
+      "url": "https://example.test/monitoring",
+      "markdown": "Acme records every synchronization attempt."
+    }
+  ],
+  "citations": [
+    {
+      "pageId": "page-conflicts",
+      "url": "https://example.test/conflicts",
+      "title": "Conflict resolution",
+      "quote": "Acme uses timestamps to resolve record conflicts.",
+      "crawlType": "partner"
+    },
+    {
+      "pageId": "page-monitoring",
+      "url": "https://example.test/monitoring",
+      "title": "Synchronization monitoring",
+      "quote": "Acme records every synchronization attempt.",
+      "crawlType": "partner"
+    }
+  ],
+  "provenance": {
+    "generationStage": "finalSynthesis",
+    "modelUsed": "o1-pro",
+    "modelPolicyPreset": "best-quality",
+    "modelPolicyVersion": "content-model-policy.v1",
+    "promptVersion": "citeable-generate.v2",
+    "retrieval": "hybrid",
+    "evidenceIds": ["page-conflicts", "page-monitoring"]
+  },
+  "expectedSignals": {
+    "briefPromptCoverage": 1.0,
+    "citationExactness": 1.0,
+    "evidenceCoverage": 1.0,
+    "headingPreservationRequirements": 1.0,
+    "provenanceCompleteness": 1.0
+  }
+}

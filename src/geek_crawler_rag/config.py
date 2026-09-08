@@ -60,9 +60,10 @@ class Settings(BaseSettings):
     index_status_webhook_url: str | None = None
     index_status_webhook_key: str | None = None
 
-    # Citeable generate (Phase 2) — OpenAI chat models; empty key → generate returns warning.
+    # Citeable generate — Responses API for reasoning; Chat Completions for legacy models.
     openai_longform_model: str = "o3"
     openai_standard_model: str = "gpt-4o"
+    openai_reasoning_max_completion_tokens: int = 16_000
     generate_min_quality: float = 0.35
     generate_max_pages: int = 8
     generate_markdown_chars: int = 12000

@@ -1,0 +1,83 @@
+{
+  "request": {
+    "writingIntent": "Technical Article",
+    "topic": "Reliable CRM synchronization",
+    "partnerRunId": "partner-run",
+    "generationStage": "validation",
+    "draftContent": "# Reliable CRM synchronization\n\n## Results\n\nAcme guarantees perfect synchronization. Acme records every synchronization attempt.",
+    "canonicalBrief": {
+      "version": "gcc-v2-generation-brief.v1",
+      "title": "Reliable CRM synchronization",
+      "targetKeyword": "CRM synchronization",
+      "contentType": "tech-article",
+      "primaryIntent": "inform",
+      "audience": {"role": "RevOps leader"},
+      "buyingStage": "consideration",
+      "toneOfVoice": ["expert", "direct"],
+      "brandKit": {"name": "Geek"},
+      "paaQuestions": ["How is CRM synchronization monitored?"],
+      "requiredTopics": ["monitoring"],
+      "operatorInstructions": ["Flag unsupported absolutes"],
+      "exclusions": ["Unsupported performance claims"],
+      "hierarchy": {"parent": "/guides"},
+      "internalLinks": [{"url": "/crm", "anchor": "CRM services"}],
+      "outputRequirements": {"format": "markdown"},
+      "channelRequirements": {"channel": "website"},
+      "ctaRequirements": {"action": "Book a consultation"},
+      "conversionObjective": "qualified consultation",
+      "publishingDestination": "primary website"
+    },
+    "sources": [{
+      "pageId": "page-monitoring",
+      "url": "https://example.test/monitoring",
+      "title": "Synchronization monitoring",
+      "crawlType": "partner"
+    }],
+    "modelPolicyPreset": "best-quality",
+    "modelPolicyVersion": "content-model-policy.v1"
+  },
+  "pages": [{
+    "pageId": "page-monitoring",
+    "url": "https://example.test/monitoring",
+    "markdown": "Acme records every synchronization attempt."
+  }],
+  "citations": [{
+    "pageId": "page-monitoring",
+    "url": "https://example.test/monitoring",
+    "title": "Synchronization monitoring",
+    "quote": "Acme records every synchronization attempt.",
+    "crawlType": "partner"
+  }],
+  "validation": {
+    "approved": true,
+    "issues": [{
+      "sectionTitle": "Results",
+      "category": "unsupportedClaim",
+      "detail": "The evidence does not support a guarantee of perfect synchronization.",
+      "repairInstruction": "Remove the absolute guarantee or replace it with a supported statement."
+    }],
+    "strengths": ["The monitoring statement is directly supported."],
+    "unsupportedClaimCount": 0,
+    "briefAlignmentScore": 90,
+    "evidenceCoverageScore": 60,
+    "usefulnessScore": 75,
+    "originalityScore": 85,
+    "brandAlignmentScore": 80
+  },
+  "provenance": {
+    "generationStage": "validation",
+    "modelUsed": "o3",
+    "modelPolicyPreset": "best-quality",
+    "modelPolicyVersion": "content-model-policy.v1",
+    "promptVersion": "citeable-generate.v2",
+    "retrieval": "hybrid",
+    "evidenceIds": ["page-monitoring"]
+  },
+  "expectedSignals": {
+    "briefPromptCoverage": 1.0,
+    "citationExactness": 1.0,
+    "evidenceCoverage": 1.0,
+    "provenanceCompleteness": 1.0,
+    "validationCompleteness": 1.0
+  }
+}
