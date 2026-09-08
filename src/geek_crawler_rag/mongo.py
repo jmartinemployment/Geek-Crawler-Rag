@@ -63,6 +63,14 @@ class MongoCorpus:
         await self._client.admin.command("ping")
         return True
 
+    async def ensure_indexes(self) -> None:
+        """Create RAG-owned covered indexes without indexing large page bodies."""
+        await self._db["crawl_pages"].create_index(
+            [("RunId", 1), ("MarkdownBackfilledAt", 1)],
+            name="ix_crawl_pages_run_markdown_ready",
+            partialFilterExpression={"MarkdownBackfilledAt": {"$type": "date"}},
+        )
+
     async def get_run(self, run_id: str) -> CrawlRun | None:
         doc = await self._db["crawl_runs"].find_one({"Id": run_id})
         if doc is None:
@@ -102,12 +110,10 @@ class MongoCorpus:
             ready = await self._db["crawl_pages"].find_one(
                 {
                     "RunId": run_id,
-                    "$or": [
-                        {"Markdown": {"$type": "string", "$ne": ""}},
-                        {"markdown": {"$type": "string", "$ne": ""}},
-                    ],
+                    "MarkdownBackfilledAt": {"$type": "date"},
                 },
-                {"_id": 1},
+                {"RunId": 1, "_id": 0},
+                hint="ix_crawl_pages_run_markdown_ready",
             )
             if ready is None:
                 continue

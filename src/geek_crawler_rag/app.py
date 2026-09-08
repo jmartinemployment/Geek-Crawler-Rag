@@ -105,6 +105,7 @@ async def lifespan(_app: FastAPI):
         settings,
         owner=state.indexer.owner,
     )
+    await state.mongo.ensure_indexes()
     await state.store.ensure_collection()
     await state.templates.ensure_collection()
     await state.indexer.start()
