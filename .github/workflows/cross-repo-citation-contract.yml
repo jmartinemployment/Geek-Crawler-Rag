@@ -59,16 +59,30 @@ jobs:
         with:
           repository: jmartinemployment/GeekBackend
           token: ${{ secrets.CROSS_REPO_TOKEN || github.token }}
+          path: GeekBackend
+      - name: Check out pinned Geek-SEO dependency
+        uses: actions/checkout@v4
+        with:
+          repository: jmartinemployment/Geek-SEO
+          token: ${{ secrets.CROSS_REPO_TOKEN || github.token }}
+          path: Geek-SEO
+      - name: Select Backend-pinned Geek-SEO revision
+        run: |
+          revision="$(cat GeekBackend/Geek-SEO.commit)"
+          git -C Geek-SEO fetch origin "$revision" --depth=1
+          git -C Geek-SEO checkout --detach "$revision"
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.x"
       - name: Run deterministic RAG contract tests
+        working-directory: GeekBackend
         run: >-
           dotnet test GeekBackend.Tests/GeekBackend.Tests.csproj
           --configuration Release
           --filter
           "FullyQualifiedName~RagGenerateServiceTests|FullyQualifiedName~HttpGeekCrawlerRagClientTests|FullyQualifiedName~GccV2GeekCrawlerResearchResolverTests"
       - name: Run deterministic cross-service protocol tests
+        working-directory: GeekBackend
         run: >-
           dotnet test GeekBackend.IntegrationTests/GeekBackend.IntegrationTests.csproj
           --configuration Release
