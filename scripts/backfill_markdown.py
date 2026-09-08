@@ -56,6 +56,8 @@ class Counts:
     already_markdown: int = 0
     missing_doc: int = 0
     runs_marked_ready: int = 0
+    errors: int = 0
+    complete_pass: int = 0
 
     def as_dict(self) -> dict[str, int]:
         return {
@@ -68,6 +70,8 @@ class Counts:
             "already_markdown": self.already_markdown,
             "missing_doc": self.missing_doc,
             "runs_marked_ready": self.runs_marked_ready,
+            "errors": self.errors,
+            "complete_pass": self.complete_pass,
         }
 
 
@@ -122,22 +126,22 @@ def _mongo_url_from_env(cli_url: str | None) -> str:
 def _missing_markdown_query(run_id: str) -> dict[str, Any]:
     return {
         "RunId": run_id,
-        "$and": [
-            {
-                "$or": [
-                    {"Markdown": {"$exists": False}},
-                    {"Markdown": None},
-                    {"Markdown": ""},
-                ]
-            },
-            {
-                "$or": [
-                    {"markdown": {"$exists": False}},
-                    {"markdown": None},
-                    {"markdown": ""},
-                ]
-            },
-        ],
+        "$expr": {
+            "$and": [
+                {
+                    "$eq": [
+                        {"$trim": {"input": {"$ifNull": ["$Markdown", ""]}}},
+                        "",
+                    ]
+                },
+                {
+                    "$eq": [
+                        {"$trim": {"input": {"$ifNull": ["$markdown", ""]}}},
+                        "",
+                    ]
+                },
+            ]
+        },
     }
 
 
@@ -163,28 +167,15 @@ def backfill(
     pages = db["crawl_pages"]
     links = db["crawl_links"]
     runs = db["crawl_runs"]
+    if write and run_id:
+        runs.update_one({"Id": run_id}, {"$unset": {"MarkdownReadyAt": ""}})
 
     query: dict[str, Any] = {
         "Html": {"$exists": True, "$type": "string"},
-        "$and": [
-            {
-                "$or": [
-                    {"Markdown": {"$exists": False}},
-                    {"Markdown": None},
-                    {"Markdown": ""},
-                ]
-            },
-            {
-                "$or": [
-                    {"markdown": {"$exists": False}},
-                    {"markdown": None},
-                    {"markdown": ""},
-                ]
-            },
-        ],
+        **_missing_markdown_query(run_id or ""),
     }
-    if run_id:
-        query["RunId"] = run_id
+    if not run_id:
+        query.pop("RunId", None)
 
     projection = {
         "Id": 1,
@@ -201,6 +192,7 @@ def backfill(
     }
     now = datetime.now(timezone.utc)
     last_log = 0
+    last_object_id: Any | None = None
 
     def delete_page(page_id: Any, reason: str) -> None:
         if reason == "locale":
@@ -216,6 +208,7 @@ def backfill(
             counts.deleted_links += int(link_res.deleted_count)
             pages.delete_one({"Id": page_id})
         except Exception as exc:
+            counts.errors += 1
             print(f"WARN delete failed id={page_id}: {exc}", flush=True)
 
     while True:
@@ -226,12 +219,20 @@ def backfill(
             take = min(batch_size, limit - counts.scanned)
         # One round-trip per batch (include Html) — avoids per-page find_one over WAN.
         try:
-            batch_docs = list(pages.find(query, projection).limit(take))
+            batch_query = dict(query)
+            if last_object_id is not None:
+                batch_query["_id"] = {"$gt": last_object_id}
+            batch_docs = list(
+                pages.find(batch_query, projection).sort("_id", 1).limit(take)
+            )
         except Exception as exc:
+            counts.errors += 1
             print(f"WARN batch fetch failed: {exc}", flush=True)
             break
         if not batch_docs:
+            counts.complete_pass = 1
             break
+        last_object_id = batch_docs[-1]["_id"]
 
         pending_updates: list[UpdateOne] = []
         for doc in batch_docs:
@@ -266,6 +267,7 @@ def backfill(
                             },
                         )
                     except Exception as exc:
+                        counts.errors += 1
                         print(f"WARN mark existing md failed id={page_id}: {exc}", flush=True)
                 continue
 
@@ -314,6 +316,7 @@ def backfill(
             try:
                 pages.bulk_write(pending_updates, ordered=False)
             except Exception as exc:
+                counts.errors += 1
                 print(
                     f"WARN batch update failed count={len(pending_updates)}: {exc}",
                     flush=True,
@@ -321,25 +324,20 @@ def backfill(
                 counts.updated -= len(pending_updates)
                 break
 
-    if run_id and limit is None:
+    if run_id and limit is None and counts.complete_pass and counts.errors == 0:
         total_pages = pages.count_documents({"RunId": run_id})
         missing_markdown = pages.count_documents(
             _missing_markdown_query(run_id), limit=1
         )
         run = runs.find_one({"Id": run_id}, {"Status": 1, "_id": 0}) or {}
-        terminal = str(run.get("Status") or "").lower() in {"complete", "external"}
+        terminal = str(run.get("Status") or "").lower() == "complete"
         if total_pages > 0 and missing_markdown == 0 and terminal:
-            counts.runs_marked_ready = 1
             if write:
-                runs.update_one(
-                    {"Id": run_id},
+                result = runs.update_one(
+                    {"Id": run_id, "Status": "complete"},
                     {"$set": {"MarkdownReadyAt": now.isoformat()}},
                 )
-        elif write:
-            runs.update_one(
-                {"Id": run_id},
-                {"$unset": {"MarkdownReadyAt": ""}},
-            )
+                counts.runs_marked_ready = int(result.modified_count > 0)
 
     client.close()
     return counts
@@ -379,7 +377,7 @@ def main(argv: list[str] | None = None) -> int:
 
     for k, v in counts.as_dict().items():
         print(f"{k}={v}")
-    return 0
+    return 1 if counts.errors else 0
 
 
 if __name__ == "__main__":

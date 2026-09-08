@@ -30,22 +30,22 @@ class ReconcileCounts:
 def missing_markdown_query(run_id: str) -> dict[str, Any]:
     return {
         "RunId": run_id,
-        "$and": [
-            {
-                "$or": [
-                    {"Markdown": {"$exists": False}},
-                    {"Markdown": None},
-                    {"Markdown": ""},
-                ]
-            },
-            {
-                "$or": [
-                    {"markdown": {"$exists": False}},
-                    {"markdown": None},
-                    {"markdown": ""},
-                ]
-            },
-        ],
+        "$expr": {
+            "$and": [
+                {
+                    "$eq": [
+                        {"$trim": {"input": {"$ifNull": ["$Markdown", ""]}}},
+                        "",
+                    ]
+                },
+                {
+                    "$eq": [
+                        {"$trim": {"input": {"$ifNull": ["$markdown", ""]}}},
+                        "",
+                    ]
+                },
+            ]
+        },
     }
 
 
@@ -104,7 +104,15 @@ def reconcile(
             action = "mark" if write else "would_mark"
             if write:
                 runs.update_one(
-                    {"Id": run_id},
+                    {
+                        "Id": run_id,
+                        "Status": {"$in": ["complete", "external"]},
+                        "$or": [
+                            {"MarkdownReadyAt": {"$exists": False}},
+                            {"MarkdownReadyAt": None},
+                            {"MarkdownReadyAt": ""},
+                        ],
+                    },
                     {"$set": {"MarkdownReadyAt": now}},
                 )
                 counts.marked += 1
@@ -112,7 +120,10 @@ def reconcile(
             action = "clear" if write else "would_clear"
             if write:
                 runs.update_one(
-                    {"Id": run_id},
+                    {
+                        "Id": run_id,
+                        "Status": {"$in": ["complete", "external"]},
+                    },
                     {"$unset": {"MarkdownReadyAt": ""}},
                 )
                 counts.cleared += 1

@@ -137,7 +137,7 @@ class MongoCorpus:
             run_filter,
             {"Id": 1, "_id": 0},
             hint="ix_crawl_runs_markdown_ready",
-        ).limit(500)
+        )
 
         candidates: list[SchedulableRun] = []
         zero_pages = 0

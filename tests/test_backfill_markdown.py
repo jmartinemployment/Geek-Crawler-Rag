@@ -51,4 +51,6 @@ def test_extract_readability_article() -> None:
 def test_missing_markdown_query_requires_both_supported_fields_empty() -> None:
     query = _missing_markdown_query("run-1")
     assert query["RunId"] == "run-1"
-    assert len(query["$and"]) == 2
+    expressions = query["$expr"]["$and"]
+    assert len(expressions) == 2
+    assert "$trim" in expressions[0]["$eq"][0]
