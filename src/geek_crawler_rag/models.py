@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import StrEnum
+import hashlib
 from typing import Any
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -243,6 +245,157 @@ APPROVED_MODEL_POLICY_STAGES = frozenset(
     }
 )
 CURRENT_MODEL_POLICY_VERSION = "content-model-policy.v1"
+CURRENT_EXECUTION_VERSION = "rag-generate.v2"
+CURRENT_SKILL_ENVELOPE_VERSION = "gcc-skill-envelope.v1"
+CURRENT_SKILL_CATALOG_VERSION = "gcc-safe-skills.2026-09-08"
+MAX_SKILL_ENVELOPE_BYTES = 16 * 1024
+PINNED_SKILL_HASHES = {
+    "seo-fundamentals": "f42ff5a164422e1526cdc3460fdff3cc2d5ab5508f6e6f6055ea07f1babc51b6",
+    "geo-direct-answer": "44734869d4539621ce326b8d4b1087ab6f8286133742ec553de283ccf31763e7",
+    "citation-discipline": "61da5cdcecc35a2c2838250370287c7b4092b138fbbaa0563ca0cd222cdbbbbc",
+    "comparison-evidence": "d46466a0d413e40edf2465c80152c409f7be906b216b11b29a119c30435ef06b",
+    "case-study-proof": "947fdb6fe9a2a364c05b4c02d34644783baaeb6b15b6afa8b63a166da1e5bb1b",
+    "technical-depth": "5fb04e195d9be87a1fb1a2243f43abbb3aed5a00cc97ed5e136b0b218ee0e71c",
+    "brand-voice": "76e245ac0401621836a5a9f77f27d21fa1a7a785bab82afc11ef856b82f5c326",
+    "cta-alignment": "b7b4c49b20bfe4f8eeef70f1b38272825608c41235ec63f41a7b377d3e0a5440",
+    "anti-repetition": "0ce61afbc02bf3e284d77a72d0e768e28849e7f0e35542ed5e0ec9c07ee95a8f",
+    "linkedin-document-structure": "aac60102b0c1777734b7734a54b762b48e963b971542f32eb0ed03b974e64b11",
+}
+SUPPORTED_GENERATION_STAGES = frozenset(
+    {"outline", "section", "repair", "validation", "finalSynthesis", "complete"}
+)
+
+
+class SkillDefinition(BaseModel):
+    """Reviewed declarative instructions. Tool declarations are intentionally forbidden."""
+
+    id: str = Field(..., min_length=1, max_length=80)
+    version: str = Field(..., pattern=r"^\d+\.\d+\.\d+$")
+    sha256: str = Field(..., pattern=r"^[0-9a-f]{64}$")
+    source: str = Field(..., min_length=1, max_length=200)
+    license: str = Field(..., min_length=1, max_length=120)
+    reviewer: str = Field(..., min_length=1, max_length=120)
+    supported_stages: list[str] = Field(..., alias="supportedStages", min_length=1)
+    supported_content_types: list[str] = Field(
+        ..., alias="supportedContentTypes", min_length=1
+    )
+    order: int = Field(..., ge=0, le=10_000)
+    conflicts: list[str] = Field(default_factory=list)
+    prompt_instructions: str = Field(
+        ..., alias="promptInstructions", min_length=1, max_length=2000
+    )
+    retrieval_hints: str = Field(
+        ..., alias="retrievalHints", min_length=1, max_length=2000
+    )
+    output_requirements: str = Field(
+        ..., alias="outputRequirements", min_length=1, max_length=2000
+    )
+    validation_checks: str = Field(
+        ..., alias="validationChecks", min_length=1, max_length=2000
+    )
+
+    model_config = {"populate_by_name": True, "extra": "forbid"}
+
+    @property
+    def canonical_content(self) -> str:
+        return "\n".join(
+            (
+                self.prompt_instructions,
+                self.retrieval_hints,
+                self.output_requirements,
+                self.validation_checks,
+            )
+        )
+
+
+class SkillExecutionEnvelope(BaseModel):
+    envelope_version: str = Field(..., alias="envelopeVersion")
+    catalog_version: str = Field(..., alias="catalogVersion")
+    snapshot_hash: str = Field(..., alias="snapshotHash", pattern=r"^[0-9a-f]{64}$")
+    content_type: str = Field(..., alias="contentType", min_length=1)
+    skills: list[SkillDefinition] = Field(..., max_length=10)
+    resolved_at_utc: datetime = Field(..., alias="resolvedAtUtc")
+
+    model_config = {"populate_by_name": True, "extra": "forbid"}
+
+    @model_validator(mode="after")
+    def validate_immutable_envelope(self) -> SkillExecutionEnvelope:
+        if self.envelope_version != CURRENT_SKILL_ENVELOPE_VERSION:
+            raise ValueError("Unsupported skill envelope version.")
+        if self.catalog_version != CURRENT_SKILL_CATALOG_VERSION:
+            raise ValueError("Unsupported skill catalog version.")
+        ids = [skill.id for skill in self.skills]
+        if len(ids) != len(set(ids)):
+            raise ValueError("Duplicate skills are not allowed.")
+        expected_order = sorted(self.skills, key=lambda skill: (skill.order, skill.id))
+        if self.skills != expected_order:
+            raise ValueError("Skills are not in deterministic catalog order.")
+        selected = set(ids)
+        for skill in self.skills:
+            if PINNED_SKILL_HASHES.get(skill.id) != skill.sha256:
+                raise ValueError(
+                    f"Skill '{skill.id}' is not pinned in the reviewed catalog."
+                )
+            actual = hashlib.sha256(skill.canonical_content.encode()).hexdigest()
+            if actual != skill.sha256:
+                raise ValueError(f"Skill '{skill.id}' hash mismatch.")
+            conflict = next((item for item in skill.conflicts if item in selected), None)
+            if conflict:
+                raise ValueError(f"Skill '{skill.id}' conflicts with '{conflict}'.")
+        canonical = "\n".join(
+            [self.catalog_version, self.content_type]
+            + [
+                f"{skill.order}|{skill.id}|{skill.version}|{skill.sha256}"
+                for skill in self.skills
+            ]
+        )
+        if hashlib.sha256(canonical.encode()).hexdigest() != self.snapshot_hash:
+            raise ValueError("Skill execution snapshot hash mismatch.")
+        if len(self.model_dump_json(by_alias=True).encode()) > MAX_SKILL_ENVELOPE_BYTES:
+            raise ValueError("Skill execution envelope exceeds the size limit.")
+        return self
+
+
+class SkillProvenance(BaseModel):
+    envelope_version: str = Field(..., alias="envelopeVersion")
+    catalog_version: str = Field(..., alias="catalogVersion")
+    snapshot_hash: str = Field(..., alias="snapshotHash")
+    stage: str
+    skill_versions: list[str] = Field(default_factory=list, alias="skillVersions")
+
+    model_config = {"populate_by_name": True, "ser_json_by_alias": True}
+
+
+class ProducerCapabilities(BaseModel):
+    execution_versions: list[str] = Field(
+        default_factory=lambda: [CURRENT_EXECUTION_VERSION],
+        alias="executionVersions",
+    )
+    skill_envelope_versions: list[str] = Field(
+        default_factory=lambda: [CURRENT_SKILL_ENVELOPE_VERSION],
+        alias="skillEnvelopeVersions",
+    )
+    generation_stages: list[str] = Field(
+        default_factory=lambda: sorted(SUPPORTED_GENERATION_STAGES),
+        alias="generationStages",
+    )
+    specialist_executors: list[str] = Field(
+        default_factory=lambda: [
+            "researchPlanning",
+            "outline",
+            "section",
+            "finalSynthesis",
+            "validation",
+            "repair",
+        ],
+        alias="specialistExecutors",
+    )
+    specialist_executor_version: str = Field(
+        "bounded-specialists.v1", alias="specialistExecutorVersion"
+    )
+    tools_allowed: bool = Field(False, alias="toolsAllowed")
+
+    model_config = {"populate_by_name": True, "ser_json_by_alias": True}
 
 
 class CanonicalBriefContext(BaseModel):
@@ -291,6 +444,23 @@ class GenerateProvenance(BaseModel):
     prompt_version: str = Field(..., alias="promptVersion")
     retrieval: str
     evidence_ids: list[str] = Field(default_factory=list, alias="evidenceIds")
+    specialist_executor: str = Field(
+        "legacy-complete", alias="specialistExecutor"
+    )
+    specialist_executor_version: str = Field(
+        "bounded-specialists.v1", alias="specialistExecutorVersion"
+    )
+    execution_version: str = Field("rag-generate.v1", alias="executionVersion")
+    attempt_id: str = Field(default_factory=lambda: str(uuid4()), alias="attemptId")
+    skills: SkillProvenance = Field(
+        default_factory=lambda: SkillProvenance(
+            envelopeVersion="none",
+            catalogVersion="none",
+            snapshotHash=hashlib.sha256(b"").hexdigest(),
+            stage="complete",
+            skillVersions=[],
+        )
+    )
 
     model_config = {"populate_by_name": True, "ser_json_by_alias": True}
 
@@ -379,6 +549,11 @@ class GenerateRequest(BaseModel):
     stage_model_overrides: dict[str, str] | None = Field(
         None, alias="stageModelOverrides"
     )
+    execution_version: str = Field("rag-generate.v1", alias="executionVersion")
+    attempt_id: str = Field(default_factory=lambda: str(uuid4()), alias="attemptId")
+    skill_execution: SkillExecutionEnvelope | None = Field(
+        None, alias="skillExecution"
+    )
 
     # Keep unknown-field behavior compatible with existing standalone callers.
     model_config = {"populate_by_name": True}
@@ -391,6 +566,7 @@ class GenerateRequest(BaseModel):
             "complete": "complete",
             "outline": "outline",
             "section": "section",
+            "repair": "repair",
             "validation": "validation",
             "finalsynthesis": "finalSynthesis",
         }
@@ -398,9 +574,31 @@ class GenerateRequest(BaseModel):
         if stage is None:
             raise ValueError(
                 f"Unsupported generationStage '{self.generation_stage}'. "
-                "Use complete, outline, section, validation, or finalSynthesis."
+                "Use complete, outline, section, repair, validation, or finalSynthesis."
             )
         self.generation_stage = stage
+
+        try:
+            UUID(self.attempt_id)
+        except ValueError as ex:
+            raise ValueError("attemptId must be a UUID.") from ex
+        if self.skill_execution is not None:
+            if self.execution_version != CURRENT_EXECUTION_VERSION:
+                raise ValueError(
+                    f"skillExecution requires executionVersion '{CURRENT_EXECUTION_VERSION}'."
+                )
+            if stage not in SUPPORTED_GENERATION_STAGES:
+                raise ValueError(f"Skills do not support generation stage '{stage}'.")
+            for skill in self.skill_execution.skills:
+                if stage not in skill.supported_stages:
+                    continue
+                if self.skill_execution.content_type not in skill.supported_content_types:
+                    raise ValueError(
+                        f"Skill '{skill.id}' does not support content type "
+                        f"'{self.skill_execution.content_type}'."
+                    )
+        elif self.execution_version == CURRENT_EXECUTION_VERSION:
+            raise ValueError("Current executionVersion requires skillExecution.")
 
         if stage in {"validation", "finalSynthesis"}:
             if not self.draft_content or not self.draft_content.strip():

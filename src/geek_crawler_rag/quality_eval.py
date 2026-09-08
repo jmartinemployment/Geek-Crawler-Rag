@@ -45,6 +45,13 @@ REQUIRED_PROVENANCE_FIELDS = (
     "retrieval",
     "evidenceIds",
 )
+STRICT_PROVENANCE_FIELDS = (
+    "specialistExecutor",
+    "specialistExecutorVersion",
+    "executionVersion",
+    "attemptId",
+    "skills",
+)
 REQUIRED_VALIDATION_FIELDS = (
     "approved",
     "issues",
@@ -108,14 +115,32 @@ def evaluate_quality_contract(
         if isinstance(provenance, GenerateProvenance)
         else provenance
     )
+    required_provenance_fields = REQUIRED_PROVENANCE_FIELDS
+    if provenance_data.get("executionVersion") == "rag-generate.v2":
+        required_provenance_fields += STRICT_PROVENANCE_FIELDS
     complete_provenance_fields = [
         field
-        for field in REQUIRED_PROVENANCE_FIELDS
+        for field in required_provenance_fields
         if provenance_data.get(field) not in (None, "", [])
     ]
-    provenance_score = len(complete_provenance_fields) / len(
-        REQUIRED_PROVENANCE_FIELDS
-    )
+    if provenance_data.get("executionVersion") == "rag-generate.v2":
+        skills = provenance_data.get("skills")
+        strict_skill_provenance = (
+            isinstance(skills, dict)
+            and all(
+                skills.get(field) not in (None, "", [])
+                for field in (
+                    "envelopeVersion",
+                    "catalogVersion",
+                    "snapshotHash",
+                    "stage",
+                    "skillVersions",
+                )
+            )
+        )
+        if not strict_skill_provenance and "skills" in complete_provenance_fields:
+            complete_provenance_fields.remove("skills")
+    provenance_score = len(complete_provenance_fields) / len(required_provenance_fields)
 
     signals = {
         "briefPromptCoverage": round(brief_score, 4),

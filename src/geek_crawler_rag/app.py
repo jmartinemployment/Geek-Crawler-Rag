@@ -25,6 +25,7 @@ from geek_crawler_rag.models import (
     IndexSchedulerStatus,
     IndexStatusResponse,
     PageMarkdownResponse,
+    ProducerCapabilities,
     QueryRequest,
     QueryResponse,
 )
@@ -188,6 +189,17 @@ async def health() -> JSONResponse:
         "errors": errors or None,
     }
     return JSONResponse(body, status_code=200 if healthy else 503)
+
+
+@app.get(
+    "/v1/capabilities",
+    response_model=ProducerCapabilities,
+    response_model_by_alias=True,
+    dependencies=[Depends(require_api_key)],
+)
+async def capabilities() -> ProducerCapabilities:
+    """Declare strict generation and skill-envelope versions supported by this producer."""
+    return ProducerCapabilities()
 
 
 @app.post(
