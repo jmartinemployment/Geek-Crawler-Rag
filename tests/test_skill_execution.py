@@ -113,7 +113,10 @@ def _request(**overrides):
 def test_capabilities_advertise_strict_execution_contract():
     wire = ProducerCapabilities().model_dump(by_alias=True)
     assert CURRENT_EXECUTION_VERSION in wire["executionVersions"]
+    assert "rag-generate.v3" in wire["executionVersions"]
     assert CURRENT_SKILL_ENVELOPE_VERSION in wire["skillEnvelopeVersions"]
+    assert "gcc-skill-envelope.v2" in wire["skillEnvelopeVersions"]
+    assert "researchPlanning" in wire["generationStages"]
     assert "repair" in wire["generationStages"]
     assert wire["specialistExecutorVersion"] == "bounded-specialists.v1"
     assert set(wire["specialistExecutors"]) >= {
@@ -125,6 +128,10 @@ def test_capabilities_advertise_strict_execution_contract():
         "repair",
     }
     assert wire["toolsAllowed"] is False
+    assert wire["stageScopedToolsAllowed"] is True
+    assert wire["agentExecutorVersions"] == ["function-agents.v1"]
+    assert wire["agentTraceVersions"] == ["agent-trace.v1"]
+    assert wire["agentToolVersions"] == ["agent-tools.v1"]
 
 
 def test_repair_keeps_true_stage_prompt_model_and_skill_provenance():

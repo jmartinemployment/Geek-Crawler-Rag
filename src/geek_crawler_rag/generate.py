@@ -1,20 +1,34 @@
 """Citeable generate: retrieve → read Mongo Markdown → draft → verify citations.
 
-Uses LlamaIndex Workflow steps as the orchestration starting point (no LlamaParse).
+Uses LlamaIndex Workflow steps over the existing Markdown corpus.
 """
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
 import json
 import logging
 import re
 from typing import Any
+from datetime import datetime, timezone
 
 from llama_index.core.workflow import Context, Event, StartEvent, StopEvent, Workflow, step
 from openai import AsyncOpenAI
 
+from geek_crawler_rag.agents import StageAgentExecutor, create_production_llm
+from geek_crawler_rag.agent_models import (
+    AgentFailure,
+    AgentExecutionProvenance,
+    AgentStopReason,
+    SignedSkillExecutionEnvelopeV2,
+    SpecialistCitation,
+    SpecialistContribution,
+    SpecialistReview,
+)
 from geek_crawler_rag.config import Settings
 from geek_crawler_rag.models import (
+    AGENT_EXECUTION_VERSION,
     ChunkHit,
     GenerateCitation,
     GenerateOutlineSection,
@@ -24,11 +38,19 @@ from geek_crawler_rag.models import (
     GenerateSource,
     GenerateValidation,
     QueryRequest,
+    SkillExecutionEnvelope,
     SkillProvenance,
     ThemeHit,
 )
 from geek_crawler_rag.mongo import MongoCorpus
 from geek_crawler_rag.query import QueryService
+from geek_crawler_rag.skills import (
+    SkillDisclosure,
+    SkillSnapshotError,
+    verify_agent_execution,
+    verify_snapshot,
+)
+from geek_crawler_rag.tools import BudgetExhausted, ToolDenied
 from geek_crawler_rag.specialists import (
     ResearchPlanningSpecialist,
     SPECIALIST_TYPES,
@@ -44,6 +66,7 @@ _SHORT_FORM = frozenset({"social ad", "short form"})
 _BATTLECARD = frozenset({"competitive battlecard"})
 _SLIDES = frozenset({"pitch slides", "strategy theme"})
 _PROMPT_VERSIONS = {
+    "researchPlanning": "citeable-research-plan.v1",
     "outline": "citeable-outline.v3",
     "section": "citeable-section.v3",
     "repair": "citeable-repair.v1",
@@ -81,6 +104,7 @@ class DraftedEvent(Event):
     variations: list[str] | None
     battlecard: dict[str, Any] | None
     outline: list[GenerateOutlineSection] | None
+    research_plan: list[dict[str, Any]] | None
     citations: list[GenerateCitation]
     sources: list[GenerateSource]
     themes: list[ThemeHit]
@@ -88,6 +112,10 @@ class DraftedEvent(Event):
     warnings: list[str]
     model_used: str
     validation: GenerateValidation | None
+    agent_execution: AgentExecutionProvenance | None = None
+    specialist_contribution: SpecialistContribution | None = None
+    specialist_review: SpecialistReview | None = None
+    specialist_artifact_digest: str | None = None
 
 
 def _family(intent: str) -> str:
@@ -234,6 +262,16 @@ class CiteableGenerateWorkflow(Workflow):
     async def retrieve(self, ctx: Context, ev: StartEvent) -> RetrievedEvent:
         req: GenerateRequest = ev.get("request")
         await ctx.store.set("request", req)
+        if (
+            req.execution_version == AGENT_EXECUTION_VERSION
+            and _stage(req) == "researchPlanning"
+        ):
+            return RetrievedEvent(
+                chunks=[],
+                themes=[],
+                retrieval="hybrid",
+                warnings=[],
+            )
         family = _family(req.writing_intent)
         prefer_parent = family != "short"
         prefer_child = family == "short"
@@ -402,12 +440,18 @@ class CiteableGenerateWorkflow(Workflow):
         family = _family(req.writing_intent)
         model = select_generation_model(req, self._settings)
 
+        if (
+            not self._settings.openai_api_key
+            and req.execution_version == AGENT_EXECUTION_VERSION
+        ):
+            raise ValueError("OPENAI_API_KEY is required for v3 agent execution.")
         if not self._settings.openai_api_key:
             return DraftedEvent(
                 content=None,
                 variations=None,
                 battlecard=None,
                 outline=None,
+                research_plan=None,
                 citations=[],
                 sources=_sources_from_pages(ev.pages),
                 themes=ev.themes,
@@ -415,14 +459,19 @@ class CiteableGenerateWorkflow(Workflow):
                 warnings=ev.warnings + ["OPENAI_API_KEY unset; generate skipped."],
                 model_used=model,
                 validation=None,
+                agent_execution=None,
+                specialist_contribution=None,
+                specialist_review=None,
+                specialist_artifact_digest=None,
             )
 
-        if not ev.pages:
+        if not ev.pages and _stage(req) != "researchPlanning":
             return DraftedEvent(
                 content=None,
                 variations=None,
                 battlecard=None,
                 outline=None,
+                research_plan=None,
                 citations=[],
                 sources=[],
                 themes=ev.themes,
@@ -430,38 +479,111 @@ class CiteableGenerateWorkflow(Workflow):
                 warnings=ev.warnings,
                 model_used=model,
                 validation=None,
+                agent_execution=None,
+                specialist_contribution=None,
+                specialist_review=None,
+                specialist_artifact_digest=None,
             )
 
-        specialist_type = SPECIALIST_TYPES[_stage(req)]
-        specialist = specialist_type(_build_prompts, self._chat, _parse_llm_json)
-        specialist_context = SpecialistExecutionContext(
-            stage=_stage(req),
-            request=_request_for_specialist(req, _stage(req)),
-            evidence=ev.pages,
-            sources=_sources_from_pages(ev.pages),
-            model=model,
-            skills=_active_skills(req),
-            outputContract=specialist.output_type.__name__,
-            toolDeclarations=(),
-        )
-        typed = await specialist.execute(specialist_context, family)
+        agent_execution = None
+        output_pages = ev.pages
+        if req.execution_version == AGENT_EXECUTION_VERSION:
+            envelope = req.skill_execution
+            if not isinstance(envelope, SignedSkillExecutionEnvelopeV2):
+                raise ValueError("v3 execution requires a signed v2 skill snapshot.")
+            limits = req.agent_execution.limits
+            disclosure = SkillDisclosure(
+                envelope,
+                assigned_skills=req.agent_execution.assigned_skills,
+                stage=_stage(req),
+                content_type=envelope.content_type,
+                max_active_skills=limits.max_active_skills,
+                max_skill_bytes=limits.max_skill_bytes,
+                max_resource_bytes=limits.max_resource_bytes,
+            )
+            from geek_crawler_rag.tools import AgentToolRuntime
+
+            runtime = AgentToolRuntime(
+                request=req,
+                query=self._query,
+                mongo=self._mongo,
+                pages=ev.pages,
+                disclosure=disclosure,
+                limits=limits,
+            )
+            # Initial retrieval establishes a server-owned page allowlist only.
+            # Evidence enters the model and citation verifier exclusively through
+            # traced load_evidence_page calls.
+            system, user = _build_prompts(req, family, [])
+            executor = StageAgentExecutor(
+                request=req,
+                runtime=runtime,
+                model=model,
+                prompt_version=_PROMPT_VERSIONS[_stage(req)],
+                llm=create_production_llm(
+                    model=model,
+                    api_key=self._settings.openai_api_key,
+                    max_output_tokens=limits.max_output_tokens,
+                    timeout=limits.max_stage_seconds,
+                ),
+            )
+            typed, agent_execution = await executor.execute(system, user)
+            output_pages = runtime.evidence_pages
+            await ctx.store.set("pages", output_pages)
+        else:
+            specialist_type = SPECIALIST_TYPES[_stage(req)]
+            specialist = specialist_type(_build_prompts, self._chat, _parse_llm_json)
+            specialist_context = SpecialistExecutionContext(
+                stage=_stage(req),
+                request=_request_for_specialist(req, _stage(req)),
+                evidence=ev.pages,
+                sources=_sources_from_pages(ev.pages),
+                model=model,
+                skills=_active_skills(req),
+                outputContract=specialist.output_type.__name__,
+                toolDeclarations=(),
+            )
+            typed = await specialist.execute(specialist_context, family)
         parsed = typed.model_dump(by_alias=True)
-        citations = list(getattr(typed, "citations", []))
+        citations = [
+            GenerateCitation.model_validate(item.model_dump(by_alias=True))
+            for item in getattr(typed, "citations", [])
+        ]
         outline = list(getattr(typed, "outline", []))[:12]
         validation = getattr(typed, "validation", None)
+        specialist_contribution = (
+            typed if isinstance(typed, SpecialistContribution) else None
+        )
+        specialist_review = typed if isinstance(typed, SpecialistReview) else None
+        specialist_artifact = specialist_contribution or specialist_review
+        specialist_artifact_digest = (
+            _specialist_artifact_digest(specialist_artifact)
+            if specialist_artifact
+            else None
+        )
+        research_plan = (
+            [item.model_dump(by_alias=True) for item in getattr(typed, "queries", [])]
+            if _stage(req) == "researchPlanning"
+            else None
+        )
 
         return DraftedEvent(
             content=parsed.get("content"),
             variations=parsed.get("variations"),
             battlecard=parsed.get("battlecard"),
             outline=outline or None,
+            research_plan=research_plan,
             citations=citations,
-            sources=_sources_from_pages(ev.pages),
+            sources=_sources_from_pages(output_pages),
             themes=ev.themes,
             retrieval=ev.retrieval,
             warnings=list(ev.warnings),
             model_used=model,
             validation=validation,
+            agent_execution=agent_execution,
+            specialist_contribution=specialist_contribution,
+            specialist_review=specialist_review,
+            specialist_artifact_digest=specialist_artifact_digest,
         )
 
     @step
@@ -469,6 +591,53 @@ class CiteableGenerateWorkflow(Workflow):
         req: GenerateRequest = await ctx.store.get("request")
         pages: list[dict[str, Any]] = await ctx.store.get("pages", default=[])
         kept, dropped = verify_citations(ev.citations, ev.sources, pages or [])
+        kept_keys = {
+            (citation.page_id, citation.url, citation.quote) for citation in kept
+        }
+        specialist_citations = [
+            SpecialistCitation.model_validate(
+                citation.model_dump(by_alias=True, mode="json")
+            )
+            for citation in kept
+        ]
+        specialist_contribution = (
+            ev.specialist_contribution.model_copy(
+                update={"citations": specialist_citations}
+            )
+            if ev.specialist_contribution
+            else None
+        )
+        specialist_review = None
+        if ev.specialist_review:
+            specialist_review = ev.specialist_review.model_copy(
+                update={
+                    "citations": specialist_citations,
+                    "issues": [
+                        issue.model_copy(
+                            update={
+                                "citation": (
+                                    issue.citation
+                                    if issue.citation
+                                    and (
+                                        issue.citation.page_id,
+                                        issue.citation.url,
+                                        issue.citation.quote,
+                                    )
+                                    in kept_keys
+                                    else None
+                                )
+                            }
+                        )
+                        for issue in ev.specialist_review.issues
+                    ],
+                }
+            )
+        specialist_artifact = specialist_contribution or specialist_review
+        specialist_artifact_digest = (
+            _specialist_artifact_digest(specialist_artifact)
+            if specialist_artifact
+            else None
+        )
 
         warnings = list(ev.warnings)
         evidence_warnings = [
@@ -485,7 +654,10 @@ class CiteableGenerateWorkflow(Workflow):
             or ev.variations
             or ev.battlecard
             or ev.outline
+            or ev.research_plan
             or ev.validation
+            or ev.specialist_contribution
+            or ev.specialist_review
         )
         if has_output and not kept:
             warning = "Generated output has no verified citations; treat factual claims as unsupported."
@@ -503,6 +675,7 @@ class CiteableGenerateWorkflow(Workflow):
                 variations=ev.variations,
                 battlecard=ev.battlecard,
                 outline=ev.outline,
+                research_plan=ev.research_plan,
                 citations=kept,
                 sources=ev.sources,
                 themes=ev.themes or None,
@@ -522,12 +695,25 @@ class CiteableGenerateWorkflow(Workflow):
                     prompt_version=_PROMPT_VERSIONS[_stage(req)],
                     retrieval=ev.retrieval,
                     evidence_ids=evidence_ids,
-                    specialist_executor=SPECIALIST_TYPES[_stage(req)].__name__,
+                    specialist_executor=(
+                        ev.agent_execution.agent
+                        if ev.agent_execution
+                        else SPECIALIST_TYPES[_stage(req)].__name__
+                    ),
+                    specialist_executor_version=(
+                        ev.agent_execution.executor_version
+                        if ev.agent_execution
+                        else "bounded-specialists.v1"
+                    ),
                     execution_version=req.execution_version,
                     attempt_id=req.attempt_id,
                     skills=_skill_provenance(req),
                 ),
                 validation=ev.validation,
+                agent_execution=ev.agent_execution,
+                specialistContribution=specialist_contribution,
+                specialistReview=specialist_review,
+                specialistArtifactDigest=specialist_artifact_digest,
             )
         )
 
@@ -572,6 +758,8 @@ class GenerateService:
         self._mongo = mongo
         self._query = query
         self._settings = settings
+        self._seen_stage_executions: dict[str, str] = {}
+        self._replay_lock = asyncio.Lock()
 
     async def generate(self, request: GenerateRequest) -> GenerateResponse:
         if not self._settings.generate_enabled:
@@ -580,12 +768,56 @@ class GenerateService:
                 warnings=["Rag generate soft-disabled (GENERATE_ENABLED=false)."],
                 provenance=_empty_provenance(request, "disabled"),
             )
-        wf = CiteableGenerateWorkflow(
-            mongo=self._mongo,
-            query=self._query,
-            settings=self._settings,
-        )
-        result = await wf.run(request=request)
+        try:
+            if request.execution_version == AGENT_EXECUTION_VERSION:
+                envelope = request.skill_execution
+                if not isinstance(envelope, SignedSkillExecutionEnvelopeV2):
+                    raise SkillSnapshotError(
+                        "v3 execution requires a signed v2 skill snapshot."
+                    )
+                execution = request.agent_execution
+                if execution is None:
+                    raise SkillSnapshotError("v3 execution requires agentExecution.")
+                skill_key = self._signing_key(envelope.signature_key_id)
+                agent_key = self._signing_key(execution.signature_key_id)
+                verify_snapshot(envelope, skill_key)
+                verify_agent_execution(execution, agent_key)
+                now = datetime.now(timezone.utc)
+                skew = self._settings.agent_execution_clock_skew_seconds
+                if execution.issued_at_utc.timestamp() - skew > now.timestamp():
+                    raise SkillSnapshotError("Agent execution snapshot is not yet valid.")
+                if execution.expires_at_utc.timestamp() + skew < now.timestamp():
+                    raise SkillSnapshotError("Agent execution snapshot has expired.")
+                if self._settings.agent_execution_replay_protection:
+                    async with self._replay_lock:
+                        previous = self._seen_stage_executions.get(
+                            execution.stage_execution_id
+                        )
+                        if previous is not None:
+                            raise SkillSnapshotError(
+                                "Agent stage execution replay was rejected."
+                            )
+                        self._seen_stage_executions[execution.stage_execution_id] = (
+                            execution.idempotency_key
+                        )
+            wf = CiteableGenerateWorkflow(
+                mongo=self._mongo,
+                query=self._query,
+                settings=self._settings,
+            )
+            result = await wf.run(request=request)
+        except BaseException as ex:
+            if request.execution_version != AGENT_EXECUTION_VERSION:
+                raise
+            failure = _agent_failure(ex, request)
+            if failure is None:
+                raise
+            return GenerateResponse(
+                intent=request.writing_intent,
+                warnings=[failure.detail],
+                provenance=_empty_provenance(request, "agent-failed"),
+                agentFailure=failure,
+            )
         if isinstance(result, GenerateResponse):
             return result
         return GenerateResponse(
@@ -593,6 +825,81 @@ class GenerateService:
             warnings=["Generate workflow returned unexpected result."],
             provenance=_empty_provenance(request, "unexpected"),
         )
+
+    def _signing_key(self, key_id: str) -> str:
+        keys = self._settings.skill_snapshot_signing_keys
+        if keys:
+            key = keys.get(key_id)
+            if key:
+                return key
+            raise SkillSnapshotError(f"Unknown snapshot signatureKeyId '{key_id}'.")
+        if (
+            self._settings.skill_snapshot_signing_key
+            and key_id == self._settings.skill_snapshot_signing_key_id
+        ):
+            return self._settings.skill_snapshot_signing_key
+        raise SkillSnapshotError(f"Unknown snapshot signatureKeyId '{key_id}'.")
+
+
+def _agent_failure(
+    error: BaseException, request: GenerateRequest | None = None
+) -> AgentFailure | None:
+    if isinstance(error, asyncio.CancelledError):
+        reason = AgentStopReason.CANCELLED
+        retryable = False
+    elif isinstance(error, BudgetExhausted) or str(error) == AgentStopReason.BUDGET_EXHAUSTED:
+        reason = AgentStopReason.BUDGET_EXHAUSTED
+        retryable = False
+    elif isinstance(error, TimeoutError):
+        reason = AgentStopReason.TIMED_OUT
+        retryable = True
+    elif isinstance(error, ToolDenied):
+        reason = AgentStopReason.TOOL_DENIED
+        retryable = False
+    elif isinstance(error, SkillSnapshotError):
+        protocol_markers = (
+            "snapshot",
+            "signature",
+            "signatureKeyId",
+            "replay",
+            "not yet valid",
+            "expired",
+        )
+        reason = (
+            AgentStopReason.INCOMPATIBLE_PROTOCOL
+            if any(marker in str(error) for marker in protocol_markers)
+            else AgentStopReason.SKILL_ACTIVATION_FAILED
+        )
+        retryable = False
+    elif str(error) == AgentStopReason.INVALID_STRUCTURED_OUTPUT:
+        reason = AgentStopReason.INVALID_STRUCTURED_OUTPUT
+        retryable = False
+    elif isinstance(error, Exception):
+        reason = AgentStopReason.UPSTREAM_FAILURE
+        retryable = True
+    else:
+        return None
+    detail = str(error).strip() or reason.value
+    execution = request.agent_execution if request else None
+    selected = execution.selected_agent if execution else None
+    runtime = getattr(error, "agent_runtime", None)
+    return AgentFailure(
+        stopReason=reason,
+        errorClass=type(error).__name__,
+        detail=detail[:500],
+        retryable=retryable,
+        jobId=execution.job_id if execution else None,
+        coordinatorExecutionId=(
+            execution.coordinator_execution_id if execution else None
+        ),
+        stageExecutionId=execution.stage_execution_id if execution else None,
+        selectedAgentId=selected.id if selected else None,
+        selectedAgentVersion=selected.version if selected else None,
+        selectedAgentDigest=selected.digest if selected else None,
+        role=selected.role if selected else None,
+        usage=runtime.usage if runtime else None,
+        partialTrace=runtime.trace if runtime else [],
+    )
 
 
 def _sources_from_pages(pages: list[dict[str, Any]]) -> list[GenerateSource]:
@@ -609,6 +916,19 @@ def _sources_from_pages(pages: list[dict[str, Any]]) -> list[GenerateSource]:
             )
         )
     return out
+
+
+def _specialist_artifact_digest(
+    artifact: SpecialistContribution | SpecialistReview,
+) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            artifact.model_dump(by_alias=True, mode="json"),
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode()
+    ).hexdigest()
 
 
 def _brief_retrieval_context(req: GenerateRequest) -> str:
@@ -644,7 +964,7 @@ def _brief_retrieval_context(req: GenerateRequest) -> str:
 
 
 def _skills_for_stage(req: GenerateRequest, stage: str):
-    if req.skill_execution is None:
+    if not isinstance(req.skill_execution, SkillExecutionEnvelope):
         return []
     return [
         skill
@@ -683,6 +1003,18 @@ def _skill_provenance(req: GenerateRequest) -> SkillProvenance:
             stage=_stage(req),
             skillVersions=[],
         )
+    if isinstance(envelope, SignedSkillExecutionEnvelopeV2):
+        return SkillProvenance(
+            envelopeVersion=envelope.envelope_version,
+            catalogVersion=envelope.catalog_version,
+            snapshotHash=envelope.snapshot_digest,
+            stage=_stage(req),
+            skillVersions=[
+                f"{skill.id}@{skill.version}"
+                for skill in envelope.skills
+                if _stage(req) in skill.supported_stages
+            ],
+        )
     return SkillProvenance(
         envelopeVersion=envelope.envelope_version,
         catalogVersion=envelope.catalog_version,
@@ -704,7 +1036,16 @@ def _empty_provenance(request: GenerateRequest, retrieval: str) -> GenerateProve
         promptVersion=_PROMPT_VERSIONS[_stage(request)],
         retrieval=retrieval,
         evidenceIds=[],
-        specialistExecutor=SPECIALIST_TYPES[_stage(request)].__name__,
+        specialistExecutor=(
+            "ResearchAgent"
+            if _stage(request) == "researchPlanning"
+            else SPECIALIST_TYPES[_stage(request)].__name__
+        ),
+        specialistExecutorVersion=(
+            "function-agents.v1"
+            if request.execution_version == AGENT_EXECUTION_VERSION
+            else "bounded-specialists.v1"
+        ),
         executionVersion=request.execution_version,
         attemptId=request.attempt_id,
         skills=_skill_provenance(request),
@@ -750,7 +1091,13 @@ def _build_prompts(
             )
 
     stage = _stage(req)
-    if stage == "outline":
+    if stage == "researchPlanning":
+        shape = (
+            '{"queries":[{"runId":"server-authorized run identifier",'
+            '"crawlType":"partner|competitors","need":"bounded evidence need"}],'
+            '"retrievalMode":"hybrid|graph|null"}'
+        )
+    elif stage == "outline":
         shape = (
             '{"outline":[{"key":"stable-slug","heading":"section heading",'
             '"brief":"what this section must accomplish",'
@@ -813,7 +1160,14 @@ def _build_prompts(
             templates = f"\nFew-shot ad templates:\n{bodies}\n"
 
     stage_instructions = ""
-    if stage == "outline":
+    if stage == "researchPlanning":
+        stage_instructions = (
+            "\nGeneration stage: RESEARCH PLANNING. Return only a bounded query plan "
+            "for the server-authorized partner and competitor runs shown in the "
+            "source context. Do not invent or substitute run identifiers, tenants, "
+            "URLs, tools, or evidence scope.\n"
+        )
+    elif stage == "outline":
         stage_instructions = (
             "\nGeneration stage: OUTLINE. Return 5–10 ordered sections. "
             "Each brief must define a distinct job and identify facts/evidence needed. "

@@ -8,6 +8,16 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, model_validator
 
+from geek_crawler_rag.agent_models import (
+    AgentExecutionProvenance,
+    AgentExecutionRequest,
+    AgentFailure,
+    SignedSkillExecutionEnvelopeV2,
+    SpecialistContribution,
+    SpecialistReview,
+    SpecialistRole,
+)
+
 
 class IndexState(StrEnum):
     PENDING = "pending"
@@ -246,7 +256,9 @@ APPROVED_MODEL_POLICY_STAGES = frozenset(
 )
 CURRENT_MODEL_POLICY_VERSION = "content-model-policy.v1"
 CURRENT_EXECUTION_VERSION = "rag-generate.v2"
+AGENT_EXECUTION_VERSION = "rag-generate.v3"
 CURRENT_SKILL_ENVELOPE_VERSION = "gcc-skill-envelope.v1"
+SIGNED_SKILL_ENVELOPE_VERSION = "gcc-skill-envelope.v2"
 CURRENT_SKILL_CATALOG_VERSION = "gcc-safe-skills.2026-09-08"
 MAX_SKILL_ENVELOPE_BYTES = 16 * 1024
 PINNED_SKILL_HASHES = {
@@ -262,8 +274,71 @@ PINNED_SKILL_HASHES = {
     "linkedin-document-structure": "aac60102b0c1777734b7734a54b762b48e963b971542f32eb0ed03b974e64b11",
 }
 SUPPORTED_GENERATION_STAGES = frozenset(
-    {"outline", "section", "repair", "validation", "finalSynthesis", "complete"}
+    {
+        "researchPlanning",
+        "outline",
+        "section",
+        "repair",
+        "validation",
+        "finalSynthesis",
+        "complete",
+    }
 )
+V3_STAGE_READ_TOOL_IDS = {
+    "researchPlanning": {
+        "search_corpus", "load_evidence_page", "get_brief_context",
+        "get_specialist_artifacts", "activate_skill", "read_skill_resource",
+    },
+    "outline": {
+        "search_corpus", "load_evidence_page", "get_brief_context",
+        "get_specialist_artifacts", "activate_skill", "read_skill_resource",
+    },
+    "section": {
+        "load_evidence_page", "get_brief_context", "get_outline_context",
+        "get_completed_section_summaries", "activate_skill",
+        "read_skill_resource", "get_specialist_artifacts",
+    },
+    "finalSynthesis": {
+        "load_evidence_page", "get_brief_context", "get_outline_context",
+        "get_specialist_artifacts", "activate_skill", "read_skill_resource",
+    },
+    "validation": {
+        "load_evidence_page", "get_brief_context", "get_outline_context",
+        "get_specialist_artifacts", "activate_skill", "read_skill_resource",
+    },
+    "repair": {
+        "load_evidence_page", "get_brief_context", "get_outline_context",
+        "get_completed_section_summaries", "activate_skill",
+        "read_skill_resource", "get_specialist_artifacts",
+    },
+}
+V3_PRODUCER_TERMINAL_IDS = {
+    "researchPlanning": "submit_research_plan",
+    "outline": "submit_outline",
+    "section": "submit_section",
+    "finalSynthesis": "submit_final_synthesis",
+    "validation": "submit_validation",
+    "repair": "submit_repair",
+}
+
+
+def v3_agent_tool_ids(stage: str, role: SpecialistRole) -> set[str]:
+    terminal = (
+        "submit_contribution"
+        if role == SpecialistRole.CONTRIBUTOR
+        else "submit_review"
+        if role == SpecialistRole.REVIEWER
+        else V3_PRODUCER_TERMINAL_IDS[stage]
+    )
+    return {*V3_STAGE_READ_TOOL_IDS[stage], terminal}
+_V3_BEST_QUALITY_MODELS = {
+    "researchPlanning": "o3",
+    "outline": "o1-pro",
+    "section": "o3",
+    "repair": "o3",
+    "validation": "o3",
+    "finalSynthesis": "o1-pro",
+}
 
 
 class SkillDefinition(BaseModel):
@@ -368,11 +443,14 @@ class SkillProvenance(BaseModel):
 
 class ProducerCapabilities(BaseModel):
     execution_versions: list[str] = Field(
-        default_factory=lambda: [CURRENT_EXECUTION_VERSION],
+        default_factory=lambda: [CURRENT_EXECUTION_VERSION, AGENT_EXECUTION_VERSION],
         alias="executionVersions",
     )
     skill_envelope_versions: list[str] = Field(
-        default_factory=lambda: [CURRENT_SKILL_ENVELOPE_VERSION],
+        default_factory=lambda: [
+            CURRENT_SKILL_ENVELOPE_VERSION,
+            SIGNED_SKILL_ENVELOPE_VERSION,
+        ],
         alias="skillEnvelopeVersions",
     )
     generation_stages: list[str] = Field(
@@ -394,6 +472,19 @@ class ProducerCapabilities(BaseModel):
         "bounded-specialists.v1", alias="specialistExecutorVersion"
     )
     tools_allowed: bool = Field(False, alias="toolsAllowed")
+    agent_executor_versions: list[str] = Field(
+        default_factory=lambda: ["function-agents.v1"],
+        alias="agentExecutorVersions",
+    )
+    agent_trace_versions: list[str] = Field(
+        default_factory=lambda: ["agent-trace.v1"], alias="agentTraceVersions"
+    )
+    agent_tool_versions: list[str] = Field(
+        default_factory=lambda: ["agent-tools.v1"], alias="agentToolVersions"
+    )
+    stage_scoped_tools_allowed: bool = Field(
+        True, alias="stageScopedToolsAllowed"
+    )
 
     model_config = {"populate_by_name": True, "ser_json_by_alias": True}
 
@@ -550,9 +641,19 @@ class GenerateRequest(BaseModel):
         None, alias="stageModelOverrides"
     )
     execution_version: str = Field("rag-generate.v1", alias="executionVersion")
+    job_id: str | None = Field(None, alias="jobId", min_length=1, max_length=120)
     attempt_id: str = Field(default_factory=lambda: str(uuid4()), alias="attemptId")
-    skill_execution: SkillExecutionEnvelope | None = Field(
+    skill_execution: SkillExecutionEnvelope | SignedSkillExecutionEnvelopeV2 | None = Field(
         None, alias="skillExecution"
+    )
+    agent_execution: AgentExecutionRequest | None = Field(
+        None, alias="agentExecution"
+    )
+    specialist_contributions: list[SpecialistContribution] | None = Field(
+        None, alias="specialistContributions", max_length=32
+    )
+    specialist_reviews: list[SpecialistReview] | None = Field(
+        None, alias="specialistReviews", max_length=32
     )
 
     # Keep unknown-field behavior compatible with existing standalone callers.
@@ -564,6 +665,7 @@ class GenerateRequest(BaseModel):
         stage_key = "".join(character for character in raw_stage.casefold() if character.isalnum())
         stages = {
             "complete": "complete",
+            "researchplanning": "researchPlanning",
             "outline": "outline",
             "section": "section",
             "repair": "repair",
@@ -577,12 +679,227 @@ class GenerateRequest(BaseModel):
                 "Use complete, outline, section, repair, validation, or finalSynthesis."
             )
         self.generation_stage = stage
+        if stage == "researchPlanning" and self.execution_version != AGENT_EXECUTION_VERSION:
+            raise ValueError("researchPlanning is available only through rag-generate.v3.")
 
         try:
             UUID(self.attempt_id)
         except ValueError as ex:
             raise ValueError("attemptId must be a UUID.") from ex
-        if self.skill_execution is not None:
+        if self.execution_version == AGENT_EXECUTION_VERSION:
+            if stage == "complete":
+                raise ValueError(
+                    "rag-generate.v3 requires one explicit agent stage, not complete."
+                )
+            if not isinstance(self.skill_execution, SignedSkillExecutionEnvelopeV2):
+                raise ValueError(
+                    "rag-generate.v3 requires signed gcc-skill-envelope.v2 skillExecution."
+                )
+            if self.agent_execution is None:
+                raise ValueError("rag-generate.v3 requires agentExecution limits.")
+            execution = self.agent_execution
+            if not self.job_id:
+                raise ValueError("rag-generate.v3 requires jobId.")
+            if self.job_id != self.skill_execution.job_id or self.job_id != execution.job_id:
+                raise ValueError("jobId must match both signed execution snapshots.")
+            if self.skill_execution.attempt_id != self.attempt_id:
+                raise ValueError("Skill snapshot attemptId does not match request attemptId.")
+            if execution.attempt_id != self.attempt_id:
+                raise ValueError("Agent execution attemptId does not match request attemptId.")
+            if execution.stage != stage:
+                raise ValueError("Agent execution stage does not match generationStage.")
+            agent = execution.selected_agent
+            if stage not in agent.stages:
+                raise ValueError("Selected agent is not authorized for generationStage.")
+            if self.model_policy_preset:
+                selected_model = (
+                    "o3"
+                    if self.model_policy_preset == "o3-only"
+                    else _V3_BEST_QUALITY_MODELS[stage]
+                    if self.model_policy_preset == "best-quality"
+                    else (self.stage_model_overrides or {}).get(stage)
+                )
+                if selected_model not in agent.model_ids:
+                    raise ValueError("Selected agent is not authorized for selected stage model.")
+            if set(agent.tool_ids) != v3_agent_tool_ids(stage, agent.role):
+                raise ValueError("Selected agent tools do not exactly match stage authority.")
+            envelope_refs = {
+                (skill.id, skill.version, skill.activation_id, skill.package_digest)
+                for skill in self.skill_execution.skills
+            }
+            assigned_refs = {
+                (
+                    ref.skill_id,
+                    ref.version,
+                    ref.activation_id,
+                    ref.package_digest,
+                )
+                for ref in execution.assigned_skills
+            }
+            if not assigned_refs.issubset(envelope_refs):
+                raise ValueError("Assigned skills must exactly reference signed skill snapshots.")
+            assigned_activation_ids = {
+                ref.activation_id for ref in execution.assigned_skills
+            }
+            for skill in self.skill_execution.skills:
+                if (
+                    skill.activation_id in assigned_activation_ids
+                    and not set(skill.approved_tool_ids).issubset(agent.tool_ids)
+                ):
+                    raise ValueError(
+                        f"Assigned skill '{skill.id}' requests a tool outside selected agent scope."
+                    )
+            artifact_values: dict[str, Any] = {
+                "canonicalBrief": (
+                    self.canonical_brief.model_dump(
+                        by_alias=True, mode="json", exclude_none=True
+                    )
+                    if self.canonical_brief
+                    else None
+                ),
+                "outline": (
+                    [
+                        item.model_dump(by_alias=True, mode="json")
+                        for item in self.outline
+                    ]
+                    if self.outline is not None
+                    else None
+                ),
+                "draftContent": self.draft_content,
+                "sources": (
+                    [
+                        item.model_dump(
+                            by_alias=True, mode="json", exclude_none=True
+                        )
+                        for item in self.input_sources
+                    ]
+                    if self.input_sources is not None
+                    else None
+                ),
+                "completedSectionSummaries": self.completed_section_summaries,
+                "specialistContribution": self.specialist_contributions,
+                "specialistReview": self.specialist_reviews,
+            }
+            import json
+
+            expected_artifact_types = {
+                artifact_type
+                for artifact_type, value in artifact_values.items()
+                if value is not None
+                and (
+                    artifact_type == "canonicalBrief"
+                    or artifact_type == "outline"
+                    and stage in {"section", "repair", "finalSynthesis", "validation"}
+                    or artifact_type == "draftContent"
+                    and stage in {"finalSynthesis", "validation"}
+                    or artifact_type == "sources"
+                    and stage in {"finalSynthesis", "validation"}
+                    or artifact_type == "completedSectionSummaries"
+                    and stage in {"section", "repair"}
+                    or artifact_type in {
+                        "specialistContribution",
+                        "specialistReview",
+                    }
+                )
+            }
+            declared_artifact_types = {
+                artifact.artifact_type for artifact in execution.artifact_inputs
+            }
+            if declared_artifact_types != expected_artifact_types:
+                raise ValueError(
+                    "artifactInputs must exactly declare all stage-consumed request artifacts."
+                )
+            for artifact_type in ("specialistContribution", "specialistReview"):
+                values = artifact_values[artifact_type] or []
+                expected_digests = {
+                    hashlib.sha256(
+                        json.dumps(
+                            item.model_dump(by_alias=True, mode="json"),
+                            ensure_ascii=False,
+                            separators=(",", ":"),
+                            sort_keys=True,
+                        ).encode()
+                    ).hexdigest()
+                    for item in values
+                }
+                declared_digests = {
+                    artifact.digest
+                    for artifact in execution.artifact_inputs
+                    if artifact.artifact_type == artifact_type
+                }
+                if expected_digests != declared_digests:
+                    raise ValueError(
+                        f"artifactInputs do not exactly cover {artifact_type} artifacts."
+                    )
+            for artifact in execution.artifact_inputs:
+                value = artifact_values[artifact.artifact_type]
+                if value is None:
+                    raise ValueError(
+                        f"Artifact input '{artifact.artifact_type}' has no request payload."
+                    )
+                if artifact.artifact_type in {
+                    "specialistContribution",
+                    "specialistReview",
+                }:
+                    allowed_digests = {
+                        hashlib.sha256(
+                            json.dumps(
+                                item.model_dump(by_alias=True, mode="json"),
+                                ensure_ascii=False,
+                                separators=(",", ":"),
+                                sort_keys=True,
+                            ).encode()
+                        ).hexdigest()
+                        for item in value
+                    }
+                    if artifact.digest not in allowed_digests:
+                        raise ValueError(
+                            f"Artifact input digest mismatch: {artifact.artifact_type}."
+                        )
+                    continue
+                encoded = (
+                    value.encode()
+                    if isinstance(value, str)
+                    else json.dumps(
+                        value,
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                        sort_keys=True,
+                    ).encode()
+                )
+                if hashlib.sha256(encoded).hexdigest() != artifact.digest:
+                    raise ValueError(
+                        f"Artifact input digest mismatch: {artifact.artifact_type}."
+                    )
+            if (
+                self.canonical_brief is not None
+                and self.canonical_brief.content_type
+                and self.skill_execution.content_type
+                != self.canonical_brief.content_type
+            ):
+                raise ValueError("Skill snapshot contentType does not match canonicalBrief.")
+            for skill in self.skill_execution.skills:
+                if stage not in skill.supported_stages:
+                    continue
+                if self.skill_execution.content_type not in skill.supported_content_types:
+                    raise ValueError(
+                        f"Skill '{skill.id}' does not support content type "
+                        f"'{self.skill_execution.content_type}'."
+                    )
+            if stage in {"section", "repair"}:
+                if not self.outline or not self.section_key:
+                    raise ValueError(
+                        f"rag-generate.v3 {stage} requires an approved outline and sectionKey."
+                    )
+                target = next(
+                    (item for item in self.outline if item.key == self.section_key),
+                    None,
+                )
+                if target is None:
+                    raise ValueError("sectionKey is not present in the approved outline.")
+        elif isinstance(self.skill_execution, SignedSkillExecutionEnvelopeV2):
+            raise ValueError("gcc-skill-envelope.v2 requires rag-generate.v3.")
+        elif self.skill_execution is not None:
             if self.execution_version != CURRENT_EXECUTION_VERSION:
                 raise ValueError(
                     f"skillExecution requires executionVersion '{CURRENT_EXECUTION_VERSION}'."
@@ -597,7 +914,10 @@ class GenerateRequest(BaseModel):
                         f"Skill '{skill.id}' does not support content type "
                         f"'{self.skill_execution.content_type}'."
                     )
-        elif self.execution_version == CURRENT_EXECUTION_VERSION:
+        elif self.execution_version in {
+            CURRENT_EXECUTION_VERSION,
+            AGENT_EXECUTION_VERSION,
+        }:
             raise ValueError("Current executionVersion requires skillExecution.")
 
         if stage in {"validation", "finalSynthesis"}:
@@ -691,12 +1011,26 @@ class GenerateResponse(BaseModel):
     sources: list[GenerateSource] = Field(default_factory=list)
     themes: list[ThemeHit] | None = None
     outline: list[GenerateOutlineSection] | None = None
+    research_plan: list[dict[str, Any]] | None = Field(None, alias="researchPlan")
     warnings: list[str] = Field(default_factory=list)
     evidence_warnings: list[str] = Field(default_factory=list, alias="evidenceWarnings")
     model_used: str | None = Field(None, alias="modelUsed")
     retrieval: str | None = None
     provenance: GenerateProvenance | None = None
     validation: GenerateValidation | None = None
+    agent_execution: AgentExecutionProvenance | None = Field(
+        None, alias="agentExecution"
+    )
+    agent_failure: AgentFailure | None = Field(None, alias="agentFailure")
+    specialist_contribution: SpecialistContribution | None = Field(
+        None, alias="specialistContribution"
+    )
+    specialist_review: SpecialistReview | None = Field(
+        None, alias="specialistReview"
+    )
+    specialist_artifact_digest: str | None = Field(
+        None, alias="specialistArtifactDigest", pattern=r"^[0-9a-f]{64}$"
+    )
 
     model_config = {"populate_by_name": True, "ser_json_by_alias": True}
 

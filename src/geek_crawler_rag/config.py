@@ -68,6 +68,13 @@ class Settings(BaseSettings):
     generate_max_pages: int = 8
     generate_markdown_chars: int = 12000
     generate_enabled: bool = True
+    # JSON object of key-id -> HMAC secret. The singleton fields are a migration
+    # fallback for one configured key and must still match signatureKeyId.
+    skill_snapshot_signing_keys: dict[str, str] = {}
+    skill_snapshot_signing_key: str = ""
+    skill_snapshot_signing_key_id: str = "default"
+    agent_execution_replay_protection: bool = True
+    agent_execution_clock_skew_seconds: int = 60
 
     host: str = "0.0.0.0"
     port: int = 8080
