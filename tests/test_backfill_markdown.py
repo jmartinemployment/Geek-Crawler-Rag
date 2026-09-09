@@ -247,3 +247,35 @@ def test_zero_page_run_is_never_marked_ready(monkeypatch: pytest.MonkeyPatch) ->
     assert counts.complete_pass == 1
     assert counts.runs_marked_ready == 0
     assert len(runs.update_one.call_args_list) == 1
+
+
+def test_incomplete_external_run_with_missing_markdown_is_not_ready(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _pages, _links, runs = _mongo(
+        monkeypatch,
+        documents=[],
+        total_pages=10,
+        missing_pages=1,
+        run_status="external",
+    )
+
+    counts = backfill(
+        mongo_url="mongodb://test",
+        db_name="test",
+        run_id="run-1",
+        write=True,
+        limit=None,
+        batch_size=25,
+    )
+
+    assert counts.complete_pass == 1
+    assert counts.runs_marked_ready == 0
+    assert len(runs.update_one.call_args_list) == 1
+
+
+def test_cli_defaults_match_remediation_load_profile() -> None:
+    args = backfill_module.build_arg_parser().parse_args([])
+    assert args.batch_size == 25
+    assert args.delay_seconds == 2.0
+    assert args.write is False

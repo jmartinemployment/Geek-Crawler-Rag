@@ -38,6 +38,7 @@ MAX_MARKDOWN_CHARS = 500_000
 # Re-export for tests that import from this module
 __all__ = [
     "backfill",
+    "build_arg_parser",
     "extract_clean_content",
     "main",
     "should_exclude_locale_path",
@@ -52,8 +53,6 @@ class Counts:
     deleted_failure: int = 0
     deleted_extract_empty: int = 0
     deleted_links: int = 0
-    skipped_has_markdown: int = 0
-    skipped_no_html: int = 0
     already_markdown: int = 0
     missing_doc: int = 0
     runs_marked_ready: int = 0
@@ -350,7 +349,7 @@ def backfill(
     return counts
 
 
-def main(argv: list[str] | None = None) -> int:
+def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Backfill Markdown from stored Html (Readability)."
     )
@@ -358,12 +357,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--db", default="geek_crawler", help="Mongo database name")
     parser.add_argument("--run-id", default=None, help="Limit to one RunId")
     parser.add_argument("--limit", type=int, default=None, help="Max pages to scan")
-    parser.add_argument("--batch-size", type=int, default=50)
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=25,
+        help="Pages per Mongo batch (default 25 for remediation load)",
+    )
     parser.add_argument(
         "--delay-seconds",
         type=float,
-        default=0.0,
-        help="Pause between batches to limit MongoDB and VPS load",
+        default=2.0,
+        help="Pause between batches to limit MongoDB and VPS load (default 2s)",
     )
     parser.add_argument(
         "--write", action="store_true", help="Persist updates (default is dry-run)"
@@ -373,7 +377,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Explicit dry-run (default). Ignored if --write is set.",
     )
-    args = parser.parse_args(argv)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_arg_parser().parse_args(argv)
 
     write = bool(args.write)
     mode = "WRITE" if write else "DRY-RUN"

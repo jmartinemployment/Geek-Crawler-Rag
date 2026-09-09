@@ -1,7 +1,9 @@
 # Remediate the 17 Markdown-unready crawl runs
 
-Status: **planned**  
+Status: **Phase 1 complete — production remediation not started**  
 Inventory captured: **2026-09-08**
+Phase 1 hardened: **2026-09-09** (`batch-size` default 25, `delay-seconds` default 2,
+`complete`/`external` readiness, missing-HTML deleted as `extract_empty`)
 
 ## Objective
 
