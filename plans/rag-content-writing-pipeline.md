@@ -287,7 +287,7 @@ Creator content types remain the product taxonomy. RAG writing intents become in
 | pillar, blog, guide, tech-article, case-study, whitepaper, listicle | Long-form outline + section generation |
 | comparison, alternatives | Partner/competitor battlecard retrieval + section generation |
 | ads, social, email | Short-form evidence + approved ad-template exemplars |
-| linkedin-document | Slide strategy + GraphRAG themes |
+| PDF (`linkedin-document` legacy ID) | Slide strategy + GraphRAG themes |
 | tool, service, local | Long-form evidence with existing specialized product/page requirements |
 | image-prompt | Evidence- and brand-grounded visual brief with specialized validation |
 
