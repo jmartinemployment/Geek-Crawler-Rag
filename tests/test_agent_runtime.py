@@ -363,6 +363,21 @@ class FakeQuery:
 
 
 class FakeMongo:
+    def __init__(self) -> None:
+        self._claims: dict[str, str] = {}
+
+    async def claim_stage_execution(
+        self,
+        *,
+        stage_execution_id: str,
+        idempotency_key: str,
+        expires_at_utc,
+    ) -> bool:
+        if stage_execution_id in self._claims:
+            return False
+        self._claims[stage_execution_id] = idempotency_key
+        return True
+
     async def get_page(self, page_id):
         if page_id != "page-1":
             return None
@@ -374,6 +389,11 @@ class FakeMongo:
             title="Page",
             markdown="Reviewed evidence with a sufficiently long verbatim quote.",
         )
+
+
+class FakeMongoWithoutReplayStore:
+    async def get_page(self, page_id):
+        return await FakeMongo().get_page(page_id)
 
 
 def _runtime(request=None, envelope=None, limits=None):
@@ -1031,6 +1051,77 @@ async def test_key_rotation_replay_policy_and_failure_identity(monkeypatch):
     assert failure.job_id == "job-1"
     assert failure.usage.tool_calls == 1
     assert [entry.tool_id for entry in failure.partial_trace] == ["get_brief_context"]
+
+
+async def test_durable_stage_execution_claim_rejects_cross_instance_replay(monkeypatch):
+    request = _request()
+
+    async def fake_run(self, **kwargs):
+        return GenerateResponse(intent=request.writing_intent)
+
+    monkeypatch.setattr(CiteableGenerateWorkflow, "run", fake_run)
+    shared = FakeMongo()
+    settings = Settings(skill_snapshot_signing_keys={"key-1": KEY})
+    first_service = GenerateService(shared, FakeQuery(), settings)
+    second_service = GenerateService(shared, FakeQuery(), settings)
+
+    first = await first_service.generate(request)
+    assert first.agent_failure is None
+    assert request.agent_execution.stage_execution_id in shared._claims
+
+    # Fresh process-local state, shared durable claim store (replica / restart).
+    replay = await second_service.generate(request)
+    assert replay.agent_failure is not None
+    assert "replay" in replay.agent_failure.detail
+    assert replay.agent_failure.stage_execution_id == (
+        request.agent_execution.stage_execution_id
+    )
+
+
+async def test_missing_durable_replay_store_fails_closed_outside_local_test_mode(
+    monkeypatch,
+):
+    request = _request()
+
+    async def fake_run(self, **kwargs):
+        return GenerateResponse(intent=request.writing_intent)
+
+    monkeypatch.setattr(CiteableGenerateWorkflow, "run", fake_run)
+    service = GenerateService(
+        FakeMongoWithoutReplayStore(),
+        FakeQuery(),
+        Settings(
+            skill_snapshot_signing_keys={"key-1": KEY},
+            local_test_mode=False,
+        ),
+    )
+    result = await service.generate(request)
+    assert result.agent_failure is not None
+    assert "Durable stage-execution replay store is unavailable" in (
+        result.agent_failure.detail or ""
+    )
+
+
+async def test_local_test_mode_allows_process_guard_without_durable_store(monkeypatch):
+    request = _request()
+
+    async def fake_run(self, **kwargs):
+        return GenerateResponse(intent=request.writing_intent)
+
+    monkeypatch.setattr(CiteableGenerateWorkflow, "run", fake_run)
+    service = GenerateService(
+        FakeMongoWithoutReplayStore(),
+        FakeQuery(),
+        Settings(
+            skill_snapshot_signing_keys={"key-1": KEY},
+            local_test_mode=True,
+        ),
+    )
+    first = await service.generate(request)
+    assert first.agent_failure is None
+    replay = await service.generate(request)
+    assert replay.agent_failure is not None
+    assert "replay" in replay.agent_failure.detail
 
 
 def test_production_factory_configures_official_responses_adapter_without_network():

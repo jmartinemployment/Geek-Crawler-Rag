@@ -118,6 +118,9 @@ def test_capabilities_advertise_strict_execution_contract():
     assert "gcc-skill-envelope.v2" in wire["skillEnvelopeVersions"]
     assert "researchPlanning" in wire["generationStages"]
     assert "repair" in wire["generationStages"]
+    assert "complete" in wire["generationStages"]
+    assert "complete" not in wire["agentGenerationStages"]
+    assert "outline" in wire["agentGenerationStages"]
     assert wire["specialistExecutorVersion"] == "bounded-specialists.v1"
     assert set(wire["specialistExecutors"]) >= {
         "researchPlanning",

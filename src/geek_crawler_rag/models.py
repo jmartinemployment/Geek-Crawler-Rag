@@ -309,6 +309,10 @@ SUPPORTED_GENERATION_STAGES = frozenset(
         "complete",
     }
 )
+# rag-generate.v3 rejects one-shot `complete`; agents must use an explicit stage.
+AGENT_GENERATION_STAGES = frozenset(
+    stage for stage in SUPPORTED_GENERATION_STAGES if stage != "complete"
+)
 V3_STAGE_READ_TOOL_IDS = {
     "researchPlanning": {
         "search_corpus",
@@ -509,6 +513,10 @@ class ProducerCapabilities(BaseModel):
     generation_stages: list[str] = Field(
         default_factory=lambda: sorted(SUPPORTED_GENERATION_STAGES),
         alias="generationStages",
+    )
+    agent_generation_stages: list[str] = Field(
+        default_factory=lambda: sorted(AGENT_GENERATION_STAGES),
+        alias="agentGenerationStages",
     )
     specialist_executors: list[str] = Field(
         default_factory=lambda: [
@@ -758,7 +766,8 @@ class GenerateRequest(BaseModel):
         if self.execution_version == AGENT_EXECUTION_VERSION:
             if stage == "complete":
                 raise ValueError(
-                    "rag-generate.v3 requires one explicit agent stage, not complete."
+                    "rag-generate.v3 requires one explicit agent stage, not complete. "
+                    "One-shot complete remains rag-generate.v2 only."
                 )
             if not isinstance(self.skill_execution, SignedSkillExecutionEnvelopeV2):
                 raise ValueError(

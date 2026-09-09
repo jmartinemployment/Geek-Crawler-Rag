@@ -996,8 +996,8 @@ class GenerateService:
                                     "Agent stage execution replay was rejected."
                                 )
                         elif not self._settings.local_test_mode:
-                            logger.warning(
-                                "Replay store adapter unavailable; process guard remains active."
+                            raise SkillSnapshotError(
+                                "Durable stage-execution replay store is unavailable."
                             )
                         self._seen_stage_executions[execution.stage_execution_id] = (
                             execution.idempotency_key
