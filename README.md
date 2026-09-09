@@ -59,7 +59,7 @@ Geek-Crawler-v2 → MongoDB → Geek-Crawler-Rag/Qdrant
 | `POST` | `/v1/query` | Hybrid or graph retrieve (see below) |
 | `POST` | `/v1/templates/index` | Upsert ad-template exemplars (Content Creator owns corpus) |
 | `POST` | `/v1/templates/query` | Retrieve few-shot templates by need (+ channel/framework/tags) |
-| `GET` | `/v1/pages/{pageId}` | Mongo Markdown for citation reads |
+| `GET` | `/v1/pages/{pageId}?runId=…` | Run-scoped Mongo Markdown for citation reads |
 | `GET` | `/v1/pages?runId=&url=` | Same lookup by run + URL |
 | `POST` | `/v1/generate` | Citeable multi-step draft (retrieve → Markdown → draft → verify) |
 
@@ -108,7 +108,20 @@ Geek-Crawler-v2 → MongoDB → Geek-Crawler-Rag/Qdrant
 
 `POST /v1/templates/query`: `{ "need": "…", "topK": 5, "channel": "linkedin", "framework": "pas" }`.
 
-Optional auth: set `API_KEY` and send header `X-Api-Key`.
+Service authentication is mandatory: set `API_KEY` and send `X-Api-Key`.
+Unauthenticated operation is available only with the explicit test-only
+`LOCAL_TEST_MODE=true` setting.
+
+Governed Knowledge endpoints are service-only:
+
+- `POST /v1/assets/index` indexes one exact manifest-authorized revision/resource.
+- `POST /v1/assets/delete` deletes one exact manifest-authorized revision/resource.
+- `POST /v1/assets/query` searches only exact entries in a signed manifest.
+
+Configure GeekAPI manifest verification keys with
+`CONTEXT_MANIFEST_SIGNING_KEYS` (a JSON key-ID-to-secret map). The service keeps
+only rebuildable vectors; asset, revision, resource, and manifest authority
+remains in GeekRepository.
 
 Index concurrency is **1**. Rebuild deletes all Qdrant points for `runId`, then reindexes.
 At index start the service logs **`mongoPageCount`**. Runs with `mongoPageCount` above **50 000** are skipped (Hostinger safety cap).
@@ -125,9 +138,10 @@ attempt count.
 All corpus, query, and ad-template embeddings pass through one rolling
 token-per-minute limiter. Calls are sequentially partitioned by item and token
 count; transient OpenAI 429 responses honor `Retry-After` and retry with bounded
-jitter. `insufficient_quota` remains a terminal error. Defaults:
+jitter. `insufficient_quota` remains a terminal error. Defaults leave capacity
+for other workloads sharing the OpenAI organization:
 
-- `OPENAI_EMBEDDING_TOKENS_PER_MINUTE=700000`
+- `OPENAI_EMBEDDING_TOKENS_PER_MINUTE=400000`
 - `OPENAI_EMBEDDING_MAX_BATCH_TOKENS=50000`
 - `EMBED_BATCH_SIZE=32`
 - `OPENAI_EMBEDDING_MAX_RETRIES=8`

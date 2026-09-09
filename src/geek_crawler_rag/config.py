@@ -4,7 +4,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
 
     mongo_crawler_url: str = "mongodb://localhost:27017"
     mongo_db_name: str = "geek_crawler"
@@ -18,7 +20,7 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = 1536
-    openai_embedding_tokens_per_minute: int = 700_000
+    openai_embedding_tokens_per_minute: int = 400_000
     openai_embedding_max_batch_tokens: int = 50_000
     openai_embedding_max_retries: int = 8
     openai_embedding_retry_max_seconds: float = 60.0
@@ -53,8 +55,14 @@ class Settings(BaseSettings):
     cohere_rerank_model: str = "rerank-english-v3.0"
     rerank_enabled: bool = True
 
-    # Optional shared secret for index/query (GeekAPI / gcc-v2). Empty = open (dev).
+    # Service authentication is mandatory unless an explicit test-only mode is set.
     api_key: str | None = None
+    local_test_mode: bool = False
+    crawler_owner_id: str = "system:crawler"
+    crawler_visibility: str = "service"
+
+    # GeekAPI-owned manifest signing keys. No manifest/catalog authority is stored here.
+    context_manifest_signing_keys: dict[str, str] = {}
 
     # Push index status to GeekAPI → SignalR (no UI polling).
     index_status_webhook_url: str | None = None
