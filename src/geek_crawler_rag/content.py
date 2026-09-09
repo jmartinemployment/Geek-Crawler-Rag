@@ -44,8 +44,10 @@ from geek_crawler_rag.diagnostics import (
 from geek_crawler_rag.intelligence import (
     _DIMENSIONS,
     _analyze_page,
-    _dedupe_evidence as _dedupe_page_evidence,
     _no_demand_warning,
+)
+from geek_crawler_rag.intelligence import (
+    _dedupe_evidence as _dedupe_page_evidence,
 )
 from geek_crawler_rag.intelligence_models import (
     ContentCompleteness,
@@ -57,12 +59,8 @@ from geek_crawler_rag.intelligence_models import (
 _TOKEN = re.compile(r"[a-z0-9]+")
 _HEADING = re.compile(r"(?m)^#{1,6}\s+(.+?)\s*$")
 _SENTENCE = re.compile(r"(?<=[.!?])\s+")
-_ATTRIBUTION = re.compile(
-    r"(?i)\b(?:according to|per|cited by|reported by)\s+([^,.]+)"
-)
-_EXPERT = re.compile(
-    r"(?i)\b(?:expert|researcher|analyst|professor|study|research)\b"
-)
+_ATTRIBUTION = re.compile(r"(?i)\b(?:according to|per|cited by|reported by)\s+([^,.]+)")
+_EXPERT = re.compile(r"(?i)\b(?:expert|researcher|analyst|professor|study|research)\b")
 _NUMBER = re.compile(r"\b\d[\d,.]*%?")
 
 
@@ -73,8 +71,10 @@ class ContentService:
         document = request.source_document
         text = _visible_text(document) if document else ""
         warnings = [
-            "FAQ answers are generated from supplied content and queries only; "
-            "they are not verified against live search or citation outcomes."
+            (
+                "FAQ answers are generated from supplied content and queries only; "
+                "they are not verified against live search or citation outcomes."
+            )
         ]
         if document and document.content_completeness == "partial":
             warnings.append(
@@ -146,9 +146,14 @@ class ContentService:
         for query in planned_queries:
             if len(pairs) >= request.max_pairs:
                 break
-            if any(_normalize_query(query.query) == _normalize_query(item.question) for item in pairs):
+            if any(
+                _normalize_query(query.query) == _normalize_query(item.question)
+                for item in pairs
+            ):
                 continue
-            answer, evidence_ref, status = _answer_for_query(query.query, document, text)
+            answer, evidence_ref, status = _answer_for_query(
+                query.query, document, text
+            )
             if evidence_ref:
                 evidence.append(evidence_ref)
             pairs.append(
@@ -181,8 +186,10 @@ class ContentService:
         text = _visible_text(document)
         partial = document.content_completeness == "partial"
         warnings = [
-            "Claims are extracted or rewritten from supplied visible content only; "
-            "no statistics were invented to increase claim density."
+            (
+                "Claims are extracted or rewritten from supplied visible content only; "
+                "no statistics were invented to increase claim density."
+            )
         ]
         if partial:
             warnings.append(
@@ -301,8 +308,12 @@ class ContentService:
             )
 
         evidence = _dedupe_evidence(evidence)
+        claims, contradiction_warnings = _annotate_claim_contradictions(
+            claims[: request.max_claims]
+        )
+        warnings.extend(contradiction_warnings)
         return ClaimLedgerArtifact(
-            claims=claims[: request.max_claims],
+            claims=claims,
             warnings=_unique(warnings),
             provenance=ContentProvenance(
                 source=document.source,
@@ -316,9 +327,7 @@ class ContentService:
         self, request: ComparisonBriefRequest
     ) -> ComparisonBriefArtifact:
         subject_analyses = [_analyze_page(page) for page in request.subject_pages]
-        competitor_analyses = [
-            _analyze_page(page) for page in request.competitor_pages
-        ]
+        competitor_analyses = [_analyze_page(page) for page in request.competitor_pages]
         all_pages: list[PageSnapshot] = [
             *request.subject_pages,
             *request.competitor_pages,
@@ -371,9 +380,7 @@ class ContentService:
                     competitor_analyses, dimension
                 )
                 evidence_ids = _unique([*subject_ids, *competitor_ids])
-                subject_state = _coverage_label(
-                    bool(subject_signals), subject_partial
-                )
+                subject_state = _coverage_label(bool(subject_signals), subject_partial)
                 competitor_state = _coverage_label(
                     bool(competitor_signals), competitor_partial
                 )
@@ -495,9 +502,7 @@ class ContentService:
         self, request: CompetitiveResponseRequest
     ) -> CompetitiveResponseArtifact:
         brand_analyses = [_analyze_page(page) for page in request.brand_pages]
-        competitor_analyses = [
-            _analyze_page(page) for page in request.competitor_pages
-        ]
+        competitor_analyses = [_analyze_page(page) for page in request.competitor_pages]
         all_pages: list[PageSnapshot] = [
             *request.brand_pages,
             *request.competitor_pages,
@@ -600,7 +605,9 @@ class ContentService:
                             "claiming parity with competitor coverage."
                         ),
                         evidenceIds=competitor_ids[:3],
-                        origin="suppliedEvidence" if competitor_ids else "generatedHypothesis",
+                        origin="suppliedEvidence"
+                        if competitor_ids
+                        else "generatedHypothesis",
                     )
                 )
             elif brand_signals:
@@ -961,7 +968,7 @@ def _claim_type_for_sentence(
     "quantifiableFact", "expertPosition", "attributableStatement", "rewrittenSpecific"
 ]:
     if _NUMBER.search(sentence) or re.search(
-        r"\b(?:19|20)\d{2}\b|%|ms|kg|gb", sentence, re.I
+        r"\b(?:19|20)\d{2}\b|%|ms|kg|gb", sentence, re.IGNORECASE
     ):
         return "quantifiableFact"
     if _EXPERT.search(sentence) or _ATTRIBUTION.search(sentence):
@@ -976,9 +983,7 @@ def _attribution_for(sentence: str) -> str | None:
     return match.group(1).strip()
 
 
-def _best_supporting_sentence(
-    statement: str, text: str
-) -> tuple[str, int, int] | None:
+def _best_supporting_sentence(statement: str, text: str) -> tuple[str, int, int] | None:
     tokens = [token for token in _TOKEN.findall(statement.casefold()) if len(token) > 2]
     if not tokens:
         return None
@@ -999,7 +1004,10 @@ def _dimension_for_criterion(label: str) -> IntelligenceDimension | None:
     for dimension in _DIMENSIONS:
         if dimension.value.casefold() == normalized:
             return dimension
-        if dimension.value.casefold() in normalized or normalized in dimension.value.casefold():
+        if (
+            dimension.value.casefold() in normalized
+            or normalized in dimension.value.casefold()
+        ):
             return dimension
     aliases = {
         "features": IntelligenceDimension.CAPABILITIES,
@@ -1037,9 +1045,9 @@ def _keyword_signals(
     for page in pages:
         text = page.visible_content.replace("\r\n", "\n")
         for sentence, start, end in _sentences_with_offsets(text):
-            if tokens and sum(1 for token in tokens if token in sentence.casefold()) < max(
-                1, len(tokens) // 2
-            ):
+            if tokens and sum(
+                1 for token in tokens if token in sentence.casefold()
+            ) < max(1, len(tokens) // 2):
                 continue
             if not tokens and label.casefold() not in sentence.casefold():
                 continue
@@ -1058,9 +1066,7 @@ def _coverage_label(present: bool, partial: bool) -> str:
     return "absent"
 
 
-def _heading_for_dimension(
-    dimension: IntelligenceDimension, mode: str
-) -> str:
+def _heading_for_dimension(dimension: IntelligenceDimension, mode: str) -> str:
     labels = {
         IntelligenceDimension.TOPICS: "Topic coverage",
         IntelligenceDimension.QUESTIONS: "Direct answers",
@@ -1078,12 +1084,178 @@ def _heading_for_dimension(
     return f"New section: {base}"
 
 
+_STOPWORDS = frozenset(
+    {
+        "a",
+        "an",
+        "and",
+        "are",
+        "as",
+        "at",
+        "by",
+        "for",
+        "from",
+        "in",
+        "is",
+        "it",
+        "of",
+        "on",
+        "or",
+        "that",
+        "the",
+        "to",
+        "was",
+        "were",
+        "with",
+        "than",
+        "over",
+        "under",
+        "about",
+        "into",
+        "their",
+        "our",
+        "your",
+        "this",
+        "these",
+        "those",
+        "have",
+        "has",
+        "had",
+        "been",
+        "be",
+        "can",
+        "may",
+        "will",
+        "would",
+        "should",
+        "could",
+        "not",
+        "no",
+        "never",
+        "none",
+        "without",
+        "according",
+        "per",
+        "cited",
+        "reported",
+    }
+)
+_NEGATION = re.compile(
+    r"(?i)\b(?:not|never|no|none|without|cannot|can't|isn't|aren't|wasn't|weren't|doesn't|don't|didn't)\b"
+)
+_QUANTITY = re.compile(r"(?i)(?P<num>\d[\d,.]*%?)\s*(?P<unit>[a-z]{0,12})")
+
+
+def _claim_content_tokens(text: str) -> set[str]:
+    return {
+        token
+        for token in _TOKEN.findall(text.casefold())
+        if len(token) > 2 and token not in _STOPWORDS and not token.isdigit()
+    }
+
+
+def _claim_quantities(text: str) -> list[tuple[str, str]]:
+    quantities: list[tuple[str, str]] = []
+    for match in _QUANTITY.finditer(text):
+        num = match.group("num").replace(",", "")
+        unit = match.group("unit").casefold()
+        quantities.append((num, unit))
+    return quantities
+
+
+def _claims_share_subject(left: set[str], right: set[str]) -> bool:
+    overlap = left & right
+    if len(overlap) >= 2:
+        return True
+    return len(overlap) == 1 and min(len(left), len(right)) <= 3
+
+
+def _quantity_conflict(
+    left: list[tuple[str, str]], right: list[tuple[str, str]]
+) -> bool:
+    if not left or not right:
+        return False
+    for left_num, left_unit in left:
+        for right_num, right_unit in right:
+            if left_num == right_num:
+                continue
+            if left_unit and right_unit and left_unit != right_unit:
+                continue
+            return True
+    return False
+
+
+def _negation_conflict(left_text: str, right_text: str) -> bool:
+    left_neg = bool(_NEGATION.search(left_text))
+    right_neg = bool(_NEGATION.search(right_text))
+    return left_neg != right_neg
+
+
+def _annotate_claim_contradictions(
+    claims: list[CitableClaim],
+) -> tuple[list[CitableClaim], list[str]]:
+    """Mark pairwise quantity/negation conflicts as possible contradictions.
+
+    Partial/unverifiable claims keep contradictionState=unknown and are never
+    upgraded to possible. Compatible supported claims stay none.
+    """
+    if len(claims) < 2:
+        return claims, []
+
+    states: list[Literal["none", "possible", "unknown"]] = [
+        "unknown"
+        if claim.contradiction_state == "unknown"
+        or claim.verification_status in {"unsupported", "unverifiable"}
+        or claim.confidence == "unknown"
+        else claim.contradiction_state
+        for claim in claims
+    ]
+    eligible = [
+        index
+        for index, claim in enumerate(claims)
+        if states[index] != "unknown" and claim.verification_status == "supported"
+    ]
+    groups: list[tuple[str, str, str]] = []
+    for offset, left_index in enumerate(eligible):
+        left = claims[left_index]
+        left_tokens = _claim_content_tokens(left.claim_text)
+        left_qty = _claim_quantities(left.claim_text)
+        for right_index in eligible[offset + 1 :]:
+            right = claims[right_index]
+            right_tokens = _claim_content_tokens(right.claim_text)
+            if not _claims_share_subject(left_tokens, right_tokens):
+                continue
+            right_qty = _claim_quantities(right.claim_text)
+            reason: str | None = None
+            if _quantity_conflict(left_qty, right_qty):
+                reason = "conflicting quantities"
+            elif _negation_conflict(left.claim_text, right.claim_text):
+                reason = "negation conflict"
+            if reason is None:
+                continue
+            states[left_index] = "possible"
+            states[right_index] = "possible"
+            groups.append((left.claim_id, right.claim_id, reason))
+
+    annotated = [
+        claim.model_copy(update={"contradiction_state": states[index]})
+        for index, claim in enumerate(claims)
+    ]
+    warnings = [
+        f"Possible contradiction ({reason}) between claims {left_id} and {right_id}."
+        for left_id, right_id, reason in groups
+    ]
+    return annotated, warnings
+
+
 def _normalize_query(value: str) -> str:
     return " ".join(value.casefold().split())
 
 
 def _unique_clean(values: list[str]) -> list[str]:
-    return list(dict.fromkeys(" ".join(value.split()) for value in values if value.strip()))
+    return list(
+        dict.fromkeys(" ".join(value.split()) for value in values if value.strip())
+    )
 
 
 def _unique(values: list[str]) -> list[str]:

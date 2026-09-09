@@ -62,7 +62,9 @@ def test_faq_set_golden_is_deterministic_and_evidence_linked() -> None:
     )
     assert first.artifact_type == "faqSet.v1"
     assert first.pairs
-    supported = [pair for pair in first.pairs if pair.verification_status == "supported"]
+    supported = [
+        pair for pair in first.pairs if pair.verification_status == "supported"
+    ]
     assert supported
     assert all(pair.citations for pair in supported)
     assert all(
@@ -70,16 +72,20 @@ def test_faq_set_golden_is_deterministic_and_evidence_linked() -> None:
         for pair in supported
         for citation in pair.citations
     )
-    assert any("not verified against live search" in warning for warning in first.warnings)
+    assert any(
+        "not verified against live search" in warning for warning in first.warnings
+    )
 
 
 def test_faq_generator_rejects_generated_hypothesis_queries() -> None:
     payload = json.loads(FAQ_FIXTURE.read_text())
-    payload["queries"] = [{
-        "query": "What is AI content readiness?",
-        "origin": "generatedHypothesis",
-        "sourceReference": "bad",
-    }]
+    payload["queries"] = [
+        {
+            "query": "What is AI content readiness?",
+            "origin": "generatedHypothesis",
+            "sourceReference": "bad",
+        }
+    ]
     with pytest.raises(ValidationError):
         FaqGeneratorRequest.model_validate(payload)
 
@@ -116,7 +122,10 @@ def test_citable_claims_extracts_specifics_without_inventing_stats() -> None:
         claim for claim in first.claims if claim.verification_status == "unsupported"
     ]
     assert unsupported
-    assert all("%" not in claim.claim_text or "37%" in claim.claim_text for claim in unsupported)
+    assert all(
+        "%" not in claim.claim_text or "37%" in claim.claim_text
+        for claim in unsupported
+    )
     assert any("no statistics were invented" in warning for warning in first.warnings)
     assert any(
         claim.source_statement is not None and claim.claim_type == "rewrittenSpecific"
@@ -133,7 +142,51 @@ def test_citable_claims_partial_marks_unknown() -> None:
     )
     assert artifact.claims
     assert all(claim.confidence == "unknown" for claim in artifact.claims)
+    assert all(claim.contradiction_state == "unknown" for claim in artifact.claims)
     assert any("partial" in warning.casefold() for warning in artifact.warnings)
+
+
+def test_citable_claims_marks_quantity_contradiction_as_possible() -> None:
+    payload = {
+        "contractVersion": "citableClaimsInput.v1",
+        "sourceDocument": {
+            "source": {
+                "sourceId": "claims-conflict-1",
+                "url": "https://subject.example/conflict",
+                "title": "Conflict Source",
+            },
+            "visibleContent": (
+                "# Proof\n\n"
+                "Trusted by 500 customer teams across regulated industries.\n\n"
+                "Trusted by 50 customer teams across regulated industries.\n"
+            ),
+            "mediaType": "text/markdown",
+            "contentCompleteness": "full",
+            "queries": [],
+            "evidence": [],
+        },
+        "targetStatements": [],
+        "maxClaims": 20,
+        "insertionTarget": "Proof section",
+    }
+    artifact = ContentService().citable_claims(
+        CitableClaimsRequest.model_validate(payload)
+    )
+    possible = [
+        claim for claim in artifact.claims if claim.contradiction_state == "possible"
+    ]
+    assert len(possible) >= 2
+    assert any("Possible contradiction" in warning for warning in artifact.warnings)
+    assert any("conflicting quantities" in warning for warning in artifact.warnings)
+
+
+def test_citable_claims_compatible_claims_stay_none() -> None:
+    artifact = ContentService().citable_claims(_claims_request())
+    supported = [
+        claim for claim in artifact.claims if claim.verification_status == "supported"
+    ]
+    assert supported
+    assert all(claim.contradiction_state == "none" for claim in supported)
 
 
 def test_citable_claims_contract_round_trip_forbids_extras() -> None:
@@ -174,11 +227,16 @@ def test_comparison_brief_is_deterministic_and_labeled() -> None:
 def test_comparison_brief_partial_keeps_unknown() -> None:
     payload = json.loads(COMPARISON_FIXTURE.read_text())
     payload["subjectPages"][0]["contentCompleteness"] = "partial"
-    payload["subjectPages"][0]["visibleContent"] = "# Subject Analyzer\n\nPartial fragment."
+    payload["subjectPages"][0]["visibleContent"] = (
+        "# Subject Analyzer\n\nPartial fragment."
+    )
     artifact = ContentService().comparison_brief(
         ComparisonBriefRequest.model_validate(payload)
     )
-    assert any("unknown" in warning.casefold() or "partial" in warning.casefold() for warning in artifact.warnings)
+    assert any(
+        "unknown" in warning.casefold() or "partial" in warning.casefold()
+        for warning in artifact.warnings
+    )
     assert "unknown" in artifact.recommended_verdict.framing.casefold() or any(
         "unknown" in row.summary.casefold() for row in artifact.criteria
     )
@@ -206,7 +264,9 @@ def test_competitive_response_selects_mode_without_copying() -> None:
     assert first.content_angles
     assert all(angle.origin == "generatedHypothesis" for angle in first.content_angles)
     assert first.outline_sections
-    assert any("Does not copy competitor prose" in warning for warning in first.warnings)
+    assert any(
+        "Does not copy competitor prose" in warning for warning in first.warnings
+    )
     assert any("generatedHypothesis" in warning for warning in first.warnings)
     assert all(
         "Trusted by 500 customer teams." not in angle.text
@@ -245,11 +305,13 @@ def test_pillar_outline_builds_cluster_sections() -> None:
 
 def test_pillar_outline_rejects_generated_hypothesis_queries() -> None:
     payload = json.loads(PILLAR_FIXTURE.read_text())
-    payload["queries"] = [{
-        "query": "What is AI content readiness?",
-        "origin": "generatedHypothesis",
-        "sourceReference": "bad",
-    }]
+    payload["queries"] = [
+        {
+            "query": "What is AI content readiness?",
+            "origin": "generatedHypothesis",
+            "sourceReference": "bad",
+        }
+    ]
     with pytest.raises(ValidationError):
         PillarOutlineRequest.model_validate(payload)
 
