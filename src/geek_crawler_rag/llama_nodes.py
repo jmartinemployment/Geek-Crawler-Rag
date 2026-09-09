@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from typing import Any
 
 from llama_index.core.schema import TextNode
@@ -83,6 +84,9 @@ def page_to_nodes(
                     evergreen=evergreen,
                     embed_text=unit.parent_text,
                     point_key=f"parent:{unit.parent_index}",
+                    owner_id=settings.crawler_owner_id,
+                    visibility=settings.crawler_visibility,
+                    embedding_model=settings.openai_embedding_model,
                 )
             )
         nodes.append(
@@ -105,6 +109,9 @@ def page_to_nodes(
                 evergreen=evergreen,
                 embed_text=unit.child_text,
                 point_key=f"child:{unit.child_index}",
+                owner_id=settings.crawler_owner_id,
+                visibility=settings.crawler_visibility,
+                embedding_model=settings.openai_embedding_model,
             )
         )
     return nodes, ""
@@ -130,8 +137,14 @@ def _node(
     evergreen: bool,
     embed_text: str,
     point_key: str,
+    owner_id: str,
+    visibility: str,
+    embedding_model: str,
 ) -> TextNode:
     metadata: dict[str, Any] = {
+        "ownerId": owner_id,
+        "visibility": visibility,
+        "manifestEligible": False,
         "runId": run_id,
         "crawlType": crawl_type,
         "host": host,
@@ -154,11 +167,21 @@ def _node(
         "qualityScore": quality,
         "isEvergreen": evergreen,
         "lastCrawled": page.crawled_at,
+        "sourceDigest": hashlib.sha256(
+            (page.markdown or page.html or "").encode("utf-8")
+        ).hexdigest(),
+        "parserId": "crawler-markdown" if page.markdown else "beautifulsoup-lxml",
+        "parserVersion": "1.0.0",
+        "chunkerId": "parent-child-token-window",
+        "chunkerVersion": "1.0.0",
+        "embeddingModel": embedding_model,
     }
     # Drop Nones — Qdrant/LlamaIndex payload hygiene.
     metadata = {k: v for k, v in metadata.items() if v is not None}
+    node_id = point_id(run_id, page.id, point_key)
+    metadata["chunkId"] = node_id
     return TextNode(
-        id_=point_id(run_id, page.id, point_key),
+        id_=node_id,
         text=embed_text,
         metadata=metadata,
     )

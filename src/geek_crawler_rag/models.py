@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from enum import StrEnum
 import hashlib
+from datetime import UTC, datetime
+from enum import StrEnum
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -17,6 +17,7 @@ from geek_crawler_rag.agent_models import (
     SpecialistReview,
     SpecialistRole,
 )
+from geek_crawler_rag.context_models import PersistedManifestEnvelope
 
 
 class IndexState(StrEnum):
@@ -78,6 +79,8 @@ class IndexSchedulerStatus(BaseModel):
 class QueryRequest(BaseModel):
     need: str = Field(..., min_length=1)
     run_id: str = Field(..., alias="runId", min_length=1)
+    owner_id: str = Field("system:crawler", alias="ownerId", min_length=1)
+    visibility: str = Field("service", min_length=1)
     crawl_type: str | None = Field(None, alias="crawlType")
     host: str | None = None
     top_k: int = Field(8, alias="topK", ge=1, le=50)
@@ -95,6 +98,8 @@ class QueryRequest(BaseModel):
 
 
 class ChunkHit(BaseModel):
+    point_id: str | None = Field(None, alias="pointId")
+    chunk_id: str | None = Field(None, alias="chunkId")
     run_id: str = Field(..., alias="runId")
     crawl_type: str = Field(..., alias="crawlType")
     host: str
@@ -116,6 +121,15 @@ class ChunkHit(BaseModel):
     quality_score: float | None = Field(None, alias="qualityScore")
     dense_score: float | None = Field(None, alias="denseScore")
     rerank_score: float | None = Field(None, alias="rerankScore")
+    lexical_score: float | None = Field(None, alias="lexicalScore")
+    source_digest: str | None = Field(None, alias="sourceDigest")
+    parser_id: str | None = Field(None, alias="parserId")
+    parser_version: str | None = Field(None, alias="parserVersion")
+    chunker_id: str | None = Field(None, alias="chunkerId")
+    chunker_version: str | None = Field(None, alias="chunkerVersion")
+    embedding_model: str | None = Field(None, alias="embeddingModel")
+    retrieval_policy_version: str | None = Field(None, alias="retrievalPolicyVersion")
+    rank: int | None = None
 
     model_config = {"populate_by_name": True, "ser_json_by_alias": True}
 
@@ -157,6 +171,8 @@ class AdTemplateUpsertItem(BaseModel):
 
 class AdTemplateIndexRequest(BaseModel):
     templates: list[AdTemplateUpsertItem]
+    owner_id: str = Field("system:content-creator", alias="ownerId", min_length=1)
+    visibility: str = Field("service", min_length=1)
 
     model_config = {"populate_by_name": True}
 
@@ -170,6 +186,8 @@ class AdTemplateIndexResponse(BaseModel):
 
 class AdTemplateQueryRequest(BaseModel):
     need: str = Field(..., min_length=1)
+    owner_id: str = Field("system:content-creator", alias="ownerId", min_length=1)
+    visibility: str = Field("service", min_length=1)
     top_k: int = Field(5, alias="topK", ge=1, le=20)
     channel: str | None = None
     framework: str | None = None
@@ -217,6 +235,10 @@ class GenerateCitation(BaseModel):
     section_title: str | None = Field(None, alias="sectionTitle")
     quote: str
     crawl_type: str | None = Field(None, alias="crawlType")
+    source_digest: str | None = Field(
+        None, alias="sourceDigest", pattern=r"^[0-9a-f]{64}$"
+    )
+    coordinates: dict[str, Any] | None = None
 
     model_config = {"populate_by_name": True, "ser_json_by_alias": True}
 
@@ -228,6 +250,9 @@ class GenerateSource(BaseModel):
     crawl_type: str | None = Field(None, alias="crawlType")
     kind: str | None = None
     page_id: str | None = Field(None, alias="pageId")
+    source_digest: str | None = Field(
+        None, alias="sourceDigest", pattern=r"^[0-9a-f]{64}$"
+    )
 
     model_config = {"populate_by_name": True, "ser_json_by_alias": True}
 
@@ -286,30 +311,54 @@ SUPPORTED_GENERATION_STAGES = frozenset(
 )
 V3_STAGE_READ_TOOL_IDS = {
     "researchPlanning": {
-        "search_corpus", "load_evidence_page", "get_brief_context",
-        "get_specialist_artifacts", "activate_skill", "read_skill_resource",
+        "search_corpus",
+        "load_evidence_page",
+        "get_brief_context",
+        "get_specialist_artifacts",
+        "activate_skill",
+        "read_skill_resource",
     },
     "outline": {
-        "search_corpus", "load_evidence_page", "get_brief_context",
-        "get_specialist_artifacts", "activate_skill", "read_skill_resource",
+        "search_corpus",
+        "load_evidence_page",
+        "get_brief_context",
+        "get_specialist_artifacts",
+        "activate_skill",
+        "read_skill_resource",
     },
     "section": {
-        "load_evidence_page", "get_brief_context", "get_outline_context",
-        "get_completed_section_summaries", "activate_skill",
-        "read_skill_resource", "get_specialist_artifacts",
+        "load_evidence_page",
+        "get_brief_context",
+        "get_outline_context",
+        "get_completed_section_summaries",
+        "activate_skill",
+        "read_skill_resource",
+        "get_specialist_artifacts",
     },
     "finalSynthesis": {
-        "load_evidence_page", "get_brief_context", "get_outline_context",
-        "get_specialist_artifacts", "activate_skill", "read_skill_resource",
+        "load_evidence_page",
+        "get_brief_context",
+        "get_outline_context",
+        "get_specialist_artifacts",
+        "activate_skill",
+        "read_skill_resource",
     },
     "validation": {
-        "load_evidence_page", "get_brief_context", "get_outline_context",
-        "get_specialist_artifacts", "activate_skill", "read_skill_resource",
+        "load_evidence_page",
+        "get_brief_context",
+        "get_outline_context",
+        "get_specialist_artifacts",
+        "activate_skill",
+        "read_skill_resource",
     },
     "repair": {
-        "load_evidence_page", "get_brief_context", "get_outline_context",
-        "get_completed_section_summaries", "activate_skill",
-        "read_skill_resource", "get_specialist_artifacts",
+        "load_evidence_page",
+        "get_brief_context",
+        "get_outline_context",
+        "get_completed_section_summaries",
+        "activate_skill",
+        "read_skill_resource",
+        "get_specialist_artifacts",
     },
 }
 V3_PRODUCER_TERMINAL_IDS = {
@@ -331,6 +380,8 @@ def v3_agent_tool_ids(stage: str, role: SpecialistRole) -> set[str]:
         else V3_PRODUCER_TERMINAL_IDS[stage]
     )
     return {*V3_STAGE_READ_TOOL_IDS[stage], terminal}
+
+
 _V3_BEST_QUALITY_MODELS = {
     "researchPlanning": "o3",
     "outline": "o1-pro",
@@ -414,7 +465,9 @@ class SkillExecutionEnvelope(BaseModel):
             actual = hashlib.sha256(skill.canonical_content.encode()).hexdigest()
             if actual != skill.sha256:
                 raise ValueError(f"Skill '{skill.id}' hash mismatch.")
-            conflict = next((item for item in skill.conflicts if item in selected), None)
+            conflict = next(
+                (item for item in skill.conflicts if item in selected), None
+            )
             if conflict:
                 raise ValueError(f"Skill '{skill.id}' conflicts with '{conflict}'.")
         canonical = "\n".join(
@@ -482,9 +535,7 @@ class ProducerCapabilities(BaseModel):
     agent_tool_versions: list[str] = Field(
         default_factory=lambda: ["agent-tools.v1"], alias="agentToolVersions"
     )
-    stage_scoped_tools_allowed: bool = Field(
-        True, alias="stageScopedToolsAllowed"
-    )
+    stage_scoped_tools_allowed: bool = Field(True, alias="stageScopedToolsAllowed")
 
     model_config = {"populate_by_name": True, "ser_json_by_alias": True}
 
@@ -535,9 +586,7 @@ class GenerateProvenance(BaseModel):
     prompt_version: str = Field(..., alias="promptVersion")
     retrieval: str
     evidence_ids: list[str] = Field(default_factory=list, alias="evidenceIds")
-    specialist_executor: str = Field(
-        "legacy-complete", alias="specialistExecutor"
-    )
+    specialist_executor: str = Field("legacy-complete", alias="specialistExecutor")
     specialist_executor_version: str = Field(
         "bounded-specialists.v1", alias="specialistExecutorVersion"
     )
@@ -586,17 +635,13 @@ class GenerateValidation(BaseModel):
     issues: list[GenerateValidationIssue]
     strengths: list[str]
     unsupported_claim_count: int = Field(..., alias="unsupportedClaimCount", ge=0)
-    brief_alignment_score: float = Field(
-        ..., alias="briefAlignmentScore", ge=0, le=100
-    )
+    brief_alignment_score: float = Field(..., alias="briefAlignmentScore", ge=0, le=100)
     evidence_coverage_score: float = Field(
         ..., alias="evidenceCoverageScore", ge=0, le=100
     )
     usefulness_score: float = Field(..., alias="usefulnessScore", ge=0, le=100)
     originality_score: float = Field(..., alias="originalityScore", ge=0, le=100)
-    brand_alignment_score: float = Field(
-        ..., alias="brandAlignmentScore", ge=0, le=100
-    )
+    brand_alignment_score: float = Field(..., alias="brandAlignmentScore", ge=0, le=100)
 
     model_config = {
         "populate_by_name": True,
@@ -614,6 +659,21 @@ class GenerateValidation(BaseModel):
         if self.unsupported_claim_count:
             self.approved = False
         return self
+
+
+class GovernedContextEntry(BaseModel):
+    kind: str
+    stable_id: str = Field(..., alias="stableId")
+    version_id: str = Field(..., alias="versionId")
+    version_number: int = Field(..., alias="versionNumber", ge=1)
+    digest: str = Field(..., pattern=r"^[0-9a-f]{64}$")
+    payload: dict[str, Any] | list[Any]
+    selected_field_ids: list[str] | None = Field(None, alias="selectedFieldIds")
+    approved_claims: list[str] | None = Field(None, alias="approvedClaims")
+    prohibited_claims: list[str] | None = Field(None, alias="prohibitedClaims")
+    mandatory_disclaimers: list[str] | None = Field(None, alias="mandatoryDisclaimers")
+
+    model_config = {"populate_by_name": True, "extra": "forbid"}
 
 
 class GenerateRequest(BaseModel):
@@ -643,12 +703,16 @@ class GenerateRequest(BaseModel):
     execution_version: str = Field("rag-generate.v1", alias="executionVersion")
     job_id: str | None = Field(None, alias="jobId", min_length=1, max_length=120)
     attempt_id: str = Field(default_factory=lambda: str(uuid4()), alias="attemptId")
-    skill_execution: SkillExecutionEnvelope | SignedSkillExecutionEnvelopeV2 | None = Field(
-        None, alias="skillExecution"
+    context_manifest: PersistedManifestEnvelope | None = Field(
+        None, alias="contextManifest"
     )
-    agent_execution: AgentExecutionRequest | None = Field(
-        None, alias="agentExecution"
+    governed_context: list[GovernedContextEntry] | None = Field(
+        None, alias="governedContext", max_length=100
     )
+    skill_execution: SkillExecutionEnvelope | SignedSkillExecutionEnvelopeV2 | None = (
+        Field(None, alias="skillExecution")
+    )
+    agent_execution: AgentExecutionRequest | None = Field(None, alias="agentExecution")
     specialist_contributions: list[SpecialistContribution] | None = Field(
         None, alias="specialistContributions", max_length=32
     )
@@ -662,7 +726,9 @@ class GenerateRequest(BaseModel):
     @model_validator(mode="after")
     def validate_model_policy(self) -> GenerateRequest:
         raw_stage = self.generation_stage.strip()
-        stage_key = "".join(character for character in raw_stage.casefold() if character.isalnum())
+        stage_key = "".join(
+            character for character in raw_stage.casefold() if character.isalnum()
+        )
         stages = {
             "complete": "complete",
             "researchplanning": "researchPlanning",
@@ -679,8 +745,13 @@ class GenerateRequest(BaseModel):
                 "Use complete, outline, section, repair, validation, or finalSynthesis."
             )
         self.generation_stage = stage
-        if stage == "researchPlanning" and self.execution_version != AGENT_EXECUTION_VERSION:
-            raise ValueError("researchPlanning is available only through rag-generate.v3.")
+        if (
+            stage == "researchPlanning"
+            and self.execution_version != AGENT_EXECUTION_VERSION
+        ):
+            raise ValueError(
+                "researchPlanning is available only through rag-generate.v3."
+            )
 
         try:
             UUID(self.attempt_id)
@@ -700,17 +771,28 @@ class GenerateRequest(BaseModel):
             execution = self.agent_execution
             if not self.job_id:
                 raise ValueError("rag-generate.v3 requires jobId.")
-            if self.job_id != self.skill_execution.job_id or self.job_id != execution.job_id:
+            if (
+                self.job_id != self.skill_execution.job_id
+                or self.job_id != execution.job_id
+            ):
                 raise ValueError("jobId must match both signed execution snapshots.")
             if self.skill_execution.attempt_id != self.attempt_id:
-                raise ValueError("Skill snapshot attemptId does not match request attemptId.")
+                raise ValueError(
+                    "Skill snapshot attemptId does not match request attemptId."
+                )
             if execution.attempt_id != self.attempt_id:
-                raise ValueError("Agent execution attemptId does not match request attemptId.")
+                raise ValueError(
+                    "Agent execution attemptId does not match request attemptId."
+                )
             if execution.stage != stage:
-                raise ValueError("Agent execution stage does not match generationStage.")
+                raise ValueError(
+                    "Agent execution stage does not match generationStage."
+                )
             agent = execution.selected_agent
             if stage not in agent.stages:
-                raise ValueError("Selected agent is not authorized for generationStage.")
+                raise ValueError(
+                    "Selected agent is not authorized for generationStage."
+                )
             if self.model_policy_preset:
                 selected_model = (
                     "o3"
@@ -720,9 +802,13 @@ class GenerateRequest(BaseModel):
                     else (self.stage_model_overrides or {}).get(stage)
                 )
                 if selected_model not in agent.model_ids:
-                    raise ValueError("Selected agent is not authorized for selected stage model.")
+                    raise ValueError(
+                        "Selected agent is not authorized for selected stage model."
+                    )
             if set(agent.tool_ids) != v3_agent_tool_ids(stage, agent.role):
-                raise ValueError("Selected agent tools do not exactly match stage authority.")
+                raise ValueError(
+                    "Selected agent tools do not exactly match stage authority."
+                )
             envelope_refs = {
                 (skill.id, skill.version, skill.activation_id, skill.package_digest)
                 for skill in self.skill_execution.skills
@@ -737,19 +823,26 @@ class GenerateRequest(BaseModel):
                 for ref in execution.assigned_skills
             }
             if not assigned_refs.issubset(envelope_refs):
-                raise ValueError("Assigned skills must exactly reference signed skill snapshots.")
+                raise ValueError(
+                    "Assigned skills must exactly reference signed skill snapshots."
+                )
             assigned_activation_ids = {
                 ref.activation_id for ref in execution.assigned_skills
             }
             for skill in self.skill_execution.skills:
-                if (
-                    skill.activation_id in assigned_activation_ids
-                    and not set(skill.approved_tool_ids).issubset(agent.tool_ids)
-                ):
+                if skill.activation_id in assigned_activation_ids and not set(
+                    skill.approved_tool_ids
+                ).issubset(agent.tool_ids):
                     raise ValueError(
                         f"Assigned skill '{skill.id}' requests a tool outside selected agent scope."
                     )
             artifact_values: dict[str, Any] = {
+                "runContextManifest": (
+                    self.context_manifest.canonical_json
+                    if self.context_manifest
+                    else None
+                ),
+                "governedContext": self.governed_context,
                 "canonicalBrief": (
                     self.canonical_brief.model_dump(
                         by_alias=True, mode="json", exclude_none=True
@@ -768,9 +861,7 @@ class GenerateRequest(BaseModel):
                 "draftContent": self.draft_content,
                 "sources": (
                     [
-                        item.model_dump(
-                            by_alias=True, mode="json", exclude_none=True
-                        )
+                        item.model_dump(by_alias=True, mode="json", exclude_none=True)
                         for item in self.input_sources
                     ]
                     if self.input_sources is not None
@@ -787,7 +878,12 @@ class GenerateRequest(BaseModel):
                 for artifact_type, value in artifact_values.items()
                 if value is not None
                 and (
-                    artifact_type == "canonicalBrief"
+                    artifact_type
+                    in {
+                        "runContextManifest",
+                        "governedContext",
+                        "canonicalBrief",
+                    }
                     or artifact_type == "outline"
                     and stage in {"section", "repair", "finalSynthesis", "validation"}
                     or artifact_type == "draftContent"
@@ -796,7 +892,8 @@ class GenerateRequest(BaseModel):
                     and stage in {"finalSynthesis", "validation"}
                     or artifact_type == "completedSectionSummaries"
                     and stage in {"section", "repair"}
-                    or artifact_type in {
+                    or artifact_type
+                    in {
                         "specialistContribution",
                         "specialistReview",
                     }
@@ -831,6 +928,18 @@ class GenerateRequest(BaseModel):
                     raise ValueError(
                         f"artifactInputs do not exactly cover {artifact_type} artifacts."
                     )
+            expected_governed_digests = {
+                item.digest for item in self.governed_context or []
+            }
+            declared_governed_digests = {
+                artifact.digest
+                for artifact in execution.artifact_inputs
+                if artifact.artifact_type == "governedContext"
+            }
+            if expected_governed_digests != declared_governed_digests:
+                raise ValueError(
+                    "artifactInputs do not exactly cover governedContext artifacts."
+                )
             for artifact in execution.artifact_inputs:
                 value = artifact_values[artifact.artifact_type]
                 if value is None:
@@ -838,9 +947,18 @@ class GenerateRequest(BaseModel):
                         f"Artifact input '{artifact.artifact_type}' has no request payload."
                     )
                 if artifact.artifact_type in {
+                    "governedContext",
                     "specialistContribution",
                     "specialistReview",
                 }:
+                    if artifact.artifact_type == "governedContext":
+                        if artifact.digest not in {
+                            item.digest for item in self.governed_context or []
+                        }:
+                            raise ValueError(
+                                "Artifact input digest mismatch: governedContext."
+                            )
+                        continue
                     allowed_digests = {
                         hashlib.sha256(
                             json.dumps(
@@ -877,11 +995,16 @@ class GenerateRequest(BaseModel):
                 and self.skill_execution.content_type
                 != self.canonical_brief.content_type
             ):
-                raise ValueError("Skill snapshot contentType does not match canonicalBrief.")
+                raise ValueError(
+                    "Skill snapshot contentType does not match canonicalBrief."
+                )
             for skill in self.skill_execution.skills:
                 if stage not in skill.supported_stages:
                     continue
-                if self.skill_execution.content_type not in skill.supported_content_types:
+                if (
+                    self.skill_execution.content_type
+                    not in skill.supported_content_types
+                ):
                     raise ValueError(
                         f"Skill '{skill.id}' does not support content type "
                         f"'{self.skill_execution.content_type}'."
@@ -896,7 +1019,9 @@ class GenerateRequest(BaseModel):
                     None,
                 )
                 if target is None:
-                    raise ValueError("sectionKey is not present in the approved outline.")
+                    raise ValueError(
+                        "sectionKey is not present in the approved outline."
+                    )
         elif isinstance(self.skill_execution, SignedSkillExecutionEnvelopeV2):
             raise ValueError("gcc-skill-envelope.v2 requires rag-generate.v3.")
         elif self.skill_execution is not None:
@@ -909,7 +1034,10 @@ class GenerateRequest(BaseModel):
             for skill in self.skill_execution.skills:
                 if stage not in skill.supported_stages:
                     continue
-                if self.skill_execution.content_type not in skill.supported_content_types:
+                if (
+                    self.skill_execution.content_type
+                    not in skill.supported_content_types
+                ):
                     raise ValueError(
                         f"Skill '{skill.id}' does not support content type "
                         f"'{self.skill_execution.content_type}'."
@@ -926,13 +1054,9 @@ class GenerateRequest(BaseModel):
                     f"generationStage '{stage}' requires non-empty draftContent."
                 )
             if self.canonical_brief is None:
-                raise ValueError(
-                    f"generationStage '{stage}' requires canonicalBrief."
-                )
+                raise ValueError(f"generationStage '{stage}' requires canonicalBrief.")
             if not (
-                self.partner_run_id
-                or self.competitor_run_id
-                or self.input_sources
+                self.partner_run_id or self.competitor_run_id or self.input_sources
             ):
                 raise ValueError(
                     f"generationStage '{stage}' requires sources, "
@@ -1025,9 +1149,7 @@ class GenerateResponse(BaseModel):
     specialist_contribution: SpecialistContribution | None = Field(
         None, alias="specialistContribution"
     )
-    specialist_review: SpecialistReview | None = Field(
-        None, alias="specialistReview"
-    )
+    specialist_review: SpecialistReview | None = Field(None, alias="specialistReview")
     specialist_artifact_digest: str | None = Field(
         None, alias="specialistArtifactDigest", pattern=r"^[0-9a-f]{64}$"
     )
@@ -1036,4 +1158,4 @@ class GenerateResponse(BaseModel):
 
 
 def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)

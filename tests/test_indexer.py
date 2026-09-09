@@ -138,7 +138,11 @@ async def test_index_upserts_english_chunks():
     assert status.state == IndexState.COMPLETE
     assert status.chunks_upserted >= 1
     assert status.crawl_type == "competitors"
-    store.delete_by_run_id.assert_awaited_once_with("r2")
+    store.delete_by_run_id.assert_awaited_once_with(
+        "r2",
+        owner_id="system:crawler",
+        visibility="service",
+    )
     assert llama.embed_and_upsert.await_count >= 1
     nodes = llama.embed_and_upsert.await_args.args[0]
     assert any(n.metadata.get("chunkRole") == "child" for n in nodes)

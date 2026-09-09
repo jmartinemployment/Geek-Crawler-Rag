@@ -26,8 +26,12 @@ logger = logging.getLogger(__name__)
 _TEMPLATE_NS = uuid.UUID("b2c3d4e5-f6a7-8901-bcde-f12345678901")
 
 
-def template_point_id(template_id: str) -> str:
-    return str(uuid.uuid5(_TEMPLATE_NS, template_id.strip().lower()))
+def template_point_id(
+    template_id: str, owner_id: str = "system:content-creator"
+) -> str:
+    return str(
+        uuid.uuid5(_TEMPLATE_NS, f"{owner_id.strip()}:{template_id.strip().lower()}")
+    )
 
 
 class AdTemplateIndexService:
@@ -56,7 +60,13 @@ class AdTemplateIndexService:
                 ),
             )
             logger.info("Created Qdrant collection %s", self._collection)
-        for field in ("channel", "framework", "entityTags"):
+        for field in (
+            "ownerId",
+            "visibility",
+            "channel",
+            "framework",
+            "entityTags",
+        ):
             try:
                 await self._client.create_payload_index(
                     collection_name=self._collection,
@@ -75,7 +85,7 @@ class AdTemplateIndexService:
             body = (item.body or "").strip()
             if len(body) < 8:
                 continue
-            pid = template_point_id(tid)
+            pid = template_point_id(tid, request.owner_id)
             ids.append(pid)
             text = "\n".join(
                 p
@@ -88,19 +98,25 @@ class AdTemplateIndexService:
                 if p
             )
             meta = {
+                "ownerId": request.owner_id,
+                "visibility": request.visibility,
                 "templateId": tid,
                 "name": item.name,
                 "channel": (item.channel or "").strip().lower() or None,
                 "framework": (item.framework or "").strip().lower() or None,
                 "tone": item.tone,
-                "entityTags": [t.strip() for t in (item.entity_tags or []) if t.strip()][:12],
+                "entityTags": [
+                    t.strip() for t in (item.entity_tags or []) if t.strip()
+                ][:12],
                 "body": body,
                 "text": text,
             }
             nodes.append(TextNode(id_=pid, text=text, metadata=meta))
 
         if not nodes:
-            return AdTemplateIndexResponse(upserted=0, warning="No valid templates to index")
+            return AdTemplateIndexResponse(
+                upserted=0, warning="No valid templates to index"
+            )
 
         # Embed via shared OpenAI embed model, upsert into templates collection.
         texts = [n.get_content() for n in nodes]
@@ -109,13 +125,22 @@ class AdTemplateIndexService:
             qm.PointStruct(id=pid, vector=vec, payload=node.metadata)
             for pid, vec, node in zip(ids, embeddings, nodes, strict=True)
         ]
-        await self._client.upsert(collection_name=self._collection, points=points, wait=True)
+        await self._client.upsert(
+            collection_name=self._collection, points=points, wait=True
+        )
         return AdTemplateIndexResponse(upserted=len(points))
 
     async def query(self, request: AdTemplateQueryRequest) -> AdTemplateQueryResponse:
         await self.ensure_collection()
         query_vec = await self._llama.embed_query(request.need)
-        must: list[qm.Condition] = []
+        must: list[qm.Condition] = [
+            qm.FieldCondition(
+                key="ownerId", match=qm.MatchValue(value=request.owner_id)
+            ),
+            qm.FieldCondition(
+                key="visibility", match=qm.MatchValue(value=request.visibility)
+            ),
+        ]
         if request.channel:
             must.append(
                 qm.FieldCondition(
@@ -134,10 +159,12 @@ class AdTemplateIndexService:
             must.append(
                 qm.FieldCondition(
                     key="entityTags",
-                    match=qm.MatchAny(any=[t.strip() for t in request.entity_tags if t]),
+                    match=qm.MatchAny(
+                        any=[t.strip() for t in request.entity_tags if t]
+                    ),
                 )
             )
-        query_filter = qm.Filter(must=must) if must else None
+        query_filter = qm.Filter(must=must)
         try:
             result = await self._client.query_points(
                 collection_name=self._collection,
@@ -146,11 +173,11 @@ class AdTemplateIndexService:
                 limit=request.top_k,
                 with_payload=True,
             )
-        except Exception as ex:
-            logger.exception("Ad template query failed: %s", ex)
+        except Exception:
+            logger.exception("Ad template query failed")
             return AdTemplateQueryResponse(
                 templates=[],
-                warning=f"Ad template query failed: {ex}",
+                warning="Ad template query failed due to an internal retrieval error.",
             )
 
         hits: list[AdTemplateHit] = []
@@ -172,11 +199,17 @@ class AdTemplateIndexService:
                 )
             )
 
-        warning = None if hits else "No ad templates matched; continue without few-shot exemplars."
+        warning = (
+            None
+            if hits
+            else "No ad templates matched; continue without few-shot exemplars."
+        )
         return AdTemplateQueryResponse(templates=hits, warning=warning)
 
 
-def normalize_upsert_items(raw: list[AdTemplateUpsertItem]) -> list[AdTemplateUpsertItem]:
+def normalize_upsert_items(
+    raw: list[AdTemplateUpsertItem],
+) -> list[AdTemplateUpsertItem]:
     out: list[AdTemplateUpsertItem] = []
     seen: set[str] = set()
     for item in raw:

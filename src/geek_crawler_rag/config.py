@@ -63,6 +63,8 @@ class Settings(BaseSettings):
 
     # GeekAPI-owned manifest signing keys. No manifest/catalog authority is stored here.
     context_manifest_signing_keys: dict[str, str] = {}
+    context_asset_indexing_enabled: bool = True
+    context_manifest_query_enabled: bool = True
 
     # Push index status to GeekAPI → SignalR (no UI polling).
     index_status_webhook_url: str | None = None

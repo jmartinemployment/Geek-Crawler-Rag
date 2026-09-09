@@ -8,12 +8,20 @@ that leaked past the crawler (locale / failure / extract-empty).
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import Any, AsyncIterator
+from datetime import datetime
+from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+from pymongo.errors import DuplicateKeyError
 
-from geek_crawler_rag.metadata import EntityRef, entity_from_crawl, entity_from_doc, normalize_host
+from geek_crawler_rag.metadata import (
+    EntityRef,
+    entity_from_crawl,
+    entity_from_doc,
+    normalize_host,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +50,7 @@ class SchedulableRunScan:
     def summary(self) -> str:
         if self.candidate is not None:
             return (
-                f"candidate runId={self.candidate.id} "
-                f"pages={self.candidate.page_count}"
+                f"candidate runId={self.candidate.id} pages={self.candidate.page_count}"
             )
         return (
             "no_candidate "
@@ -97,6 +104,36 @@ class MongoCorpus:
             name="ix_crawl_pages_run_markdown_ready",
             partialFilterExpression={"MarkdownBackfilledAt": {"$type": "date"}},
         )
+        await self._db["rag_execution_replays"].create_index(
+            [("stageExecutionId", 1)],
+            name="ux_rag_execution_replays_stage",
+            unique=True,
+        )
+        await self._db["rag_execution_replays"].create_index(
+            [("expiresAtUtc", 1)],
+            name="ttl_rag_execution_replays_expiry",
+            expireAfterSeconds=0,
+        )
+
+    async def claim_stage_execution(
+        self,
+        *,
+        stage_execution_id: str,
+        idempotency_key: str,
+        expires_at_utc: datetime,
+    ) -> bool:
+        """Atomically persist a replay claim across replicas and restarts."""
+        try:
+            await self._db["rag_execution_replays"].insert_one(
+                {
+                    "stageExecutionId": stage_execution_id,
+                    "idempotencyKey": idempotency_key,
+                    "expiresAtUtc": expires_at_utc,
+                }
+            )
+            return True
+        except DuplicateKeyError:
+            return False
 
     async def get_run(self, run_id: str) -> CrawlRun | None:
         doc = await self._db["crawl_runs"].find_one({"Id": run_id})
@@ -218,7 +255,9 @@ class MongoCorpus:
         try:
             entities = await self._load_entities()
         except Exception:
-            logger.exception("Failed loading entities collection; using crawlType fallback")
+            logger.exception(
+                "Failed loading entities collection; using crawlType fallback"
+            )
             return fallback
 
         for doc in entities:
@@ -234,7 +273,9 @@ class MongoCorpus:
                 if not d:
                     continue
                 if host_n == d or host_n.endswith("." + d):
-                    return entity_from_doc(doc, fallback_host=host_n, crawl_type=crawl_type)
+                    return entity_from_doc(
+                        doc, fallback_host=host_n, crawl_type=crawl_type
+                    )
         return fallback
 
     async def _load_entities(self) -> list[dict[str, Any]]:
@@ -333,9 +374,13 @@ def _page_from_doc(doc: dict[str, Any], run_id: str) -> CrawlPage:
     crawled = doc.get("CrawledAtUtc")
     crawled_at = None
     if crawled is not None:
-        crawled_at = crawled.isoformat() if hasattr(crawled, "isoformat") else str(crawled)
+        crawled_at = (
+            crawled.isoformat() if hasattr(crawled, "isoformat") else str(crawled)
+        )
     failure = doc.get("FailureReason")
-    failure_reason = failure.strip() if isinstance(failure, str) and failure.strip() else None
+    failure_reason = (
+        failure.strip() if isinstance(failure, str) and failure.strip() else None
+    )
     robots = doc.get("RobotsAllowed")
     robots_allowed = robots if isinstance(robots, bool) else None
     return CrawlPage(
@@ -345,7 +390,9 @@ def _page_from_doc(doc: dict[str, Any], run_id: str) -> CrawlPage:
         url=str(doc.get("Url") or ""),
         final_url=str(doc.get("FinalUrl") or doc.get("Url") or ""),
         html=html,
-        markdown=markdown.strip() if isinstance(markdown, str) and markdown.strip() else None,
+        markdown=markdown.strip()
+        if isinstance(markdown, str) and markdown.strip()
+        else None,
         title=title.strip() if isinstance(title, str) and title.strip() else None,
         crawled_at=crawled_at,
         failure_reason=failure_reason,

@@ -3,17 +3,39 @@
 from __future__ import annotations
 
 import logging
+import secrets
 from contextlib import asynccontextmanager
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi import (
+    Depends,
+    FastAPI,
+    Header,
+    HTTPException,
+    Request,
+    status,
+)
+from fastapi import (
+    Query as ApiQuery,
+)
 from fastapi.responses import JSONResponse
 
 from geek_crawler_rag.ad_templates import AdTemplateIndexService, normalize_upsert_items
+from geek_crawler_rag.asset_context import AssetContextService
 from geek_crawler_rag.config import Settings, get_settings
+from geek_crawler_rag.context_models import (
+    AssetDeleteRequest,
+    AssetIndexRequest,
+    AssetIndexResponse,
+    ManifestQueryRequest,
+    ManifestQueryResponse,
+    RuntimeManifestQueryRequest,
+    TrustedAssetDeleteRequest,
+    TrustedAssetIndexRequest,
+)
+from geek_crawler_rag.generate import GenerateService
 from geek_crawler_rag.indexer import IndexService
 from geek_crawler_rag.llama_engine import LlamaIndexEngine
-from geek_crawler_rag.generate import GenerateService
 from geek_crawler_rag.models import (
     AdTemplateIndexRequest,
     AdTemplateIndexResponse,
@@ -51,6 +73,7 @@ class AppState:
     webhook: IndexStatusWebhook
     generate: GenerateService
     scheduler: IndexScheduler
+    assets: AssetContextService
 
 
 state = AppState()
@@ -67,6 +90,10 @@ def _configure_logging(level: str) -> None:
 async def lifespan(_app: FastAPI):
     settings = get_settings()
     _configure_logging(settings.log_level)
+    if not settings.api_key and not settings.local_test_mode:
+        raise RuntimeError(
+            "API_KEY is required unless LOCAL_TEST_MODE=true is explicitly configured."
+        )
     state.settings = settings
     state.mongo = MongoCorpus(settings.mongo_crawler_url, settings.mongo_db_name)
     state.store = QdrantStore(
@@ -98,7 +125,10 @@ async def lifespan(_app: FastAPI):
         state.store, settings, llama=state.llama, reranker=reranker
     )
     state.templates = AdTemplateIndexService(settings, state.llama)
-    state.generate = GenerateService(state.mongo, state.query, settings)
+    state.assets = AssetContextService(state.store, state.llama, settings)
+    state.generate = GenerateService(
+        state.mongo, state.query, settings, assets=state.assets
+    )
     state.scheduler = IndexScheduler(
         state.mongo,
         status_store,
@@ -147,12 +177,27 @@ def require_api_key(
 ) -> None:
     expected = settings.api_key
     if not expected:
-        return
-    if not x_api_key or x_api_key != expected:
+        if settings.local_test_mode:
+            return
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Service authentication is not configured.",
+        )
+    supplied = x_api_key or ""
+    if not secrets.compare_digest(supplied.encode("utf-8"), expected.encode("utf-8")):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or missing X-Api-Key",
         )
+
+
+@app.exception_handler(Exception)
+async def redact_unhandled_error(request: Request, error: Exception) -> JSONResponse:
+    logger.exception("Unhandled API error path=%s", request.url.path, exc_info=error)
+    return JSONResponse(
+        {"detail": "Internal service error."},
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+    )
 
 
 @app.get("/health")
@@ -164,18 +209,21 @@ async def health() -> JSONResponse:
     try:
         mongo_ok = await state.mongo.ping()
     except Exception as ex:
-        errors.append(f"mongo: {ex}")
+        logger.warning("Mongo health check failed", exc_info=ex)
+        errors.append("mongo unavailable")
     try:
         qdrant_ok = await state.store.ping()
     except Exception as ex:
-        errors.append(f"qdrant: {ex}")
+        logger.warning("Qdrant health check failed", exc_info=ex)
+        errors.append("qdrant unavailable")
     if mongo_ok:
         try:
-            scheduler_status = (
-                await state.scheduler.status()
-            ).model_dump(by_alias=True, mode="json")
+            scheduler_status = (await state.scheduler.status()).model_dump(
+                by_alias=True, mode="json"
+            )
         except Exception as ex:
-            errors.append(f"scheduler: {ex}")
+            logger.warning("Scheduler health check failed", exc_info=ex)
+            errors.append("scheduler unavailable")
 
     healthy = mongo_ok and qdrant_ok
     body = {
@@ -260,7 +308,13 @@ async def query(body: QueryRequest) -> QueryResponse:
 async def index_templates(body: AdTemplateIndexRequest) -> AdTemplateIndexResponse:
     """Upsert few-shot ad templates (owned by content-creator-v2)."""
     cleaned = normalize_upsert_items(body.templates)
-    return await state.templates.index(AdTemplateIndexRequest(templates=cleaned))
+    return await state.templates.index(
+        AdTemplateIndexRequest(
+            templates=cleaned,
+            ownerId=body.owner_id,
+            visibility=body.visibility,
+        )
+    )
 
 
 @app.post(
@@ -280,13 +334,16 @@ async def query_templates(body: AdTemplateQueryRequest) -> AdTemplateQueryRespon
     response_model_by_alias=True,
     dependencies=[Depends(require_api_key)],
 )
-async def get_page_markdown(page_id: str) -> PageMarkdownResponse:
+async def get_page_markdown(
+    page_id: str,
+    run_id: Annotated[str, ApiQuery(alias="runId", min_length=1)],
+) -> PageMarkdownResponse:
     """Return Mongo Markdown for citation reads (404 if missing or empty)."""
     page = await state.mongo.get_page(page_id)
-    if page is None or not page.markdown:
+    if page is None or page.run_id != run_id or not page.markdown:
         raise HTTPException(
             status_code=404,
-            detail=f"No Markdown for pageId={page_id}",
+            detail="No Markdown for the authorized page.",
         )
     return PageMarkdownResponse(
         page_id=page.id,
@@ -333,3 +390,75 @@ async def get_page_markdown_by_url(run_id: str, url: str) -> PageMarkdownRespons
 async def generate(body: GenerateRequest) -> GenerateResponse:
     """Citeable multi-step generate: retrieve → read Markdown → draft → verify."""
     return await state.generate.generate(body)
+
+
+@app.post(
+    "/v1/assets/index",
+    response_model=AssetIndexResponse,
+    response_model_by_alias=True,
+    dependencies=[Depends(require_api_key)],
+)
+async def index_asset(body: AssetIndexRequest) -> AssetIndexResponse:
+    """Index one immutable Knowledge resource; GeekRepository remains authoritative."""
+    return await state.assets.index(body)
+
+
+@app.post(
+    "/v1/context/assets/index",
+    response_model=AssetIndexResponse,
+    response_model_by_alias=True,
+    dependencies=[Depends(require_api_key)],
+)
+async def index_trusted_asset(body: TrustedAssetIndexRequest) -> AssetIndexResponse:
+    """Index one GeekAPI-authoritative revision over the authenticated service boundary."""
+    if not state.settings.context_asset_indexing_enabled:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    return await state.assets.index_trusted(body)
+
+
+@app.post(
+    "/v1/context/assets/delete",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_api_key)],
+)
+async def delete_trusted_asset(body: TrustedAssetDeleteRequest) -> None:
+    """Tombstone one exact owner-scoped resource after authoritative revocation."""
+    if not state.settings.context_asset_indexing_enabled:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    await state.assets.delete_trusted(body)
+
+
+@app.post(
+    "/v1/context/assets/query",
+    response_model=ManifestQueryResponse,
+    response_model_by_alias=True,
+    dependencies=[Depends(require_api_key)],
+)
+async def query_runtime_assets(
+    body: RuntimeManifestQueryRequest,
+) -> ManifestQueryResponse:
+    """Retrieve only revisions authorized by GeekAPI's persisted signed manifest."""
+    if not state.settings.context_manifest_query_enabled:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    return await state.assets.query_runtime(body)
+
+
+@app.post(
+    "/v1/assets/delete",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_api_key)],
+)
+async def delete_asset(body: AssetDeleteRequest) -> None:
+    """Delete only an exact revision authorized by a verified manifest entry."""
+    await state.assets.delete(body)
+
+
+@app.post(
+    "/v1/assets/query",
+    response_model=ManifestQueryResponse,
+    response_model_by_alias=True,
+    dependencies=[Depends(require_api_key)],
+)
+async def query_assets(body: ManifestQueryRequest) -> ManifestQueryResponse:
+    """Query only exact entries from a digest- and signature-verified manifest."""
+    return await state.assets.query(body)

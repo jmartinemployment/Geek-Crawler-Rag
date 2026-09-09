@@ -30,6 +30,8 @@ class DenseRetriever(Protocol):
         *,
         run_id: str,
         top_k: int,
+        owner_id: str = "system:crawler",
+        visibility: str = "service",
         crawl_type: str | None = None,
         host: str | None = None,
         chunk_role: str | None = None,
@@ -95,7 +97,10 @@ class QueryService:
     async def _query_hybrid(self, request: QueryRequest) -> QueryResponse:
         host = None
         if request.host:
-            host = host_from_origin_or_url(request.host, request.host) or request.host.lower().strip()
+            host = (
+                host_from_origin_or_url(request.host, request.host)
+                or request.host.lower().strip()
+            )
 
         chunk_role = (request.chunk_role or "").strip().lower() or None
         search_role = chunk_role
@@ -108,6 +113,8 @@ class QueryService:
                 request.need,
                 run_id=request.run_id,
                 top_k=dense_limit,
+                owner_id=request.owner_id,
+                visibility=request.visibility,
                 crawl_type=request.crawl_type,
                 host=host,
                 chunk_role=search_role,
@@ -119,6 +126,8 @@ class QueryService:
             lexical_hits = await self._store.search_text(
                 request.need,
                 run_id=request.run_id,
+                owner_id=request.owner_id,
+                visibility=request.visibility,
                 crawl_type=request.crawl_type,
                 host=host,
                 top_k=self._settings.hybrid_lexical_limit,
@@ -133,7 +142,7 @@ class QueryService:
             return QueryResponse(
                 run_id=request.run_id,
                 chunks=[],
-                warning=f"Query failed: {ex}",
+                warning="Query failed due to an internal retrieval error.",
                 retrieval="error",
             )
 
@@ -158,7 +167,9 @@ class QueryService:
         id_to_cand = {c["id"]: c for c in candidates}
         fused_candidates = [id_to_cand[i] for i, _ in fused if i in id_to_cand]
 
-        pool_n = min(len(fused_candidates), max(request.top_k, self._settings.rerank_pool_size))
+        pool_n = min(
+            len(fused_candidates), max(request.top_k, self._settings.rerank_pool_size)
+        )
         pool = fused_candidates[:pool_n]
         rerank_docs = [_return_text(c["payload"], request) for c in pool]
         ranked = await self._reranker.rerank(
@@ -166,7 +177,7 @@ class QueryService:
         )
 
         chunks: list[ChunkHit] = []
-        for orig_idx, rerank_score in ranked:
+        for rank, (orig_idx, rerank_score) in enumerate(ranked, 1):
             cand = pool[orig_idx]
             payload = cand["payload"]
             text = _return_text(payload, request)
@@ -175,6 +186,8 @@ class QueryService:
             page_id = payload.get("pageId")
             chunks.append(
                 ChunkHit(
+                    point_id=cand["id"],
+                    chunk_id=str(payload.get("chunkId") or cand["id"]),
                     run_id=str(payload.get("runId") or request.run_id),
                     crawl_type=str(payload.get("crawlType") or ""),
                     host=str(payload.get("host") or ""),
@@ -197,11 +210,26 @@ class QueryService:
                     section_title=payload.get("sectionTitle"),
                     quality_score=_as_float(payload.get("qualityScore")),
                     dense_score=_as_float(cand.get("dense_score")),
-                    rerank_score=float(rerank_score) if self._reranker.enabled else None,
+                    rerank_score=float(rerank_score)
+                    if self._reranker.enabled
+                    else None,
+                    lexical_score=None,
+                    source_digest=payload.get("sourceDigest"),
+                    parser_id=payload.get("parserId"),
+                    parser_version=payload.get("parserVersion"),
+                    chunker_id=payload.get("chunkerId"),
+                    chunker_version=payload.get("chunkerVersion"),
+                    embedding_model=payload.get("embeddingModel"),
+                    retrieval_policy_version="crawler-hybrid.v2",
+                    rank=rank,
                 )
             )
 
-        retrieval = "llamaindex-hybrid+rerank" if self._reranker.enabled else "llamaindex-hybrid"
+        retrieval = (
+            "llamaindex-hybrid+rerank"
+            if self._reranker.enabled
+            else "llamaindex-hybrid"
+        )
         warning = None
         if not chunks:
             warning = f"No chunks for runId={request.run_id}; notify-and-skip research"

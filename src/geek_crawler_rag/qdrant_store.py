@@ -9,6 +9,8 @@ from typing import Any
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.http import models as qm
 
+from geek_crawler_rag.context_models import ManifestEntry
+
 logger = logging.getLogger(__name__)
 
 # Stable namespace for deterministic point IDs.
@@ -57,6 +59,22 @@ class QdrantStore:
             "runId",
             "crawlType",
             "host",
+            "ownerId",
+            "visibility",
+            "manifestEligible",
+            "assetId",
+            "assetVersionId",
+            "resourceId",
+            "resourceDigest",
+            "sourceDigest",
+            "lifecycle",
+            "freshness",
+            "parserId",
+            "parserVersion",
+            "chunkerId",
+            "chunkerVersion",
+            "embeddingModel",
+            "chunkId",
             "language",
             "chunkRole",
             "sourceType",
@@ -72,7 +90,9 @@ class QdrantStore:
                     field_schema=qm.PayloadSchemaType.KEYWORD,
                 )
             except Exception:
-                logger.debug("Payload index %s already present or create skipped", field)
+                logger.debug(
+                    "Payload index %s already present or create skipped", field
+                )
 
         for field in ("childText", "text", "parentText"):
             try:
@@ -93,7 +113,13 @@ class QdrantStore:
         except Exception:
             logger.debug("Payload index qualityScore already present or create skipped")
 
-    async def delete_by_run_id(self, run_id: str) -> None:
+    async def delete_by_run_id(
+        self,
+        run_id: str,
+        *,
+        owner_id: str = "system:crawler",
+        visibility: str = "service",
+    ) -> None:
         await self._client.delete(
             collection_name=self._collection,
             points_selector=qm.FilterSelector(
@@ -102,7 +128,14 @@ class QdrantStore:
                         qm.FieldCondition(
                             key="runId",
                             match=qm.MatchValue(value=run_id),
-                        )
+                        ),
+                        qm.FieldCondition(
+                            key="ownerId", match=qm.MatchValue(value=owner_id)
+                        ),
+                        qm.FieldCondition(
+                            key="visibility",
+                            match=qm.MatchValue(value=visibility),
+                        ),
                     ]
                 )
             ),
@@ -110,7 +143,13 @@ class QdrantStore:
         )
         logger.info("Deleted Qdrant points for runId=%s", run_id)
 
-    async def delete_by_page_id(self, page_id: str) -> None:
+    async def delete_by_page_id(
+        self,
+        page_id: str,
+        *,
+        owner_id: str = "system:crawler",
+        visibility: str = "service",
+    ) -> None:
         if not page_id:
             return
         await self._client.delete(
@@ -121,7 +160,73 @@ class QdrantStore:
                         qm.FieldCondition(
                             key="pageId",
                             match=qm.MatchValue(value=page_id),
-                        )
+                        ),
+                        qm.FieldCondition(
+                            key="ownerId", match=qm.MatchValue(value=owner_id)
+                        ),
+                        qm.FieldCondition(
+                            key="visibility",
+                            match=qm.MatchValue(value=visibility),
+                        ),
+                    ]
+                )
+            ),
+            wait=True,
+        )
+
+    async def delete_asset_revision(self, entry: ManifestEntry) -> None:
+        await self._client.delete(
+            collection_name=self._collection,
+            points_selector=qm.FilterSelector(
+                filter=qm.Filter(
+                    must=[
+                        qm.FieldCondition(
+                            key="ownerId", match=qm.MatchValue(value=entry.owner_id)
+                        ),
+                        qm.FieldCondition(
+                            key="assetId", match=qm.MatchValue(value=entry.asset_id)
+                        ),
+                        qm.FieldCondition(
+                            key="assetVersionId",
+                            match=qm.MatchValue(value=entry.asset_version_id),
+                        ),
+                        qm.FieldCondition(
+                            key="resourceId",
+                            match=qm.MatchValue(value=entry.resource_id),
+                        ),
+                        qm.FieldCondition(
+                            key="resourceDigest",
+                            match=qm.MatchValue(value=entry.resource_digest),
+                        ),
+                        qm.FieldCondition(
+                            key="sourceDigest",
+                            match=qm.MatchValue(value=entry.source_digest),
+                        ),
+                    ]
+                )
+            ),
+            wait=True,
+        )
+
+    async def delete_trusted_asset_revision(
+        self, *, owner_id: str, asset_version_id: str, resource_id: str
+    ) -> None:
+        await self._client.delete(
+            collection_name=self._collection,
+            points_selector=qm.FilterSelector(
+                filter=qm.Filter(
+                    must=[
+                        qm.FieldCondition(
+                            key="ownerId", match=qm.MatchValue(value=owner_id)
+                        ),
+                        qm.FieldCondition(
+                            key="assetVersionId",
+                            match=qm.MatchValue(value=asset_version_id),
+                        ),
+                        qm.FieldCondition(
+                            key="resourceId",
+                            match=qm.MatchValue(value=resource_id),
+                        ),
                     ]
                 )
             ),
@@ -153,6 +258,8 @@ class QdrantStore:
         self,
         *,
         run_id: str,
+        owner_id: str = "system:crawler",
+        visibility: str = "service",
         crawl_type: str | None = None,
         host: str | None = None,
         chunk_role: str | None = None,
@@ -163,6 +270,8 @@ class QdrantStore:
     ) -> qm.Filter:
         must: list[qm.Condition] = [
             qm.FieldCondition(key="runId", match=qm.MatchValue(value=run_id)),
+            qm.FieldCondition(key="ownerId", match=qm.MatchValue(value=owner_id)),
+            qm.FieldCondition(key="visibility", match=qm.MatchValue(value=visibility)),
             qm.FieldCondition(key="language", match=qm.MatchValue(value="en")),
         ]
         if crawl_type:
@@ -190,7 +299,9 @@ class QdrantStore:
             must.append(
                 qm.FieldCondition(
                     key="sourceType",
-                    match=qm.MatchAny(any=[s.strip().lower() for s in source_types if s]),
+                    match=qm.MatchAny(
+                        any=[s.strip().lower() for s in source_types if s]
+                    ),
                 )
             )
         if entity_names:
@@ -216,11 +327,123 @@ class QdrantStore:
             )
         return qm.Filter(must=must)
 
+    def build_asset_filter(
+        self, *, owner_id: str, entries: list[ManifestEntry]
+    ) -> qm.Filter:
+        if not entries:
+            raise ValueError("A verified manifest must contain allowed entries.")
+        exact_entries: list[qm.Condition] = []
+        for entry in entries:
+            if entry.owner_id != owner_id:
+                raise ValueError("Manifest entry owner mismatch.")
+            exact_entries.append(
+                qm.Filter(
+                    must=[
+                        qm.FieldCondition(
+                            key="assetId", match=qm.MatchValue(value=entry.asset_id)
+                        ),
+                        qm.FieldCondition(
+                            key="assetVersionId",
+                            match=qm.MatchValue(value=entry.asset_version_id),
+                        ),
+                        qm.FieldCondition(
+                            key="resourceId",
+                            match=qm.MatchValue(value=entry.resource_id),
+                        ),
+                        qm.FieldCondition(
+                            key="resourceDigest",
+                            match=qm.MatchValue(value=entry.resource_digest),
+                        ),
+                        qm.FieldCondition(
+                            key="sourceDigest",
+                            match=qm.MatchValue(value=entry.source_digest),
+                        ),
+                        qm.FieldCondition(
+                            key="visibility",
+                            match=qm.MatchValue(value=entry.visibility.value),
+                        ),
+                    ]
+                )
+            )
+        return qm.Filter(
+            must=[
+                qm.FieldCondition(key="ownerId", match=qm.MatchValue(value=owner_id)),
+                qm.FieldCondition(
+                    key="manifestEligible", match=qm.MatchValue(value=True)
+                ),
+            ],
+            should=exact_entries,
+            min_should=qm.MinShould(conditions=exact_entries, min_count=1),
+        )
+
+    async def search_assets(
+        self,
+        vector: list[float],
+        *,
+        owner_id: str,
+        entries: list[ManifestEntry],
+        top_k: int,
+    ) -> list[qm.ScoredPoint]:
+        result = await self._client.query_points(
+            collection_name=self._collection,
+            query=vector,
+            query_filter=self.build_asset_filter(owner_id=owner_id, entries=entries),
+            limit=top_k,
+            with_payload=True,
+        )
+        return list(result.points)
+
+    async def search_asset_versions(
+        self,
+        vector: list[float],
+        *,
+        owner_id: str,
+        allowed_versions: list[tuple[str, str]],
+        top_k: int,
+    ) -> list[qm.ScoredPoint]:
+        if not allowed_versions:
+            return []
+        exact_versions: list[qm.Condition] = [
+            qm.Filter(
+                must=[
+                    qm.FieldCondition(
+                        key="assetId", match=qm.MatchValue(value=asset_id)
+                    ),
+                    qm.FieldCondition(
+                        key="assetVersionId",
+                        match=qm.MatchValue(value=asset_version_id),
+                    ),
+                ]
+            )
+            for asset_id, asset_version_id in allowed_versions
+        ]
+        result = await self._client.query_points(
+            collection_name=self._collection,
+            query=vector,
+            query_filter=qm.Filter(
+                must=[
+                    qm.FieldCondition(
+                        key="ownerId", match=qm.MatchValue(value=owner_id)
+                    ),
+                    qm.FieldCondition(
+                        key="manifestEligible", match=qm.MatchValue(value=True)
+                    ),
+                ],
+                should=exact_versions,
+                min_should=qm.MinShould(conditions=exact_versions, min_count=1),
+            ),
+            limit=top_k,
+            with_payload=True,
+        )
+        return list(result.points)
+
     async def search(
         self,
         vector: list[float],
         *,
         run_id: str,
+        owner_id: str = "system:crawler",
+        visibility: str = "service",
         crawl_type: str | None = None,
         host: str | None = None,
         top_k: int = 8,
@@ -232,6 +455,8 @@ class QdrantStore:
     ) -> list[qm.ScoredPoint]:
         query_filter = self.build_filter(
             run_id=run_id,
+            owner_id=owner_id,
+            visibility=visibility,
             crawl_type=crawl_type,
             host=host,
             chunk_role=chunk_role,
@@ -254,6 +479,8 @@ class QdrantStore:
         text: str,
         *,
         run_id: str,
+        owner_id: str = "system:crawler",
+        visibility: str = "service",
         crawl_type: str | None = None,
         host: str | None = None,
         top_k: int = 8,
@@ -267,6 +494,8 @@ class QdrantStore:
         """Keyword/full-text style retrieval via payload TEXT indexes."""
         base = self.build_filter(
             run_id=run_id,
+            owner_id=owner_id,
+            visibility=visibility,
             crawl_type=crawl_type,
             host=host,
             chunk_role=chunk_role,

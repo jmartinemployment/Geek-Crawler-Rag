@@ -16,7 +16,12 @@ from llama_index.core.schema import TextNode
 from geek_crawler_rag.config import Settings
 from geek_crawler_rag.extract import host_from_origin_or_url
 from geek_crawler_rag.llama_nodes import page_to_nodes
-from geek_crawler_rag.models import TERMINAL_CRAWL_STATUSES, IndexState, IndexStatusResponse, utc_now
+from geek_crawler_rag.models import (
+    TERMINAL_CRAWL_STATUSES,
+    IndexState,
+    IndexStatusResponse,
+    utc_now,
+)
 from geek_crawler_rag.mongo import CrawlPage, MongoCorpus
 from geek_crawler_rag.qdrant_store import QdrantStore
 from geek_crawler_rag.status_store import IndexStatusStore
@@ -71,7 +76,9 @@ class IndexService:
             if recovered:
                 logger.warning("Recovered %s stale index job(s)", len(recovered))
         if self._worker_task is None or self._worker_task.done():
-            self._worker_task = asyncio.create_task(self._worker_loop(), name="index-worker")
+            self._worker_task = asyncio.create_task(
+                self._worker_loop(), name="index-worker"
+            )
 
     async def stop(self) -> None:
         if self._worker_task and not self._worker_task.done():
@@ -165,7 +172,9 @@ class IndexService:
                     )
                     return False
             except Exception:
-                logger.exception("Failed to persist index status for runId=%s", status.run_id)
+                logger.exception(
+                    "Failed to persist index status for runId=%s", status.run_id
+                )
                 return False
         if self._webhook is not None:
             await self._webhook.notify(status)
@@ -314,11 +323,29 @@ class IndexService:
 
     async def _safe_cleanup(self, run_id: str) -> None:
         try:
-            await self._store.delete_by_run_id(run_id)
+            await self._delete_run_points(run_id)
         except Exception:
-            logger.exception("Failed to clean Qdrant points after failure for runId=%s", run_id)
+            logger.exception(
+                "Failed to clean Qdrant points after failure for runId=%s", run_id
+            )
 
-    async def _delete_unusable(self, page: CrawlPage, reason: str, status: IndexStatusResponse) -> None:
+    async def _delete_run_points(self, run_id: str) -> None:
+        await self._store.delete_by_run_id(
+            run_id,
+            owner_id=self._settings.crawler_owner_id,
+            visibility=self._settings.crawler_visibility,
+        )
+
+    async def _delete_page_points(self, page_id: str) -> None:
+        await self._store.delete_by_page_id(
+            page_id,
+            owner_id=self._settings.crawler_owner_id,
+            visibility=self._settings.crawler_visibility,
+        )
+
+    async def _delete_unusable(
+        self, page: CrawlPage, reason: str, status: IndexStatusResponse
+    ) -> None:
         if reason == "locale":
             status.pages_deleted_locale += 1
         elif reason == "failure":
@@ -330,9 +357,11 @@ class IndexService:
         try:
             await self._mongo.delete_page(page.id)
         except Exception:
-            logger.exception("Failed deleting unusable Mongo page id=%s reason=%s", page.id, reason)
+            logger.exception(
+                "Failed deleting unusable Mongo page id=%s reason=%s", page.id, reason
+            )
         try:
-            await self._store.delete_by_page_id(page.id)
+            await self._delete_page_points(page.id)
         except Exception:
             logger.debug("Qdrant pageId delete skipped id=%s", page.id, exc_info=True)
 
@@ -400,7 +429,7 @@ class IndexService:
             return
 
         if mongo_page_count == 0:
-            await self._store.delete_by_run_id(run_id)
+            await self._delete_run_points(run_id)
             status.state = IndexState.COMPLETE
             status.error = "No Mongo pages for run"
             status.finished_at_utc = utc_now()
@@ -409,7 +438,7 @@ class IndexService:
             return
 
         await self._store.ensure_collection()
-        await self._store.delete_by_run_id(run_id)
+        await self._delete_run_points(run_id)
 
         pending: list[TextNode] = []
         entity_cache: dict[str, object] = {}
@@ -474,7 +503,7 @@ class IndexService:
         except Exception as ex:
             self._sync_embedding_stats(status, embedding_baseline)
             status.state = IndexState.FAILED
-            status.error = str(ex)
+            status.error = "Indexing failed due to an internal service error."
             status.finished_at_utc = utc_now()
             logger.exception("Index failed for runId=%s: %s", run_id, ex)
             await self._safe_cleanup(run_id)

@@ -7,26 +7,39 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import hmac
 import json
 import logging
 import re
+from datetime import UTC, datetime
 from typing import Any
-from datetime import datetime, timezone
 
-from llama_index.core.workflow import Context, Event, StartEvent, StopEvent, Workflow, step
+from llama_index.core.workflow import (
+    Context,
+    Event,
+    StartEvent,
+    StopEvent,
+    Workflow,
+    step,
+)
 from openai import AsyncOpenAI
 
-from geek_crawler_rag.agents import StageAgentExecutor, create_production_llm
 from geek_crawler_rag.agent_models import (
-    AgentFailure,
     AgentExecutionProvenance,
+    AgentFailure,
     AgentStopReason,
     SignedSkillExecutionEnvelopeV2,
     SpecialistCitation,
     SpecialistContribution,
     SpecialistReview,
 )
+from geek_crawler_rag.agents import StageAgentExecutor, create_production_llm
+from geek_crawler_rag.asset_context import AssetContextService
 from geek_crawler_rag.config import Settings
+from geek_crawler_rag.context_models import (
+    RuntimeManifestQueryRequest,
+    verify_persisted_manifest,
+)
 from geek_crawler_rag.models import (
     AGENT_EXECUTION_VERSION,
     ChunkHit,
@@ -50,16 +63,21 @@ from geek_crawler_rag.skills import (
     verify_agent_execution,
     verify_snapshot,
 )
-from geek_crawler_rag.tools import BudgetExhausted, ToolDenied
 from geek_crawler_rag.specialists import (
-    ResearchPlanningSpecialist,
     SPECIALIST_TYPES,
+    ResearchPlanningSpecialist,
     SpecialistExecutionContext,
 )
+from geek_crawler_rag.tools import BudgetExhausted, ToolDenied
 
 logger = logging.getLogger(__name__)
 
 _WS = re.compile(r"\s+")
+
+
+class GovernedOutputError(ValueError):
+    """Deterministic governed-policy validation failure."""
+
 
 _LONG_FORM = frozenset({"technical article", "case study"})
 _SHORT_FORM = frozenset({"social ad", "short form"})
@@ -177,21 +195,36 @@ def verify_citations(
     sources: list[GenerateSource],
     pages: list[dict[str, Any]],
 ) -> tuple[list[GenerateCitation], int]:
-    """Keep only citations whose URL and verbatim quote match loaded evidence."""
-    md_by_url = {
-        str(page.get("url") or "").lower(): str(page.get("markdown") or "")
+    """Keep citations only when source identity, digest, and quote agree."""
+    pages_by_identity = {
+        (
+            str(page.get("pageId") or ""),
+            str(page.get("url") or "").lower(),
+        ): page
         for page in pages
         if page.get("url") and page.get("markdown")
     }
-    allowed_urls = {source.url.lower() for source in sources if source.url}
+    allowed_sources = {
+        (str(source.page_id or ""), source.url.lower())
+        for source in sources
+        if source.url
+    }
     kept: list[GenerateCitation] = []
     dropped = 0
     for citation in citations:
         url_key = citation.url.lower()
-        body = md_by_url.get(url_key) or ""
+        identity = (str(citation.page_id or ""), url_key)
+        page = pages_by_identity.get(identity)
+        body = str((page or {}).get("markdown") or "")
+        body_digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
         if (
-            (allowed_urls and url_key not in allowed_urls)
+            (allowed_sources and identity not in allowed_sources)
+            or page is None
             or not body
+            or (
+                citation.source_digest is not None
+                and not hmac.compare_digest(citation.source_digest, body_digest)
+            )
             or not quote_in_markdown(citation.quote, body)
         ):
             dropped += 1
@@ -250,12 +283,14 @@ class CiteableGenerateWorkflow(Workflow):
         mongo: MongoCorpus,
         query: QueryService,
         settings: Settings,
+        assets: AssetContextService | None = None,
         timeout: float = 300.0,
     ) -> None:
         super().__init__(timeout=timeout)
         self._mongo = mongo
         self._query = query
         self._settings = settings
+        self._assets = assets
         self._openai = AsyncOpenAI(api_key=settings.openai_api_key or "missing")
 
     @step
@@ -284,11 +319,11 @@ class CiteableGenerateWorkflow(Workflow):
         themes: list[ThemeHit] = []
         retrieval_labels: list[str] = []
 
-        entities = [e.strip() for e in (req.target_entities or []) if e and e.strip()][:12]
+        entities = [e.strip() for e in (req.target_entities or []) if e and e.strip()][
+            :12
+        ]
         brief_retrieval_context = _brief_retrieval_context(req)
-        need = (
-            f"research for writing intent: {req.writing_intent}; topic: {req.topic[:200]}"
-        )
+        need = f"research for writing intent: {req.writing_intent}; topic: {req.topic[:200]}"
         if brief_retrieval_context:
             need += f"; canonical brief: {brief_retrieval_context}"
         if _stage(req) in {"section", "repair"} and req.section_heading:
@@ -330,7 +365,8 @@ class CiteableGenerateWorkflow(Workflow):
         return RetrievedEvent(
             chunks=chunks,
             themes=themes,
-            retrieval=retrieval_mode or (retrieval_labels[0] if retrieval_labels else "hybrid"),
+            retrieval=retrieval_mode
+            or (retrieval_labels[0] if retrieval_labels else "hybrid"),
             warnings=warnings,
         )
 
@@ -342,10 +378,77 @@ class CiteableGenerateWorkflow(Workflow):
         seen: set[str] = set()
         pages: list[dict[str, Any]] = []
 
+        if self._assets is not None and req.context_manifest is not None:
+            need = f"{req.writing_intent}: {req.topic[:400]}"
+            if req.section_heading:
+                need += f"; section: {req.section_heading[:160]}"
+            asset_result = await self._assets.query_runtime(
+                RuntimeManifestQueryRequest(
+                    need=need,
+                    manifest=req.context_manifest,
+                    topK=max_pages,
+                )
+            )
+            for evidence in asset_result.evidence:
+                url = (
+                    f"knowledge://{evidence.asset_id}/{evidence.asset_version_id}/"
+                    f"{evidence.resource_id}#{evidence.coordinates.start_char or 0}-"
+                    f"{evidence.coordinates.end_char or len(evidence.text)}"
+                )
+                seen.add(evidence.point_id)
+                pages.append(
+                    {
+                        "pageId": evidence.point_id,
+                        "url": url,
+                        "title": f"Governed Knowledge {evidence.asset_id}",
+                        "sectionTitle": None,
+                        "crawlType": "knowledge",
+                        "entityName": None,
+                        "markdown": evidence.text,
+                        "preview": evidence.text[:500],
+                        "sourceDigest": hashlib.sha256(
+                            evidence.text.encode("utf-8")
+                        ).hexdigest(),
+                    }
+                )
+        for context in req.governed_context or []:
+            if context.kind != "product" or len(pages) >= max_pages:
+                continue
+            body = json.dumps(
+                {
+                    "payload": context.payload,
+                    "approvedClaims": context.approved_claims or [],
+                    "prohibitedClaims": context.prohibited_claims or [],
+                    "mandatoryDisclaimers": context.mandatory_disclaimers or [],
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            page_id = f"governed-product-{context.version_id}"
+            seen.add(page_id)
+            pages.append(
+                {
+                    "pageId": page_id,
+                    "url": f"context://product/{context.stable_id}/{context.version_id}",
+                    "title": f"Governed Product {context.stable_id}",
+                    "sectionTitle": None,
+                    "crawlType": "governed-product",
+                    "entityName": None,
+                    "markdown": body,
+                    "preview": body[:500],
+                    "sourceDigest": hashlib.sha256(body.encode("utf-8")).hexdigest(),
+                }
+            )
+
         # Final synthesis can carry the exact source manifest used by earlier stages.
         # Reload its Markdown here so citation verification remains mandatory.
         for source in req.input_sources or []:
-            page = await self._mongo.get_page(source.page_id) if source.page_id else None
+            if len(pages) >= max_pages:
+                break
+            page = (
+                await self._mongo.get_page(source.page_id) if source.page_id else None
+            )
             if page is None and source.url:
                 crawl_type = (source.crawl_type or "").strip().casefold()
                 if crawl_type in {"competitor", "competitors"}:
@@ -358,7 +461,17 @@ class CiteableGenerateWorkflow(Workflow):
                     page = await self._mongo.get_page_by_url(
                         run_id=run_id, url=source.url
                     )
-            if page is None or not page.markdown:
+            allowed_run_ids = {
+                run_id
+                for run_id in (req.partner_run_id, req.competitor_run_id)
+                if run_id
+            }
+            if (
+                page is None
+                or page.run_id not in allowed_run_ids
+                or not page.markdown
+                or source.url.lower() not in {page.url.lower(), page.final_url.lower()}
+            ):
                 continue
             key = page.id or page.final_url or page.url
             if not key or key in seen:
@@ -374,6 +487,9 @@ class CiteableGenerateWorkflow(Workflow):
                     "entityName": source.entity,
                     "markdown": page.markdown[:max_chars],
                     "preview": page.markdown[:500],
+                    "sourceDigest": hashlib.sha256(
+                        page.markdown.encode("utf-8")
+                    ).hexdigest(),
                 }
             )
             if len(pages) >= max_pages:
@@ -395,7 +511,12 @@ class CiteableGenerateWorkflow(Workflow):
             url = hit.final_url or hit.url
             if hit.page_id:
                 page = await self._mongo.get_page(hit.page_id)
-                if page and page.markdown:
+                if (
+                    page
+                    and page.markdown
+                    and page.run_id == hit.run_id
+                    and page.run_id in {req.partner_run_id, req.competitor_run_id}
+                ):
                     markdown = page.markdown
                     title = page.title or title
                     url = page.final_url or page.url or url
@@ -420,6 +541,9 @@ class CiteableGenerateWorkflow(Workflow):
                     "entityName": hit.entity_name,
                     "markdown": markdown[:max_chars],
                     "preview": (hit.text or "")[:500],
+                    "sourceDigest": hashlib.sha256(
+                        markdown[:max_chars].encode("utf-8")
+                    ).hexdigest(),
                 }
             )
         warnings = list(ev.warnings)
@@ -596,7 +720,11 @@ class CiteableGenerateWorkflow(Workflow):
         }
         specialist_citations = [
             SpecialistCitation.model_validate(
-                citation.model_dump(by_alias=True, mode="json")
+                citation.model_dump(
+                    by_alias=True,
+                    mode="json",
+                    exclude={"source_digest", "coordinates"},
+                )
             )
             for citation in kept
         ]
@@ -688,9 +816,7 @@ class CiteableGenerateWorkflow(Workflow):
                     model_used=ev.model_used,
                     model_policy_preset=req.model_policy_preset,
                     model_policy_version=(
-                        req.model_policy_version
-                        if req.model_policy_preset
-                        else None
+                        req.model_policy_version if req.model_policy_preset else None
                     ),
                     prompt_version=_PROMPT_VERSIONS[_stage(req)],
                     retrieval=ev.retrieval,
@@ -754,10 +880,12 @@ class GenerateService:
         mongo: MongoCorpus,
         query: QueryService,
         settings: Settings,
+        assets: AssetContextService | None = None,
     ) -> None:
         self._mongo = mongo
         self._query = query
         self._settings = settings
+        self._assets = assets
         self._seen_stage_executions: dict[str, str] = {}
         self._replay_lock = asyncio.Lock()
 
@@ -769,6 +897,38 @@ class GenerateService:
                 provenance=_empty_provenance(request, "disabled"),
             )
         try:
+            if (
+                request.execution_version == AGENT_EXECUTION_VERSION
+                and self._settings.context_manifest_signing_keys
+                and request.context_manifest is None
+            ):
+                raise SkillSnapshotError(
+                    "v3 execution requires a signed context manifest."
+                )
+            if request.context_manifest is not None:
+                context_payload = verify_persisted_manifest(
+                    request.context_manifest,
+                    self._settings.context_manifest_signing_keys,
+                )
+                if request.job_id != context_payload.job_id:
+                    raise SkillSnapshotError(
+                        "Context manifest job binding does not match request."
+                    )
+                expected = {
+                    (entry.context_kind, entry.version_id, entry.content_sha256)
+                    for entry in context_payload.entries
+                    if entry.context_kind
+                    in {"audience", "style_guide", "product_schema", "product"}
+                    and entry.version_id is not None
+                }
+                supplied = {
+                    (entry.kind, entry.version_id, entry.digest)
+                    for entry in request.governed_context or []
+                }
+                if supplied != expected:
+                    raise SkillSnapshotError(
+                        "Governed context payload does not match signed manifest."
+                    )
             if request.execution_version == AGENT_EXECUTION_VERSION:
                 envelope = request.skill_execution
                 if not isinstance(envelope, SignedSkillExecutionEnvelopeV2):
@@ -782,10 +942,12 @@ class GenerateService:
                 agent_key = self._signing_key(execution.signature_key_id)
                 verify_snapshot(envelope, skill_key)
                 verify_agent_execution(execution, agent_key)
-                now = datetime.now(timezone.utc)
+                now = datetime.now(UTC)
                 skew = self._settings.agent_execution_clock_skew_seconds
                 if execution.issued_at_utc.timestamp() - skew > now.timestamp():
-                    raise SkillSnapshotError("Agent execution snapshot is not yet valid.")
+                    raise SkillSnapshotError(
+                        "Agent execution snapshot is not yet valid."
+                    )
                 if execution.expires_at_utc.timestamp() + skew < now.timestamp():
                     raise SkillSnapshotError("Agent execution snapshot has expired.")
                 if self._settings.agent_execution_replay_protection:
@@ -797,6 +959,23 @@ class GenerateService:
                             raise SkillSnapshotError(
                                 "Agent stage execution replay was rejected."
                             )
+                        durable_claim = getattr(
+                            self._mongo, "claim_stage_execution", None
+                        )
+                        if callable(durable_claim):
+                            claimed = await durable_claim(
+                                stage_execution_id=execution.stage_execution_id,
+                                idempotency_key=execution.idempotency_key,
+                                expires_at_utc=execution.expires_at_utc,
+                            )
+                            if not claimed:
+                                raise SkillSnapshotError(
+                                    "Agent stage execution replay was rejected."
+                                )
+                        elif not self._settings.local_test_mode:
+                            logger.warning(
+                                "Replay store adapter unavailable; process guard remains active."
+                            )
                         self._seen_stage_executions[execution.stage_execution_id] = (
                             execution.idempotency_key
                         )
@@ -804,8 +983,13 @@ class GenerateService:
                 mongo=self._mongo,
                 query=self._query,
                 settings=self._settings,
+                assets=self._assets,
             )
             result = await wf.run(request=request)
+            if isinstance(result, GenerateResponse):
+                violations = _governed_output_violations(request, result)
+                if violations:
+                    raise GovernedOutputError("; ".join(violations))
         except BaseException as ex:
             if request.execution_version != AGENT_EXECUTION_VERSION:
                 raise
@@ -847,7 +1031,10 @@ def _agent_failure(
     if isinstance(error, asyncio.CancelledError):
         reason = AgentStopReason.CANCELLED
         retryable = False
-    elif isinstance(error, BudgetExhausted) or str(error) == AgentStopReason.BUDGET_EXHAUSTED:
+    elif (
+        isinstance(error, BudgetExhausted)
+        or str(error) == AgentStopReason.BUDGET_EXHAUSTED
+    ):
         reason = AgentStopReason.BUDGET_EXHAUSTED
         retryable = False
     elif isinstance(error, TimeoutError):
@@ -871,7 +1058,10 @@ def _agent_failure(
             else AgentStopReason.SKILL_ACTIVATION_FAILED
         )
         retryable = False
-    elif str(error) == AgentStopReason.INVALID_STRUCTURED_OUTPUT:
+    elif (
+        isinstance(error, GovernedOutputError)
+        or str(error) == AgentStopReason.INVALID_STRUCTURED_OUTPUT
+    ):
         reason = AgentStopReason.INVALID_STRUCTURED_OUTPUT
         retryable = False
     elif isinstance(error, Exception):
@@ -879,7 +1069,11 @@ def _agent_failure(
         retryable = True
     else:
         return None
-    detail = str(error).strip() or reason.value
+    detail = (
+        "Upstream generation failed."
+        if reason == AgentStopReason.UPSTREAM_FAILURE
+        else str(error).strip() or reason.value
+    )
     execution = request.agent_execution if request else None
     selected = execution.selected_agent if execution else None
     runtime = getattr(error, "agent_runtime", None)
@@ -902,6 +1096,48 @@ def _agent_failure(
     )
 
 
+def _governed_output_violations(
+    request: GenerateRequest, result: GenerateResponse
+) -> list[str]:
+    output = "\n".join(
+        part for part in [result.content, *(result.variations or [])] if part
+    )
+    if not output:
+        return []
+    folded = output.casefold()
+    prohibited: list[str] = []
+    required: list[str] = []
+    for context in request.governed_context or []:
+        prohibited.extend(context.prohibited_claims or [])
+        if context.kind == "style_guide" and isinstance(context.payload, dict):
+            prohibited.extend(
+                str(value)
+                for value in context.payload.get("prohibitedPhrases", [])
+                if isinstance(value, str)
+            )
+            required.extend(
+                str(value)
+                for value in context.payload.get("requiredPhrases", [])
+                if isinstance(value, str)
+            )
+        if context.kind == "product" and _stage(request) in {
+            "complete",
+            "finalSynthesis",
+        }:
+            required.extend(context.mandatory_disclaimers or [])
+    violations = [
+        f"Governed prohibited phrase was emitted: {phrase[:120]}"
+        for phrase in prohibited
+        if phrase.strip() and phrase.casefold() in folded
+    ]
+    violations.extend(
+        f"Governed required phrase is missing: {phrase[:120]}"
+        for phrase in required
+        if phrase.strip() and phrase.casefold() not in folded
+    )
+    return violations
+
+
 def _sources_from_pages(pages: list[dict[str, Any]]) -> list[GenerateSource]:
     out: list[GenerateSource] = []
     for p in pages:
@@ -913,6 +1149,7 @@ def _sources_from_pages(pages: list[dict[str, Any]]) -> list[GenerateSource]:
                 crawl_type=p.get("crawlType"),
                 kind="page",
                 page_id=p.get("pageId"),
+                source_digest=p.get("sourceDigest"),
             )
         )
     return out
@@ -958,7 +1195,11 @@ def _brief_retrieval_context(req: GenerateRequest) -> str:
         ("publishing destination", brief.publishing_destination),
     ):
         if value:
-            rendered = json.dumps(value, ensure_ascii=False) if not isinstance(value, str) else value
+            rendered = (
+                json.dumps(value, ensure_ascii=False)
+                if not isinstance(value, str)
+                else value
+            )
             parts.append(f"{label}: {rendered}")
     return "; ".join(parts)[:4000]
 
@@ -967,9 +1208,7 @@ def _skills_for_stage(req: GenerateRequest, stage: str):
     if not isinstance(req.skill_execution, SkillExecutionEnvelope):
         return []
     return [
-        skill
-        for skill in req.skill_execution.skills
-        if stage in skill.supported_stages
+        skill for skill in req.skill_execution.skills if stage in skill.supported_stages
     ]
 
 
@@ -1020,10 +1259,7 @@ def _skill_provenance(req: GenerateRequest) -> SkillProvenance:
         catalogVersion=envelope.catalog_version,
         snapshotHash=envelope.snapshot_hash,
         stage=_stage(req),
-        skillVersions=[
-            f"{skill.id}@{skill.version}"
-            for skill in _active_skills(req)
-        ],
+        skillVersions=[f"{skill.id}@{skill.version}" for skill in _active_skills(req)],
     )
 
 
@@ -1067,12 +1303,23 @@ def _build_prompts(
             f"markdown:\n{p.get('markdown')}\n"
         )
     corpus = "\n".join(corpus_parts)
+    governed = json.dumps(
+        [
+            context.model_dump(by_alias=True, mode="json", exclude_none=True)
+            for context in req.governed_context or []
+        ],
+        ensure_ascii=False,
+        indent=2,
+    )
 
     system = (
         "You are a B2B content writer. Use ONLY the provided source markdown. "
         "Every factual claim must be supportable by a verbatim quote from a source. "
         "Return strict JSON. Do not invent URLs or quotes. "
         "Never use meta descriptions or marketing fluff as quotes when a concrete claim exists."
+        " Governed audience and style policies are mandatory constraints. Governed product "
+        "facts may be used only as supplied; prohibited claims are forbidden and mandatory "
+        "disclaimers must appear in complete or final-synthesis output."
     )
     skills = _active_skills(req)
     if skills:
@@ -1131,24 +1378,24 @@ def _build_prompts(
         )
     else:
         shape = {
-        "long": (
-            '{"content":"markdown article","citations":[{"pageId":"","url":"","title":"",'
-            '"sectionTitle":"","quote":"verbatim span","crawlType":""}]}'
-        ),
-        "short": (
-            '{"variations":["ad1","ad2","ad3"],"citations":[{"pageId":"","url":"",'
-            '"title":"","sectionTitle":"","quote":"verbatim span","crawlType":""}]}'
-        ),
-        "battlecard": (
-            '{"battlecard":{"partnerSummary":"","competitorSummary":"",'
-            '"differentiators":[],"risks":[]},'
-            '"citations":[{"pageId":"","url":"","title":"","sectionTitle":"",'
-            '"quote":"verbatim span","crawlType":""}]}'
-        ),
-        "slides": (
-            '{"content":"markdown slide outline","citations":[{"pageId":"","url":"",'
-            '"title":"","sectionTitle":"","quote":"verbatim span","crawlType":""}]}'
-        ),
+            "long": (
+                '{"content":"markdown article","citations":[{"pageId":"","url":"","title":"",'
+                '"sectionTitle":"","quote":"verbatim span","crawlType":""}]}'
+            ),
+            "short": (
+                '{"variations":["ad1","ad2","ad3"],"citations":[{"pageId":"","url":"",'
+                '"title":"","sectionTitle":"","quote":"verbatim span","crawlType":""}]}'
+            ),
+            "battlecard": (
+                '{"battlecard":{"partnerSummary":"","competitorSummary":"",'
+                '"differentiators":[],"risks":[]},'
+                '"citations":[{"pageId":"","url":"","title":"","sectionTitle":"",'
+                '"quote":"verbatim span","crawlType":""}]}'
+            ),
+            "slides": (
+                '{"content":"markdown slide outline","citations":[{"pageId":"","url":"",'
+                '"title":"","sectionTitle":"","quote":"verbatim span","crawlType":""}]}'
+            ),
         }[family]
 
     templates = ""
@@ -1178,7 +1425,8 @@ def _build_prompts(
             f"- {s.key}: {s.heading} — {s.brief}" for s in (req.outline or [])
         )
         completed = "\n".join(
-            f"- {summary[:500]}" for summary in (req.completed_section_summaries or [])[:10]
+            f"- {summary[:500]}"
+            for summary in (req.completed_section_summaries or [])[:10]
         )
         stage_label = "REPAIR" if stage == "repair" else "SECTION"
         action = (
@@ -1237,6 +1485,7 @@ def _build_prompts(
         f"Entities: {', '.join(req.target_entities or []) or '(none)'}\n"
         f"Canonical brief ({req.canonical_brief.version if req.canonical_brief else 'none'}):\n"
         f"{json.dumps(req.canonical_brief.model_dump(by_alias=True, exclude_none=True), ensure_ascii=False, indent=2) if req.canonical_brief else '(none)'}\n"
+        f"Governed context (immutable manifest-selected policies and product truth):\n{governed}\n"
         f"{templates}{stage_instructions}\n"
         f"Sources:\n{corpus}\n\n"
         f"JSON shape: {shape}\n"

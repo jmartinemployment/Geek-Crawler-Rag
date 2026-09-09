@@ -164,6 +164,8 @@ class LlamaIndexEngine:
         *,
         run_id: str,
         top_k: int,
+        owner_id: str = "system:crawler",
+        visibility: str = "service",
         crawl_type: str | None = None,
         host: str | None = None,
         chunk_role: str | None = None,
@@ -175,6 +177,8 @@ class LlamaIndexEngine:
         query_embedding = await self.embed_query(need)
         filters = build_metadata_filters(
             run_id=run_id,
+            owner_id=owner_id,
+            visibility=visibility,
             crawl_type=crawl_type,
             host=host,
             chunk_role=chunk_role,
@@ -193,12 +197,16 @@ class LlamaIndexEngine:
         )
         nodes = list(result.nodes or [])
         sims = list(result.similarities or [0.0] * len(nodes))
-        return [NodeWithScore(node=n, score=s) for n, s in zip(nodes, sims, strict=False)]
+        return [
+            NodeWithScore(node=n, score=s) for n, s in zip(nodes, sims, strict=False)
+        ]
 
 
 def build_metadata_filters(
     *,
     run_id: str,
+    owner_id: str = "system:crawler",
+    visibility: str = "service",
     crawl_type: str | None = None,
     host: str | None = None,
     chunk_role: str | None = None,
@@ -209,11 +217,15 @@ def build_metadata_filters(
 ) -> MetadataFilters:
     filters: list[MetadataFilter] = [
         MetadataFilter(key="runId", value=run_id, operator=FilterOperator.EQ),
+        MetadataFilter(key="ownerId", value=owner_id, operator=FilterOperator.EQ),
+        MetadataFilter(key="visibility", value=visibility, operator=FilterOperator.EQ),
         MetadataFilter(key="language", value="en", operator=FilterOperator.EQ),
     ]
     if crawl_type:
         filters.append(
-            MetadataFilter(key="crawlType", value=crawl_type, operator=FilterOperator.EQ)
+            MetadataFilter(
+                key="crawlType", value=crawl_type, operator=FilterOperator.EQ
+            )
         )
     if host:
         filters.append(
@@ -223,7 +235,9 @@ def build_metadata_filters(
         )
     if chunk_role:
         filters.append(
-            MetadataFilter(key="chunkRole", value=chunk_role, operator=FilterOperator.EQ)
+            MetadataFilter(
+                key="chunkRole", value=chunk_role, operator=FilterOperator.EQ
+            )
         )
     if source_types:
         filters.append(
