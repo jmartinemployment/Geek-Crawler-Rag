@@ -10,6 +10,7 @@ from geek_crawler_rag.generate import (
     CiteableGenerateWorkflow,
     _brief_retrieval_context,
     _build_prompts,
+    _governed_output_violations,
     _parse_llm_json,
     _stage,
     quote_in_markdown,
@@ -20,7 +21,9 @@ from geek_crawler_rag.models import (
     GenerateCitation,
     GenerateOutlineSection,
     GenerateRequest,
+    GenerateResponse,
     GenerateSource,
+    GovernedContextEntry,
 )
 
 
@@ -387,3 +390,142 @@ async def test_legacy_non_reasoning_model_keeps_chat_completions_json_mode():
     assert chat_calls[0]["temperature"] == 0.3
     assert chat_calls[0]["response_format"] == {"type": "json_object"}
     assert "max_completion_tokens" not in chat_calls[0]
+
+
+def _digest(seed: str = "a") -> str:
+    return seed * 64
+
+
+def test_style_guide_prompt_includes_deterministic_constraints():
+    req = GenerateRequest(
+        writingIntent="Technical Article",
+        topic="CRM synchronization",
+        generationStage="section",
+        governedContext=[
+            GovernedContextEntry(
+                kind="style_guide",
+                stableId="style-1",
+                versionId="style-v1",
+                versionNumber=1,
+                digest=_digest(),
+                payload={
+                    "schemaVersion": 1,
+                    "grammar": {"oxfordComma": True, "allowEmDash": False},
+                    "termRules": [
+                        {
+                            "kind": "replace",
+                            "match": "users",
+                            "replacement": "customers",
+                        },
+                        {"kind": "prohibit", "match": "synergy"},
+                    ],
+                    "customInstructions": "Prefer concrete outcomes.",
+                },
+            )
+        ],
+    )
+    system, _ = _build_prompts(req, "long", [])
+    assert "Style Guide deterministic constraints" in system
+    assert 'Replace "users" with "customers"' in system
+    assert 'Never use the phrase "synergy"' in system
+    assert "Use the Oxford comma" in system
+    assert "Do not use em dashes" in system
+    assert "Prefer concrete outcomes" in system
+
+
+def test_style_guide_output_violations_cover_typed_rules():
+    req = GenerateRequest(
+        writingIntent="Technical Article",
+        topic="CRM synchronization",
+        generationStage="section",
+        governedContext=[
+            GovernedContextEntry(
+                kind="style_guide",
+                stableId="style-1",
+                versionId="style-v1",
+                versionNumber=1,
+                digest=_digest("b"),
+                payload={
+                    "schemaVersion": 1,
+                    "termRules": [
+                        {"kind": "prohibit", "match": "synergy"},
+                        {
+                            "kind": "replace",
+                            "match": "users",
+                            "replacement": "customers",
+                        },
+                        {
+                            "kind": "capitalize",
+                            "match": "Acme Cloud",
+                            "caseSensitive": True,
+                        },
+                        {
+                            "kind": "firstMention",
+                            "match": "CRM",
+                            "replacement": "customer relationship management (CRM)",
+                        },
+                    ],
+                    "requiredPhrases": ["security review"],
+                },
+            )
+        ],
+    )
+    result = GenerateResponse(
+        intent="Technical Article",
+        content=(
+            "Our users love synergy on acme cloud. CRM helps teams collaborate "
+            "without the mandated check."
+        ),
+    )
+    violations = _governed_output_violations(req, result)
+    joined = "\n".join(violations)
+    assert "synergy" in joined
+    assert "replace rule" in joined
+    assert "capitalization" in joined
+    assert "first-mention" in joined
+    assert "required phrase" in joined
+
+
+def test_style_guide_output_accepts_compliant_text():
+    req = GenerateRequest(
+        writingIntent="Technical Article",
+        topic="CRM synchronization",
+        generationStage="section",
+        governedContext=[
+            GovernedContextEntry(
+                kind="style_guide",
+                stableId="style-1",
+                versionId="style-v1",
+                versionNumber=1,
+                digest=_digest("c"),
+                payload={
+                    "termRules": [
+                        {
+                            "kind": "replace",
+                            "match": "users",
+                            "replacement": "customers",
+                        },
+                        {
+                            "kind": "capitalize",
+                            "match": "Acme Cloud",
+                            "caseSensitive": True,
+                        },
+                        {
+                            "kind": "firstMention",
+                            "match": "CRM",
+                            "replacement": "customer relationship management (CRM)",
+                        },
+                    ],
+                    "requiredPhrases": ["security review"],
+                },
+            )
+        ],
+    )
+    result = GenerateResponse(
+        intent="Technical Article",
+        content=(
+            "Acme Cloud helps customers after a security review. "
+            "customer relationship management (CRM) then keeps records aligned."
+        ),
+    )
+    assert _governed_output_violations(req, result) == []

@@ -421,12 +421,21 @@ class CiteableGenerateWorkflow(Workflow):
         for context in req.governed_context or []:
             if context.kind != "product" or len(pages) >= max_pages:
                 continue
+            payload = context.payload
+            if isinstance(payload, dict) and context.selected_field_ids:
+                allowed = {str(field_id) for field_id in context.selected_field_ids}
+                payload = {
+                    key: value
+                    for key, value in payload.items()
+                    if str(key) in allowed
+                }
             body = json.dumps(
                 {
-                    "payload": context.payload,
+                    "payload": payload,
                     "approvedClaims": context.approved_claims or [],
                     "prohibitedClaims": context.prohibited_claims or [],
                     "mandatoryDisclaimers": context.mandatory_disclaimers or [],
+                    "selectedFieldIds": context.selected_field_ids or [],
                 },
                 ensure_ascii=False,
                 sort_keys=True,
@@ -1119,6 +1128,140 @@ def _agent_failure(
     )
 
 
+def _style_guide_term_rules(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    rules = payload.get("termRules")
+    if not isinstance(rules, list):
+        return []
+    return [rule for rule in rules if isinstance(rule, dict)]
+
+
+def _phrase_present(haystack: str, needle: str, *, case_sensitive: bool) -> bool:
+    if not needle.strip():
+        return False
+    if case_sensitive:
+        return needle in haystack
+    return needle.casefold() in haystack.casefold()
+
+
+def _style_guide_output_violations(payload: dict[str, Any], output: str) -> list[str]:
+    folded = output.casefold()
+    violations: list[str] = []
+    prohibited: list[str] = [
+        str(value)
+        for value in payload.get("prohibitedPhrases", [])
+        if isinstance(value, str) and value.strip()
+    ]
+    required: list[str] = [
+        str(value)
+        for value in payload.get("requiredPhrases", [])
+        if isinstance(value, str) and value.strip()
+    ]
+    for rule in _style_guide_term_rules(payload):
+        kind = str(rule.get("kind") or "").strip()
+        match = str(rule.get("match") or "").strip()
+        replacement = str(rule.get("replacement") or "").strip()
+        case_sensitive = rule.get("caseSensitive") is True
+        if not match:
+            continue
+        if kind == "prohibit":
+            prohibited.append(match)
+        elif kind == "replace":
+            if _phrase_present(output, match, case_sensitive=case_sensitive):
+                violations.append(
+                    "Style Guide replace rule left source term in output: "
+                    f"{match[:80]} (use {replacement[:80] or 'replacement'})"
+                )
+        elif kind == "capitalize":
+            if match.casefold() in folded and match not in output:
+                violations.append(
+                    f"Style Guide capitalization rule violated for branded term: {match[:120]}"
+                )
+        elif kind == "abbreviation":
+            short_present = _phrase_present(output, match, case_sensitive=True)
+            long_present = _phrase_present(
+                output, replacement, case_sensitive=False
+            )
+            if short_present and not long_present:
+                violations.append(
+                    "Style Guide abbreviation requires the expanded form before or with "
+                    f"{match[:40]}: {replacement[:120]}"
+                )
+        elif kind == "firstMention":
+            short_idx = output.find(match) if match else -1
+            long_idx = output.casefold().find(replacement.casefold()) if replacement else -1
+            if short_idx >= 0 and (long_idx < 0 or long_idx > short_idx):
+                violations.append(
+                    "Style Guide first-mention rule requires the expanded form before "
+                    f"{match[:40]}: {replacement[:120]}"
+                )
+    violations.extend(
+        f"Governed prohibited phrase was emitted: {phrase[:120]}"
+        for phrase in prohibited
+        if phrase.strip() and phrase.casefold() in folded
+    )
+    violations.extend(
+        f"Governed required phrase is missing: {phrase[:120]}"
+        for phrase in required
+        if phrase.strip() and phrase.casefold() not in folded
+    )
+    return violations
+
+
+def _style_guide_prompt_constraints(payload: dict[str, Any]) -> list[str]:
+    lines: list[str] = []
+    grammar = payload.get("grammar")
+    if isinstance(grammar, dict):
+        mapping = {
+            "oxfordComma": "Use the Oxford comma",
+            "preferActiveVoice": "Prefer active voice",
+            "allowEmDash": "Em dashes are allowed",
+            "sentenceCaseHeadings": "Use sentence case for headings",
+        }
+        for key, label in mapping.items():
+            value = grammar.get(key)
+            if value is True:
+                lines.append(f"- {label}.")
+            elif value is False:
+                if key == "oxfordComma":
+                    lines.append("- Do not use the Oxford comma.")
+                elif key == "preferActiveVoice":
+                    lines.append("- Passive voice is acceptable when clearer.")
+                elif key == "allowEmDash":
+                    lines.append("- Do not use em dashes.")
+                elif key == "sentenceCaseHeadings":
+                    lines.append("- Do not force sentence-case headings.")
+    for rule in _style_guide_term_rules(payload):
+        kind = str(rule.get("kind") or "").strip()
+        match = str(rule.get("match") or "").strip()
+        replacement = str(rule.get("replacement") or "").strip()
+        if not match:
+            continue
+        if kind == "prohibit":
+            lines.append(f'- Never use the phrase "{match}".')
+        elif kind == "replace" and replacement:
+            lines.append(f'- Replace "{match}" with "{replacement}".')
+        elif kind == "capitalize":
+            lines.append(f'- Always capitalize branded term exactly as "{match}".')
+        elif kind == "abbreviation" and replacement:
+            lines.append(
+                f'- Introduce "{match}" with the expansion "{replacement}" before relying on the short form.'
+            )
+        elif kind == "firstMention" and replacement:
+            lines.append(
+                f'- First mention of "{match}" must use "{replacement}".'
+            )
+    for phrase in payload.get("prohibitedPhrases", []) or []:
+        if isinstance(phrase, str) and phrase.strip():
+            lines.append(f'- Never use the phrase "{phrase.strip()}".')
+    for phrase in payload.get("requiredPhrases", []) or []:
+        if isinstance(phrase, str) and phrase.strip():
+            lines.append(f'- Include the required phrase "{phrase.strip()}".')
+    custom = payload.get("customInstructions")
+    if isinstance(custom, str) and custom.strip():
+        lines.append(f"- Custom instructions: {custom.strip()}")
+    return lines
+
+
 def _governed_output_violations(
     request: GenerateRequest, result: GenerateResponse
 ) -> list[str]:
@@ -1130,29 +1273,21 @@ def _governed_output_violations(
     folded = output.casefold()
     prohibited: list[str] = []
     required: list[str] = []
+    violations: list[str] = []
     for context in request.governed_context or []:
         prohibited.extend(context.prohibited_claims or [])
         if context.kind == "style_guide" and isinstance(context.payload, dict):
-            prohibited.extend(
-                str(value)
-                for value in context.payload.get("prohibitedPhrases", [])
-                if isinstance(value, str)
-            )
-            required.extend(
-                str(value)
-                for value in context.payload.get("requiredPhrases", [])
-                if isinstance(value, str)
-            )
+            violations.extend(_style_guide_output_violations(context.payload, output))
         if context.kind == "product" and _stage(request) in {
             "complete",
             "finalSynthesis",
         }:
             required.extend(context.mandatory_disclaimers or [])
-    violations = [
+    violations.extend(
         f"Governed prohibited phrase was emitted: {phrase[:120]}"
         for phrase in prohibited
         if phrase.strip() and phrase.casefold() in folded
-    ]
+    )
     violations.extend(
         f"Governed required phrase is missing: {phrase[:120]}"
         for phrase in required
@@ -1334,6 +1469,10 @@ def _build_prompts(
         ensure_ascii=False,
         indent=2,
     )
+    style_constraints: list[str] = []
+    for context in req.governed_context or []:
+        if context.kind == "style_guide" and isinstance(context.payload, dict):
+            style_constraints.extend(_style_guide_prompt_constraints(context.payload))
 
     system = (
         "You are a B2B content writer. Use ONLY the provided source markdown. "
@@ -1344,6 +1483,10 @@ def _build_prompts(
         "facts may be used only as supplied; prohibited claims are forbidden and mandatory "
         "disclaimers must appear in complete or final-synthesis output."
     )
+    if style_constraints:
+        system += "\nStyle Guide deterministic constraints:\n" + "\n".join(
+            style_constraints
+        )
     skills = _active_skills(req)
     if skills:
         system += (
