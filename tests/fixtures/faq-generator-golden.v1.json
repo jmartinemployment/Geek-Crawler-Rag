@@ -1,0 +1,25 @@
+{
+  "contractVersion": "faqGeneratorInput.v1",
+  "topic": "AI content readiness",
+  "queries": [
+    {
+      "query": "What is AI content readiness?",
+      "origin": "imported",
+      "sourceReference": "manual-import"
+    }
+  ],
+  "hypothesisTopics": [],
+  "sourceDocument": {
+    "source": {
+      "sourceId": "faq-source-1",
+      "url": "https://subject.example/readiness",
+      "title": "AI Content Readiness Guide"
+    },
+    "visibleContent": "# AI Content Readiness Guide\n\n## What is AI content readiness?\n\nAI content readiness means pages provide answer-first structure, evidence, and schema that systems can cite.\n\n## Can I measure readiness?\n\nYes. Use a seven-dimension rubric with explicit evidence.",
+    "mediaType": "text/markdown",
+    "contentCompleteness": "full",
+    "queries": [],
+    "evidence": []
+  },
+  "maxPairs": 8
+}

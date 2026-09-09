@@ -17,8 +17,9 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -36,10 +37,10 @@ MAX_MARKDOWN_CHARS = 500_000
 
 # Re-export for tests that import from this module
 __all__ = [
-    "extract_clean_content",
-    "should_exclude_locale_path",
     "backfill",
+    "extract_clean_content",
     "main",
+    "should_exclude_locale_path",
 ]
 
 
@@ -75,7 +76,9 @@ class Counts:
         }
 
 
-def extract_clean_content(html: str, page_url: str) -> tuple[str | None, str | None, str | None]:
+def extract_clean_content(
+    html: str, page_url: str
+) -> tuple[str | None, str | None, str | None]:
     """Return (title, markdown, excerpt). Mirrors extract-content.ts."""
     if not html or len(html) < 40:
         return None, None, None
@@ -105,7 +108,7 @@ def extract_clean_content(html: str, page_url: str) -> tuple[str | None, str | N
         if not markdown:
             return title, None, excerpt
         return title, markdown, excerpt
-    except Exception:
+    except Exception:  # noqa: BLE001 - malformed historical HTML must not stop remediation
         return None, None, None
 
 
@@ -120,7 +123,9 @@ def _has_markdown(doc: dict[str, Any]) -> bool:
 def _mongo_url_from_env(cli_url: str | None) -> str:
     import os
 
-    return (cli_url or os.environ.get("MONGO_CRAWLER_URL") or "mongodb://localhost:27017").strip()
+    return (
+        cli_url or os.environ.get("MONGO_CRAWLER_URL") or "mongodb://localhost:27017"
+    ).strip()
 
 
 def _missing_markdown_query(run_id: str) -> dict[str, Any]:
@@ -153,6 +158,7 @@ def backfill(
     write: bool,
     limit: int | None,
     batch_size: int,
+    delay_seconds: float = 0.0,
 ) -> Counts:
     counts = Counts()
     client = MongoClient(
@@ -170,10 +176,7 @@ def backfill(
     if write and run_id:
         runs.update_one({"Id": run_id}, {"$unset": {"MarkdownReadyAt": ""}})
 
-    query: dict[str, Any] = {
-        "Html": {"$exists": True, "$type": "string"},
-        **_missing_markdown_query(run_id or ""),
-    }
+    query: dict[str, Any] = _missing_markdown_query(run_id or "")
     if not run_id:
         query.pop("RunId", None)
 
@@ -190,7 +193,7 @@ def backfill(
         "FailureReason": 1,
         "MarkdownBackfilledAt": 1,
     }
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     last_log = 0
     last_object_id: Any | None = None
 
@@ -207,7 +210,7 @@ def backfill(
             link_res = links.delete_many({"PageId": page_id})
             counts.deleted_links += int(link_res.deleted_count)
             pages.delete_one({"Id": page_id})
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - count and continue after per-row write failures
             counts.errors += 1
             print(f"WARN delete failed id={page_id}: {exc}", flush=True)
 
@@ -225,7 +228,7 @@ def backfill(
             batch_docs = list(
                 pages.find(batch_query, projection).sort("_id", 1).limit(take)
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - convert driver failures into reported counts
             counts.errors += 1
             print(f"WARN batch fetch failed: {exc}", flush=True)
             break
@@ -266,9 +269,12 @@ def backfill(
                                 "$unset": {"MarkdownBackfillSkip": ""},
                             },
                         )
-                    except Exception as exc:
+                    except Exception as exc:  # noqa: BLE001 - preserve the remaining batch
                         counts.errors += 1
-                        print(f"WARN mark existing md failed id={page_id}: {exc}", flush=True)
+                        print(
+                            f"WARN mark existing md failed id={page_id}: {exc}",
+                            flush=True,
+                        )
                 continue
 
             html = doc.get("Html")
@@ -278,7 +284,7 @@ def backfill(
 
             try:
                 title, markdown, excerpt = extract_clean_content(html, url)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - unusable historical HTML is deleted by policy
                 print(f"WARN extract failed id={page_id}: {exc}", flush=True)
                 delete_page(page_id, "extract_empty")
                 continue
@@ -315,7 +321,7 @@ def backfill(
         if write and pending_updates:
             try:
                 pages.bulk_write(pending_updates, ordered=False)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - readiness must fail on any bulk-write error
                 counts.errors += 1
                 print(
                     f"WARN batch update failed count={len(pending_updates)}: {exc}",
@@ -323,6 +329,8 @@ def backfill(
                 )
                 counts.updated -= len(pending_updates)
                 break
+        if delay_seconds > 0:
+            time.sleep(delay_seconds)
 
     if run_id and limit is None and counts.complete_pass and counts.errors == 0:
         total_pages = pages.count_documents({"RunId": run_id})
@@ -330,27 +338,36 @@ def backfill(
             _missing_markdown_query(run_id), limit=1
         )
         run = runs.find_one({"Id": run_id}, {"Status": 1, "_id": 0}) or {}
-        terminal = str(run.get("Status") or "").lower() == "complete"
-        if total_pages > 0 and missing_markdown == 0 and terminal:
-            if write:
-                result = runs.update_one(
-                    {"Id": run_id, "Status": "complete"},
-                    {"$set": {"MarkdownReadyAt": now.isoformat()}},
-                )
-                counts.runs_marked_ready = int(result.modified_count > 0)
+        terminal = str(run.get("Status") or "").lower() in {"complete", "external"}
+        if total_pages > 0 and missing_markdown == 0 and terminal and write:
+            result = runs.update_one(
+                {"Id": run_id, "Status": {"$in": ["complete", "external"]}},
+                {"$set": {"MarkdownReadyAt": now.isoformat()}},
+            )
+            counts.runs_marked_ready = int(result.modified_count > 0)
 
     client.close()
     return counts
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Backfill Markdown from stored Html (Readability).")
+    parser = argparse.ArgumentParser(
+        description="Backfill Markdown from stored Html (Readability)."
+    )
     parser.add_argument("--mongo-url", default=None, help="Override MONGO_CRAWLER_URL")
     parser.add_argument("--db", default="geek_crawler", help="Mongo database name")
     parser.add_argument("--run-id", default=None, help="Limit to one RunId")
     parser.add_argument("--limit", type=int, default=None, help="Max pages to scan")
     parser.add_argument("--batch-size", type=int, default=50)
-    parser.add_argument("--write", action="store_true", help="Persist updates (default is dry-run)")
+    parser.add_argument(
+        "--delay-seconds",
+        type=float,
+        default=0.0,
+        help="Pause between batches to limit MongoDB and VPS load",
+    )
+    parser.add_argument(
+        "--write", action="store_true", help="Persist updates (default is dry-run)"
+    )
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -360,7 +377,9 @@ def main(argv: list[str] | None = None) -> int:
 
     write = bool(args.write)
     mode = "WRITE" if write else "DRY-RUN"
-    print(f"backfill_markdown mode={mode} run_id={args.run_id or '*'} limit={args.limit or '*'}")
+    print(
+        f"backfill_markdown mode={mode} run_id={args.run_id or '*'} limit={args.limit or '*'}"
+    )
 
     try:
         counts = backfill(
@@ -370,8 +389,9 @@ def main(argv: list[str] | None = None) -> int:
             write=write,
             limit=args.limit,
             batch_size=args.batch_size,
+            delay_seconds=max(0.0, args.delay_seconds),
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - CLI converts unexpected failures to exit code 1
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 

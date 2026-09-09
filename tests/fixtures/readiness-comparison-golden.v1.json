@@ -1,0 +1,55 @@
+{
+  "contractVersion": "readinessComparisonInput.v1",
+  "subjectPage": {
+    "source": {
+      "sourceId": "subject-page-1",
+      "url": "https://subject.example/analyzer",
+      "title": "Subject Analyzer"
+    },
+    "visibleContent": "# Subject Analyzer\n\nSubject Analyzer launched in 2026. According to Subject Research, it processes 100 documents.\n\nAuthor: Jane Doe\n\n## What is Subject Analyzer?\n\nSubject Analyzer reviews supplied documents.\n\n## How fast is Subject Analyzer?\n\nIt processes 100 documents per run.\n\n## Who publishes Subject Analyzer?\n\nSubject Research publishes Subject Analyzer.\n\n## Steps\n\n1. Install Subject Analyzer.\n2. Run Subject Analyzer.\n\n## Product Details\n\nProduct Name: Subject Analyzer\nDescription: Subject Analyzer reviews supplied documents.\nBrand: Subject Research\nSKU: SA-1\nPrice: 20\nCurrency: USD\n\n## Sources\n\nSubject Research product documentation.",
+    "mediaType": "text/markdown",
+    "contentCompleteness": "full",
+    "evidence": [
+      {
+        "evidenceId": "subject-ev-1",
+        "sourceId": "subject-page-1",
+        "quote": "According to Subject Research, it processes 100 documents."
+      }
+    ],
+    "existingJsonLd": [],
+    "technical": {
+      "crawlable": true,
+      "statusCode": 200,
+      "loadTimeMs": 1200,
+      "canonicalUrl": "https://subject.example/analyzer"
+    }
+  },
+  "competitorPages": [
+    {
+      "source": {
+        "sourceId": "competitor-page-1",
+        "url": "https://competitor.example/analyzer",
+        "title": "Competitor Analyzer"
+      },
+      "competitorId": "competitor-1",
+      "competitorName": "Competitor Inc.",
+      "visibleContent": "# Competitor Analyzer\n\nTrusted by 500 customer teams.\n\n## How it works\n\n1. Upload a document.\n2. Review the findings.\n\n## Pricing\n\nPlans start at $20 per month.\n\n## Can I try it?\n\nYes. Start a free trial.",
+      "mediaType": "text/markdown",
+      "contentCompleteness": "full",
+      "evidence": [
+        {
+          "evidenceId": "supplied-price-evidence",
+          "sourceId": "competitor-page-1",
+          "quote": "Plans start at $20 per month."
+        }
+      ],
+      "existingJsonLd": [],
+      "technical": {
+        "crawlable": true,
+        "statusCode": 200,
+        "loadTimeMs": 1800,
+        "canonicalUrl": "https://competitor.example/analyzer"
+      }
+    }
+  ]
+}

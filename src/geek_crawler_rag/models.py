@@ -719,6 +719,9 @@ class GenerateRequest(BaseModel):
     specialist_reviews: list[SpecialistReview] | None = Field(
         None, alias="specialistReviews", max_length=32
     )
+    research_plan: list[dict[str, Any]] | None = Field(
+        None, alias="researchPlan", max_length=32
+    )
 
     # Keep unknown-field behavior compatible with existing standalone callers.
     model_config = {"populate_by_name": True}
@@ -742,16 +745,11 @@ class GenerateRequest(BaseModel):
         if stage is None:
             raise ValueError(
                 f"Unsupported generationStage '{self.generation_stage}'. "
-                "Use complete, outline, section, repair, validation, or finalSynthesis."
+                "Use complete, researchPlanning, outline, section, repair, "
+                "validation, or finalSynthesis."
             )
         self.generation_stage = stage
-        if (
-            stage == "researchPlanning"
-            and self.execution_version != AGENT_EXECUTION_VERSION
-        ):
-            raise ValueError(
-                "researchPlanning is available only through rag-generate.v3."
-            )
+        # researchPlanning is deterministic on v2; v3 remains the agent-team path.
 
         try:
             UUID(self.attempt_id)

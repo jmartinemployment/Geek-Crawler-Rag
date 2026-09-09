@@ -1,0 +1,34 @@
+{
+  "contractVersion": "comparisonBriefInput.v1",
+  "subjectName": "Subject Analyzer",
+  "competitorName": "Competitor Inc.",
+  "subjectPages": [
+    {
+      "source": {
+        "sourceId": "subject-page-1",
+        "url": "https://subject.example/analyzer",
+        "title": "Subject Analyzer"
+      },
+      "visibleContent": "# Subject Analyzer\n\nSubject Analyzer reviews supplied documents.\n\n## Capabilities\n\nIt supports Markdown analysis and evidence linking.\n\n## Pricing\n\nPlans start at $15 per month.",
+      "mediaType": "text/markdown",
+      "contentCompleteness": "full",
+      "evidence": []
+    }
+  ],
+  "competitorPages": [
+    {
+      "source": {
+        "sourceId": "competitor-page-1",
+        "url": "https://competitor.example/analyzer",
+        "title": "Competitor Analyzer"
+      },
+      "competitorId": "competitor-1",
+      "competitorName": "Competitor Inc.",
+      "visibleContent": "# Competitor Analyzer\n\nTrusted by 500 customer teams.\n\n## How it works\n\n1. Upload a document.\n2. Review the findings.\n\n## Pricing\n\nPlans start at $20 per month.\n\n## Can I try it?\n\nYes. Start a free trial.",
+      "mediaType": "text/markdown",
+      "contentCompleteness": "full",
+      "evidence": []
+    }
+  ],
+  "decisionCriteria": ["pricing", "capabilities", "proof", "process"]
+}

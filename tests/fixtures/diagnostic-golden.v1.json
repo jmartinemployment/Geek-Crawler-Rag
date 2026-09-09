@@ -1,0 +1,34 @@
+{
+  "contractVersion": "aiReadinessInput.v1",
+  "document": {
+    "source": {
+      "sourceId": "page-1",
+      "url": "https://example.com/acme-analyzer",
+      "title": "Acme Analyzer"
+    },
+    "visibleContent": "# Acme Analyzer\n\nAcme Analyzer launched in 2026. According to Acme Research, it processes 100 documents.\n\nAuthor: Jane Doe\n\n## What is Acme Analyzer?\n\nAcme Analyzer reviews supplied documents.\n\n## How fast is Acme Analyzer?\n\nIt processes 100 documents per run.\n\n## Who publishes Acme Analyzer?\n\nAcme Research publishes Acme Analyzer.\n\n## Steps\n\n1. Install Acme Analyzer.\n2. Run Acme Analyzer.\n\n## Product Details\n\nProduct Name: Acme Analyzer\nDescription: Acme Analyzer reviews supplied documents.\nBrand: Acme Research\nSKU: AA-1\nPrice: 20\nCurrency: USD\n\n## Sources\n\nAcme Research product documentation.",
+    "mediaType": "text/markdown",
+    "contentCompleteness": "full",
+    "queries": [
+      {
+        "query": "what is acme analyzer",
+        "origin": "observed",
+        "sourceId": "gsc-export-1"
+      }
+    ],
+    "evidence": [
+      {
+        "evidenceId": "ev-1",
+        "sourceId": "page-1",
+        "quote": "According to Acme Research, it processes 100 documents."
+      }
+    ],
+    "existingJsonLd": [],
+    "technical": {
+      "crawlable": true,
+      "statusCode": 200,
+      "loadTimeMs": 1200,
+      "canonicalUrl": "https://example.com/acme-analyzer"
+    }
+  }
+}

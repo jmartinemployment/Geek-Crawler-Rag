@@ -1,0 +1,33 @@
+{
+  "contractVersion": "competitiveResponseInput.v1",
+  "brandPages": [
+    {
+      "source": {
+        "sourceId": "brand-page-1",
+        "url": "https://brand.example/analyzer",
+        "title": "Brand Analyzer"
+      },
+      "visibleContent": "# Brand Analyzer\n\nBrand Analyzer reviews supplied documents.\n\n## Capabilities\n\nIt supports Markdown analysis.",
+      "mediaType": "text/markdown",
+      "contentCompleteness": "full",
+      "evidence": []
+    }
+  ],
+  "competitorPages": [
+    {
+      "source": {
+        "sourceId": "competitor-page-1",
+        "url": "https://competitor.example/analyzer",
+        "title": "Competitor Analyzer"
+      },
+      "competitorId": "competitor-1",
+      "competitorName": "Competitor Inc.",
+      "visibleContent": "# Competitor Analyzer\n\nTrusted by 500 customer teams.\n\n## How it works\n\n1. Upload a document.\n2. Review the findings.\n\n## Pricing\n\nPlans start at $20 per month.\n\n## Can I try it?\n\nYes. Start a free trial.",
+      "mediaType": "text/markdown",
+      "contentCompleteness": "full",
+      "evidence": []
+    }
+  ],
+  "responseMode": "auto",
+  "focusQuery": "Why choose Brand Analyzer?"
+}

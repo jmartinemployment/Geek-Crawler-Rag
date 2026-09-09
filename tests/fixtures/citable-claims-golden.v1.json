@@ -1,0 +1,21 @@
+{
+  "contractVersion": "citableClaimsInput.v1",
+  "sourceDocument": {
+    "source": {
+      "sourceId": "claims-source-1",
+      "url": "https://subject.example/claims",
+      "title": "Claims Source"
+    },
+    "visibleContent": "# Claims Source\n\nAccording to Acme Research, teams cut review time by 37% in 2024.\n\nMany customers see better outcomes overall.\n\nTrusted by Contoso Analytics for document workflows.",
+    "mediaType": "text/markdown",
+    "contentCompleteness": "full",
+    "queries": [],
+    "evidence": []
+  },
+  "targetStatements": [
+    "Many customers see better outcomes overall.",
+    "Adoption grew by a huge amount last year."
+  ],
+  "maxClaims": 20,
+  "insertionTarget": "Proof section"
+}

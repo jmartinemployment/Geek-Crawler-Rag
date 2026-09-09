@@ -1,0 +1,29 @@
+{
+  "contractVersion": "queryPlannerInput.v1",
+  "queries": [
+    {
+      "query": "acme analyzer pricing",
+      "origin": "observed",
+      "sourceId": "gsc-export-2026-09"
+    },
+    {
+      "query": "best document analyzer alternatives",
+      "origin": "imported",
+      "sourceId": "research-export-1"
+    }
+  ],
+  "hypothesisTopics": [
+    "Acme Analyzer"
+  ],
+  "sources": [
+    {
+      "sourceId": "gsc-export-2026-09",
+      "title": "First-party query export"
+    },
+    {
+      "sourceId": "research-export-1",
+      "title": "Imported research list"
+    }
+  ],
+  "maxGeneratedQueries": 3
+}

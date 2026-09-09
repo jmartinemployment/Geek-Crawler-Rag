@@ -33,8 +33,47 @@ from geek_crawler_rag.context_models import (
     TrustedAssetDeleteRequest,
     TrustedAssetIndexRequest,
 )
+from geek_crawler_rag.diagnostic_models import (
+    EntityMapArtifact,
+    EntityMapRequest,
+    FactDensityArtifact,
+    FactDensityRequest,
+    ReadinessScoreArtifact,
+    ReadinessScoreRequest,
+    SchemaMarkupArtifact,
+    SchemaMarkupRequest,
+)
+from geek_crawler_rag.content import ContentService
+from geek_crawler_rag.content_models import (
+    ClaimLedgerArtifact,
+    CitableClaimsRequest,
+    ComparisonBriefArtifact,
+    ComparisonBriefRequest,
+    CompetitiveResponseArtifact,
+    CompetitiveResponseRequest,
+    FaqGeneratorRequest,
+    FaqSetArtifact,
+    PillarOutlineArtifact,
+    PillarOutlineRequest,
+)
+from geek_crawler_rag.diagnostics import DiagnosticService
 from geek_crawler_rag.generate import GenerateService
 from geek_crawler_rag.indexer import IndexService
+from geek_crawler_rag.intelligence import IntelligenceService
+from geek_crawler_rag.intelligence_models import (
+    CompetitorAuditArtifact,
+    CompetitorAuditRequest,
+    CompetitorPageAnalysisArtifact,
+    CompetitorPageAnalysisRequest,
+    CompetitorPositioningArtifact,
+    CompetitorPositioningRequest,
+    ContentGapArtifact,
+    ContentGapRequest,
+    QueryPlanArtifact,
+    QueryPlannerRequest,
+    ReadinessComparisonArtifact,
+    ReadinessComparisonRequest,
+)
 from geek_crawler_rag.llama_engine import LlamaIndexEngine
 from geek_crawler_rag.models import (
     AdTemplateIndexRequest,
@@ -74,6 +113,9 @@ class AppState:
     generate: GenerateService
     scheduler: IndexScheduler
     assets: AssetContextService
+    diagnostics: DiagnosticService
+    intelligence: IntelligenceService
+    content: ContentService
 
 
 state = AppState()
@@ -129,6 +171,9 @@ async def lifespan(_app: FastAPI):
     state.generate = GenerateService(
         state.mongo, state.query, settings, assets=state.assets
     )
+    state.diagnostics = DiagnosticService()
+    state.intelligence = IntelligenceService(state.diagnostics)
+    state.content = ContentService()
     state.scheduler = IndexScheduler(
         state.mongo,
         status_store,
@@ -390,6 +435,179 @@ async def get_page_markdown_by_url(run_id: str, url: str) -> PageMarkdownRespons
 async def generate(body: GenerateRequest) -> GenerateResponse:
     """Citeable multi-step generate: retrieve → read Markdown → draft → verify."""
     return await state.generate.generate(body)
+
+
+@app.post(
+    "/v1/diagnostics/readiness-score",
+    response_model=ReadinessScoreArtifact,
+    response_model_by_alias=True,
+    dependencies=[Depends(require_api_key)],
+)
+async def readiness_score(body: ReadinessScoreRequest) -> ReadinessScoreArtifact:
+    """Run the versioned seven-dimension heuristic without external side effects."""
+    return state.diagnostics.readiness_score(body)
+
+
+@app.post(
+    "/v1/diagnostics/fact-density",
+    response_model=FactDensityArtifact,
+    response_model_by_alias=True,
+    dependencies=[Depends(require_api_key)],
+)
+async def fact_density(body: FactDensityRequest) -> FactDensityArtifact:
+    """Classify section-level fact density and exact supplied evidence support."""
+    return state.diagnostics.fact_density(body)
+
+
+@app.post(
+    "/v1/diagnostics/entity-map",
+    response_model=EntityMapArtifact,
+    response_model_by_alias=True,
+    dependencies=[Depends(require_api_key)],
+)
+async def entity_map(body: EntityMapRequest) -> EntityMapArtifact:
+    """Build a canonical evidence-linked entity/co-occurrence map."""
+    return state.diagnostics.entity_map(body)
+
+
+@app.post(
+    "/v1/diagnostics/schema-markup",
+    response_model=SchemaMarkupArtifact,
+    response_model_by_alias=True,
+    dependencies=[Depends(require_api_key)],
+)
+async def schema_markup(body: SchemaMarkupRequest) -> SchemaMarkupArtifact:
+    """Generate and validate JSON-LD only from supplied visible content."""
+    return state.diagnostics.schema_markup(body)
+
+
+@app.post(
+    "/v1/intelligence/query-plan",
+    response_model=QueryPlanArtifact,
+    response_model_by_alias=True,
+    dependencies=[Depends(require_api_key)],
+)
+async def query_plan(body: QueryPlannerRequest) -> QueryPlanArtifact:
+    """Plan sourced queries and explicitly labeled deterministic hypotheses."""
+    return state.intelligence.query_plan(body)
+
+
+@app.post(
+    "/v1/intelligence/competitor-page",
+    response_model=CompetitorPageAnalysisArtifact,
+    response_model_by_alias=True,
+    dependencies=[Depends(require_api_key)],
+)
+async def competitor_page_analysis(
+    body: CompetitorPageAnalysisRequest,
+) -> CompetitorPageAnalysisArtifact:
+    """Analyze one supplied competitor page without external enrichment."""
+    return state.intelligence.competitor_page_analysis(body)
+
+
+@app.post(
+    "/v1/intelligence/content-gap",
+    response_model=ContentGapArtifact,
+    response_model_by_alias=True,
+    dependencies=[Depends(require_api_key)],
+)
+async def content_gap(body: ContentGapRequest) -> ContentGapArtifact:
+    """Compare supplied subject and competitor documents with exact evidence."""
+    return state.intelligence.content_gap(body)
+
+
+@app.post(
+    "/v1/intelligence/readiness-comparison",
+    response_model=ReadinessComparisonArtifact,
+    response_model_by_alias=True,
+    dependencies=[Depends(require_api_key)],
+)
+async def readiness_comparison(
+    body: ReadinessComparisonRequest,
+) -> ReadinessComparisonArtifact:
+    """Compare subject and competitor pages under ai-readiness-heuristic.v1."""
+    return state.intelligence.readiness_comparison(body)
+
+
+@app.post(
+    "/v1/intelligence/competitor-audit",
+    response_model=CompetitorAuditArtifact,
+    response_model_by_alias=True,
+    dependencies=[Depends(require_api_key)],
+)
+async def competitor_audit(body: CompetitorAuditRequest) -> CompetitorAuditArtifact:
+    """Compose page analyses, content gaps, and prioritized actions from supplied docs."""
+    return state.intelligence.competitor_audit(body)
+
+
+@app.post(
+    "/v1/intelligence/competitor-positioning",
+    response_model=CompetitorPositioningArtifact,
+    response_model_by_alias=True,
+    dependencies=[Depends(require_api_key)],
+)
+async def competitor_positioning(
+    body: CompetitorPositioningRequest,
+) -> CompetitorPositioningArtifact:
+    """Map narrative attributes and labeled hypotheses without claiming market perception."""
+    return state.intelligence.competitor_positioning(body)
+
+
+@app.post(
+    "/v1/content/faq-set",
+    response_model=FaqSetArtifact,
+    response_model_by_alias=True,
+    dependencies=[Depends(require_api_key)],
+)
+async def faq_set(body: FaqGeneratorRequest) -> FaqSetArtifact:
+    """Generate answer-first FAQ pairs from supplied queries and visible source content."""
+    return state.content.faq_set(body)
+
+
+@app.post(
+    "/v1/content/citable-claims",
+    response_model=ClaimLedgerArtifact,
+    response_model_by_alias=True,
+    dependencies=[Depends(require_api_key)],
+)
+async def citable_claims(body: CitableClaimsRequest) -> ClaimLedgerArtifact:
+    """Convert vague statements into attributable claims without inventing statistics."""
+    return state.content.citable_claims(body)
+
+
+@app.post(
+    "/v1/content/comparison-brief",
+    response_model=ComparisonBriefArtifact,
+    response_model_by_alias=True,
+    dependencies=[Depends(require_api_key)],
+)
+async def comparison_brief(body: ComparisonBriefRequest) -> ComparisonBriefArtifact:
+    """Build a structured X vs Y brief from supplied brand and competitor pages."""
+    return state.content.comparison_brief(body)
+
+
+@app.post(
+    "/v1/content/competitive-response",
+    response_model=CompetitiveResponseArtifact,
+    response_model_by_alias=True,
+    dependencies=[Depends(require_api_key)],
+)
+async def competitive_response(
+    body: CompetitiveResponseRequest,
+) -> CompetitiveResponseArtifact:
+    """Convert competitor coverage into a brand-aligned response strategy outline."""
+    return state.content.competitive_response(body)
+
+
+@app.post(
+    "/v1/content/pillar-outline",
+    response_model=PillarOutlineArtifact,
+    response_model_by_alias=True,
+    dependencies=[Depends(require_api_key)],
+)
+async def pillar_outline(body: PillarOutlineRequest) -> PillarOutlineArtifact:
+    """Produce a deterministic topic-cluster pillar outline (not a full article)."""
+    return state.content.pillar_outline(body)
 
 
 @app.post(

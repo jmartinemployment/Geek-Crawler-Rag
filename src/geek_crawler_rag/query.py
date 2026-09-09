@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from typing import Any, Protocol
 
@@ -171,14 +172,23 @@ class QueryService:
             len(fused_candidates), max(request.top_k, self._settings.rerank_pool_size)
         )
         pool = fused_candidates[:pool_n]
-        rerank_docs = [_return_text(c["payload"], request) for c in pool]
+        collapse_parents = _should_collapse_parents(request)
+        rerank_docs = [
+            _rerank_document(c["payload"], request, collapse_parents=collapse_parents)
+            for c in pool
+        ]
         ranked = await self._reranker.rerank(
-            request.need, rerank_docs, top_n=min(request.top_k, len(pool))
+            request.need, rerank_docs, top_n=len(pool)
+        )
+        selected = _select_ranked_candidates(
+            pool,
+            ranked,
+            target_top_k=request.top_k,
+            collapse_parents=collapse_parents,
         )
 
         chunks: list[ChunkHit] = []
-        for rank, (orig_idx, rerank_score) in enumerate(ranked, 1):
-            cand = pool[orig_idx]
+        for rank, (cand, rerank_score) in enumerate(selected, 1):
             payload = cand["payload"]
             text = _return_text(payload, request)
             if not text:
@@ -283,6 +293,57 @@ def _lexical_doc(payload: dict[str, Any]) -> str:
         str(payload.get("sectionTitle") or ""),
     ]
     return "\n".join(p for p in parts if p)
+
+
+def _should_collapse_parents(request: QueryRequest) -> bool:
+    return bool(request.prefer_parent) and not bool(request.prefer_child)
+
+
+def _rerank_document(
+    payload: dict[str, Any],
+    request: QueryRequest,
+    *,
+    collapse_parents: bool,
+) -> str:
+    """Documents for Cohere: child spans when expanding to parents, else return text."""
+    if collapse_parents:
+        child = str(payload.get("childText") or "").strip()
+        plain = str(payload.get("text") or "").strip()
+        return child or plain or _return_text(payload, request)
+    return _return_text(payload, request)
+
+
+def _parent_lineage_key(payload: dict[str, Any]) -> str:
+    parent = str(payload.get("parentText") or "").strip()
+    digest = hashlib.sha256(parent.encode("utf-8")).hexdigest()[:16]
+    page_id = str(payload.get("pageId") or "")
+    section = str(payload.get("sectionTitle") or "")
+    return f"{page_id}|{section}|{digest}"
+
+
+def _select_ranked_candidates(
+    pool: list[dict[str, Any]],
+    ranked: list[tuple[int, float]],
+    *,
+    target_top_k: int,
+    collapse_parents: bool,
+) -> list[tuple[dict[str, Any], float]]:
+    """Keep Cohere order; optionally collapse sibling children sharing a parent."""
+    selected: list[tuple[dict[str, Any], float]] = []
+    seen_parents: set[str] = set()
+    for orig_idx, rerank_score in ranked:
+        if len(selected) >= target_top_k:
+            break
+        if orig_idx < 0 or orig_idx >= len(pool):
+            continue
+        cand = pool[orig_idx]
+        if collapse_parents:
+            key = _parent_lineage_key(cand["payload"])
+            if key in seen_parents:
+                continue
+            seen_parents.add(key)
+        selected.append((cand, float(rerank_score)))
+    return selected
 
 
 def _return_text(payload: dict[str, Any], request: QueryRequest) -> str:

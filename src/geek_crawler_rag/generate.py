@@ -65,7 +65,9 @@ from geek_crawler_rag.skills import (
 )
 from geek_crawler_rag.specialists import (
     SPECIALIST_TYPES,
+    ResearchPlanningOutput,
     ResearchPlanningSpecialist,
+    ResearchQueryPlan,
     SpecialistExecutionContext,
 )
 from geek_crawler_rag.tools import BudgetExhausted, ToolDenied
@@ -297,10 +299,7 @@ class CiteableGenerateWorkflow(Workflow):
     async def retrieve(self, ctx: Context, ev: StartEvent) -> RetrievedEvent:
         req: GenerateRequest = ev.get("request")
         await ctx.store.set("request", req)
-        if (
-            req.execution_version == AGENT_EXECUTION_VERSION
-            and _stage(req) == "researchPlanning"
-        ):
+        if _stage(req) == "researchPlanning":
             return RetrievedEvent(
                 chunks=[],
                 themes=[],
@@ -330,13 +329,21 @@ class CiteableGenerateWorkflow(Workflow):
             need += f"; section: {req.section_heading[:160]}"
         if entities:
             need += f"; entities: {', '.join(entities[:8])}"
-        research_plan = ResearchPlanningSpecialist().execute(
-            request=_request_for_specialist(req, "researchPlanning"),
-            model=select_generation_model(req, self._settings, "researchPlanning"),
-            skills=_skills_for_stage(req, "researchPlanning"),
-            base_need=need,
-            retrieval_mode=retrieval_mode,
-        )
+        if req.research_plan:
+            research_plan = ResearchPlanningOutput(
+                queries=[
+                    ResearchQueryPlan.model_validate(item) for item in req.research_plan
+                ],
+                retrievalMode=retrieval_mode,
+            )
+        else:
+            research_plan = ResearchPlanningSpecialist().execute(
+                request=_request_for_specialist(req, "researchPlanning"),
+                model=select_generation_model(req, self._settings, "researchPlanning"),
+                skills=_skills_for_stage(req, "researchPlanning"),
+                base_need=need,
+                retrieval_mode=retrieval_mode,
+            )
 
         for planned in research_plan.queries:
             qreq = QueryRequest(
@@ -569,7 +576,7 @@ class CiteableGenerateWorkflow(Workflow):
             and req.execution_version == AGENT_EXECUTION_VERSION
         ):
             raise ValueError("OPENAI_API_KEY is required for v3 agent execution.")
-        if not self._settings.openai_api_key:
+        if not self._settings.openai_api_key and _stage(req) != "researchPlanning":
             return DraftedEvent(
                 content=None,
                 variations=None,
@@ -654,6 +661,22 @@ class CiteableGenerateWorkflow(Workflow):
             typed, agent_execution = await executor.execute(system, user)
             output_pages = runtime.evidence_pages
             await ctx.store.set("pages", output_pages)
+        elif _stage(req) == "researchPlanning":
+            # Deterministic v2 path — ResearchPlanningSpecialist is not in SPECIALIST_TYPES.
+            need = (
+                f"research for writing intent: {req.writing_intent}; "
+                f"topic: {req.topic[:200]}"
+            )
+            brief_retrieval_context = _brief_retrieval_context(req)
+            if brief_retrieval_context:
+                need += f"; canonical brief: {brief_retrieval_context}"
+            typed = ResearchPlanningSpecialist().execute(
+                request=_request_for_specialist(req, "researchPlanning"),
+                model=model,
+                skills=_active_skills(req),
+                base_need=need,
+                retrieval_mode=None,
+            )
         else:
             specialist_type = SPECIALIST_TYPES[_stage(req)]
             specialist = specialist_type(_build_prompts, self._chat, _parse_llm_json)

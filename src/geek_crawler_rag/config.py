@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     # Hybrid retrieval + rerank (Phase B4/B5).
     hybrid_dense_limit: int = 30
     hybrid_lexical_limit: int = 30
-    rerank_pool_size: int = 25
+    rerank_pool_size: int = 40
     cohere_api_key: str | None = None
     cohere_rerank_model: str = "rerank-english-v3.0"
     rerank_enabled: bool = True
