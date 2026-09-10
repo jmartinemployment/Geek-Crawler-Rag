@@ -105,7 +105,7 @@ jobs:
       - run: npm ci
       - name: Install deterministic browser
         run: npx playwright install --with-deps chromium
-      - run: npm run test:ci
+      - run: npm run test:ci:citation
 
   staging-citation-smoke:
     name: Staging citation smoke

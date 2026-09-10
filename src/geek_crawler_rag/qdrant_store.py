@@ -49,10 +49,63 @@ class QdrantStore:
                 vectors_config=qm.VectorParams(
                     size=self._vector_size,
                     distance=qm.Distance.COSINE,
+                    on_disk=True,
                 ),
+                on_disk_payload=True,
             )
-            logger.info("Created Qdrant collection %s", self._collection)
+            logger.info("Created Qdrant collection %s (vectors on_disk)", self._collection)
+        else:
+            await self._ensure_vectors_on_disk()
+            await self._drop_body_text_indexes()
         await self._ensure_payload_indexes()
+
+    async def _ensure_vectors_on_disk(self) -> None:
+        """Move dense vectors to disk-backed storage for RAM-constrained hosts."""
+        try:
+            info = await self._client.get_collection(self._collection)
+            params = info.config.params.vectors
+            current_on_disk = False
+            if isinstance(params, qm.VectorParams):
+                current_on_disk = bool(params.on_disk)
+            elif isinstance(params, dict):
+                # Named vectors — not used by this collection.
+                return
+            if current_on_disk:
+                return
+            await self._client.update_collection(
+                collection_name=self._collection,
+                vectors_config={"": qm.VectorParamsDiff(on_disk=True)},
+            )
+            logger.info(
+                "Updated Qdrant collection %s vectors on_disk=true",
+                self._collection,
+            )
+        except Exception:
+            logger.warning(
+                "Could not set vectors on_disk for %s",
+                self._collection,
+                exc_info=True,
+            )
+
+    async def _drop_body_text_indexes(self) -> None:
+        """Remove heavy TEXT indexes on long body fields to free RAM/optimizer work."""
+        for field in ("text", "childText", "parentText"):
+            try:
+                await self._client.delete_payload_index(
+                    collection_name=self._collection,
+                    field_name=field,
+                )
+                logger.info(
+                    "Dropped TEXT payload index %s on %s",
+                    field,
+                    self._collection,
+                )
+            except Exception:
+                logger.debug(
+                    "TEXT index %s absent or drop skipped on %s",
+                    field,
+                    self._collection,
+                )
 
     async def _ensure_payload_indexes(self) -> None:
         keyword_fields = (
@@ -94,15 +147,8 @@ class QdrantStore:
                     "Payload index %s already present or create skipped", field
                 )
 
-        for field in ("childText", "text", "parentText"):
-            try:
-                await self._client.create_payload_index(
-                    collection_name=self._collection,
-                    field_name=field,
-                    field_schema=qm.PayloadSchemaType.TEXT,
-                )
-            except Exception:
-                logger.debug("Text index %s already present or create skipped", field)
+        # Do not create TEXT indexes on long body fields (text/childText/parentText).
+        # They dominate RAM/optimizer cost; dense retrieval + keyword filters suffice.
 
         try:
             await self._client.create_payload_index(

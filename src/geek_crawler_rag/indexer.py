@@ -14,6 +14,7 @@ from typing import Protocol
 from llama_index.core.schema import TextNode
 
 from geek_crawler_rag.config import Settings
+from geek_crawler_rag.embedding_circuit import EmbeddingCircuitOpen
 from geek_crawler_rag.extract import host_from_origin_or_url
 from geek_crawler_rag.llama_nodes import page_to_nodes
 from geek_crawler_rag.models import (
@@ -438,7 +439,16 @@ class IndexService:
             return
 
         await self._store.ensure_collection()
-        await self._delete_run_points(run_id)
+        # Deterministic point IDs make upserts idempotent. Skipping delete on
+        # retries preserves vectors after transient failures / process restarts.
+        if status.attempt <= 1:
+            await self._delete_run_points(run_id)
+        else:
+            logger.info(
+                "Skipping Qdrant delete for retry runId=%s attempt=%s",
+                run_id,
+                status.attempt,
+            )
 
         pending: list[TextNode] = []
         entity_cache: dict[str, object] = {}
@@ -486,6 +496,8 @@ class IndexService:
                         status.chunks_upserted += n
                         self._sync_embedding_stats(status, embedding_baseline)
                         pending = []
+                        # Persist mid-run so operators can see real progress.
+                        await self._persist(status)
                         if self._settings.qdrant_upsert_delay_seconds > 0:
                             await asyncio.sleep(
                                 self._settings.qdrant_upsert_delay_seconds
@@ -497,9 +509,30 @@ class IndexService:
                 n = await self._llama.embed_and_upsert(pending)
                 status.chunks_upserted += n
                 self._sync_embedding_stats(status, embedding_baseline)
+                await self._persist(status)
                 if self._webhook is not None:
                     await self._webhook.notify(status)
 
+        except EmbeddingCircuitOpen as ex:
+            self._sync_embedding_stats(status, embedding_baseline)
+            status.state = IndexState.FAILED
+            status.error = (
+                f"OpenAI embedding circuit open (HTTP {ex.status_code}). "
+                f"Quarantine: {ex.quarantine_path}. "
+                f"Already upserted points preserved."
+            )
+            status.finished_at_utc = utc_now()
+            logger.error(
+                "Index circuit-open for runId=%s quarantine=%s batchSize=%s",
+                run_id,
+                ex.quarantine_path,
+                ex.batch_size,
+            )
+            # Do not wipe Qdrant — preserve progress for deliberate re-run.
+            await self._persist(status)
+            if self._webhook is not None:
+                await self._webhook.notify(status)
+            return
         except Exception as ex:
             self._sync_embedding_stats(status, embedding_baseline)
             status.state = IndexState.FAILED

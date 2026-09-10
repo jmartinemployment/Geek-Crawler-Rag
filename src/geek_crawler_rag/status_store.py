@@ -26,6 +26,18 @@ SCHEDULER_COLLECTION = "rag_index_scheduler"
 SCHEDULER_ID = "index-scheduler"
 
 
+def lease_expired_or_missing(now: datetime) -> list[dict[str, Any]]:
+    """Mongo predicates for a free/expired lease.
+
+    Note: ``null`` leaseUntil does not match ``$lte`` or ``$exists: false``.
+    """
+    return [
+        {"leaseUntil": {"$lte": now}},
+        {"leaseUntil": {"$exists": False}},
+        {"leaseUntil": None},
+    ]
+
+
 class IndexStatusStore:
     def __init__(self, db: AsyncIOMotorDatabase) -> None:
         self._col = db[COLLECTION]
@@ -87,11 +99,7 @@ class IndexStatusStore:
             {"state": {"$nin": [IndexState.PENDING, IndexState.RUNNING]}},
             {
                 "state": {"$in": [IndexState.PENDING, IndexState.RUNNING]},
-                "leaseUntil": {"$lte": now},
-            },
-            {
-                "state": {"$in": [IndexState.PENDING, IndexState.RUNNING]},
-                "leaseUntil": {"$exists": False},
+                "$or": lease_expired_or_missing(now),
             },
         ]
         if not force:
@@ -176,12 +184,7 @@ class IndexStatusStore:
             {
                 "state": {"$in": [IndexState.PENDING, IndexState.RUNNING]},
                 "$and": [
-                    {
-                        "$or": [
-                            {"leaseUntil": {"$lte": now}},
-                            {"leaseUntil": {"$exists": False}},
-                        ]
-                    },
+                    {"$or": lease_expired_or_missing(now)},
                     {
                         "$or": [
                             {"attempt": {"$lt": max_attempts}},
@@ -291,10 +294,7 @@ class IndexStatusStore:
                 "_id": SCHEDULER_ID,
                 "enabled": True,
                 "nextRunAtUtc": {"$lte": now},
-                "$or": [
-                    {"leaseUntil": {"$lte": now}},
-                    {"leaseUntil": {"$exists": False}},
-                ],
+                "$or": lease_expired_or_missing(now),
             },
             {
                 "$set": {

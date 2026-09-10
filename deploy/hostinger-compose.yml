@@ -6,7 +6,7 @@ services:
     image: qdrant/qdrant:v1.13.4
     restart: unless-stopped
     environment:
-      QDRANT__PERFORMANCE__MAX_SEARCH_THREADS: "2"
+      QDRANT__PERFORMANCE__MAX_SEARCH_THREADS: "1"
     volumes:
       - qdrant_data:/qdrant/storage
     ulimits:
@@ -36,7 +36,9 @@ services:
       OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
       OPENAI_EMBEDDING_TOKENS_PER_MINUTE: ${OPENAI_EMBEDDING_TOKENS_PER_MINUTE:-1000000}
       OPENAI_EMBEDDING_MAX_BATCH_TOKENS: ${OPENAI_EMBEDDING_MAX_BATCH_TOKENS:-50000}
-      OPENAI_EMBEDDING_MAX_RETRIES: ${OPENAI_EMBEDDING_MAX_RETRIES:-8}
+      # Fail-closed: no in-process OpenAI retries / exponential backoff (by design).
+      OPENAI_EMBEDDING_MAX_RETRIES: ${OPENAI_EMBEDDING_MAX_RETRIES:-0}
+      EMBEDDING_QUARANTINE_DIR: ${EMBEDDING_QUARANTINE_DIR:-/var/lib/geek-crawler-rag/embedding_quarantine}
       EMBED_BATCH_SIZE: ${EMBED_BATCH_SIZE:-32}
       INDEX_SCHEDULER_ENABLED: ${INDEX_SCHEDULER_ENABLED:-true}
       INDEX_SCHEDULER_INTERVAL_SECONDS: ${INDEX_SCHEDULER_INTERVAL_SECONDS:-300}
@@ -46,7 +48,7 @@ services:
       INDEX_SCHEDULER_MAX_ATTEMPTS: ${INDEX_SCHEDULER_MAX_ATTEMPTS:-5}
       INDEX_SCHEDULER_RETRY_SECONDS: ${INDEX_SCHEDULER_RETRY_SECONDS:-300}
       QDRANT_COLLECTION: ${QDRANT_COLLECTION:-geek_crawler_chunks}
-      QDRANT_UPSERT_DELAY_SECONDS: ${QDRANT_UPSERT_DELAY_SECONDS:-0}
+      QDRANT_UPSERT_DELAY_SECONDS: ${QDRANT_UPSERT_DELAY_SECONDS:-0.5}
       API_KEY: ${API_KEY:-}
       CONTEXT_MANIFEST_SIGNING_KEYS: ${CONTEXT_MANIFEST_SIGNING_KEYS:-{}}
       SKILL_SNAPSHOT_SIGNING_KEY: ${SKILL_SNAPSHOT_SIGNING_KEY:-}
@@ -54,6 +56,9 @@ services:
       INDEX_STATUS_WEBHOOK_URL: ${INDEX_STATUS_WEBHOOK_URL:-}
       INDEX_STATUS_WEBHOOK_KEY: ${INDEX_STATUS_WEBHOOK_KEY:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      # Survives container recreate; inspect failed OpenAI batches here.
+      - embedding_quarantine:/var/lib/geek-crawler-rag/embedding_quarantine
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -69,4 +74,5 @@ services:
       start_period: 40s
 
 volumes:
+  embedding_quarantine:
   qdrant_data:

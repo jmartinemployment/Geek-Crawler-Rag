@@ -8,7 +8,10 @@ import pytest
 from geek_crawler_rag.config import Settings
 from geek_crawler_rag.mongo import SchedulableRun, SchedulableRunScan
 from geek_crawler_rag.scheduler import IndexScheduler
-from geek_crawler_rag.status_store import _scheduler_from_doc
+from geek_crawler_rag.status_store import (
+    _scheduler_from_doc,
+    lease_expired_or_missing,
+)
 
 
 @pytest.mark.asyncio
@@ -107,3 +110,55 @@ def test_scheduler_status_normalizes_mongo_naive_datetimes():
 
     assert status.next_run_at_utc is not None
     assert status.next_run_at_utc.tzinfo == timezone.utc
+
+
+def test_lease_expired_or_missing_includes_null_lease():
+    now = datetime(2026, 9, 10, 12, 0, tzinfo=timezone.utc)
+    clauses = lease_expired_or_missing(now)
+    assert {"leaseUntil": {"$lte": now}} in clauses
+    assert {"leaseUntil": {"$exists": False}} in clauses
+    assert {"leaseUntil": None} in clauses
+
+
+@pytest.mark.asyncio
+async def test_claim_matches_pending_job_with_null_lease_until():
+    from geek_crawler_rag.models import IndexState
+    from geek_crawler_rag.status_store import IndexStatusStore
+
+    now = datetime(2026, 9, 10, 12, 0, tzinfo=timezone.utc)
+    captured: dict = {}
+
+    async def fake_find_one_and_update(query, update, **kwargs):
+        captured["query"] = query
+        return {
+            "runId": "null-lease-run",
+            "state": IndexState.PENDING,
+            "attempt": 1,
+            "leaseOwner": "owner-1",
+            "leaseUntil": now,
+            "trigger": "manual",
+        }
+
+    col = MagicMock()
+    col.find_one_and_update = AsyncMock(side_effect=fake_find_one_and_update)
+    db = MagicMock()
+    db.__getitem__ = MagicMock(side_effect=lambda name: col)
+    store = IndexStatusStore(db)
+
+    claimed = await store.claim(
+        "null-lease-run",
+        owner="owner-1",
+        lease_seconds=900,
+        trigger="manual",
+        force=True,
+    )
+
+    assert claimed is not None
+    assert claimed.run_id == "null-lease-run"
+    or_clauses = captured["query"]["$or"]
+    pending_branch = next(
+        c
+        for c in or_clauses
+        if c.get("state") == {"$in": [IndexState.PENDING, IndexState.RUNNING]}
+    )
+    assert {"leaseUntil": None} in pending_branch["$or"]

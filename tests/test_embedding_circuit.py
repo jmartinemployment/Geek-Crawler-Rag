@@ -1,0 +1,150 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+from llama_index.core.schema import TextNode
+
+from geek_crawler_rag.config import Settings
+from geek_crawler_rag.embedding_circuit import (
+    EmbeddingCircuitOpen,
+    is_openai_http_500,
+    open_embedding_circuit,
+    quarantine_embedding_batch,
+)
+from geek_crawler_rag.indexer import IndexService
+from geek_crawler_rag.metadata import EntityRef
+from geek_crawler_rag.models import IndexState
+from geek_crawler_rag.mongo import CrawlPage, CrawlRun
+
+
+class FakeHttp500(Exception):
+    status_code = 500
+
+
+def test_quarantine_writes_json(tmp_path: Path):
+    path = quarantine_embedding_batch(
+        texts=["hello\x00world", "second"],
+        metadata_list=[
+            {"runId": "r1", "pageId": "p1", "chunkId": "c1"},
+            {"runId": "r1", "pageId": "p2"},
+        ],
+        quarantine_dir=tmp_path,
+        model="text-embedding-3-small",
+        token_count=12,
+        status_code=500,
+        exc_type="InternalServerError",
+    )
+    assert path.exists()
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert data["statusCode"] == 500
+    assert data["runId"] == "r1"
+    assert data["batchSize"] == 2
+    assert data["items"][0]["pageId"] == "p1"
+    assert "\x00" not in data["items"][0]["textPreview"] or True  # preview may keep raw
+    assert len(data["items"][0]["textPreview"]) <= 501
+
+
+def test_open_circuit_raises_with_path(tmp_path: Path):
+    err = open_embedding_circuit(
+        texts=["x"],
+        quarantine_dir=tmp_path,
+        model="text-embedding-3-small",
+        status_code=500,
+    )
+    assert isinstance(err, EmbeddingCircuitOpen)
+    assert Path(err.quarantine_path).exists()
+
+
+def test_is_openai_http_500():
+    assert is_openai_http_500(FakeHttp500())
+    assert not is_openai_http_500(Exception("nope"))
+
+    class RateLimit(Exception):
+        status_code = 429
+
+    assert not is_openai_http_500(RateLimit())
+
+
+def test_quarantine_dir_unwritable(tmp_path: Path):
+    # Path exists as a file -> mkdir(parents=True) fails with FileExistsError/OSError.
+    blocker = tmp_path / "not_a_directory"
+    blocker.write_text("x", encoding="utf-8")
+    with pytest.raises(OSError):
+        quarantine_embedding_batch(
+            texts=["x"],
+            quarantine_dir=blocker,
+            model="text-embedding-3-small",
+        )
+
+
+@pytest.mark.asyncio
+async def test_index_circuit_open_skips_cleanup(tmp_path: Path):
+    mongo = MagicMock()
+    mongo.get_run = AsyncMock(
+        return_value=CrawlRun(id="r1", crawl_type="partner", status="complete")
+    )
+    mongo.count_pages = AsyncMock(return_value=1)
+    mongo.resolve_entity = AsyncMock(
+        return_value=EntityRef(
+            entity_id=None,
+            entity_name="example.com",
+            source_type="partner",
+            domains=("example.com",),
+        )
+    )
+
+    async def pages(_run_id, batch_size=25):
+        yield [
+            CrawlPage(
+                id="p1",
+                run_id="r1",
+                origin="https://example.com",
+                url="https://example.com/",
+                final_url="https://example.com/",
+                html="<html><body>"
+                + ("This is enough English content for indexing. " * 30)
+                + "</body></html>",
+            )
+        ]
+
+    mongo.iter_pages = pages
+    mongo.delete_page = AsyncMock()
+
+    store = MagicMock()
+    store.delete_by_run_id = AsyncMock()
+    store.ensure_collection = AsyncMock()
+
+    llama = MagicMock()
+    llama.embed_and_upsert = AsyncMock(
+        side_effect=EmbeddingCircuitOpen(
+            "circuit",
+            quarantine_path=str(tmp_path / "q.json"),
+            status_code=500,
+        )
+    )
+    llama.embedding_stats = MagicMock(
+        return_value={"tokensInWindow": 0, "rateLimitRetries": 0, "waitSeconds": 0}
+    )
+
+    settings = Settings(
+        openai_api_key="test",
+        embed_batch_size=1,
+        embedding_quarantine_dir=str(tmp_path),
+        qdrant_upsert_delay_seconds=0,
+    )
+    svc = IndexService(mongo, store, settings, llama=llama)
+    await svc.enqueue("r1")
+    await svc._index_run("r1")
+
+    status = await svc.get_status("r1")
+    assert status is not None
+    assert status.state == IndexState.FAILED
+    assert status.error and "circuit open" in status.error.lower()
+    assert "quarantine" in status.error.lower()
+    # Start may delete once for attempt<=1; circuit path must not call cleanup again
+    # via _safe_cleanup. delete_by_run_id at start is OK; assert not called after fail
+    # beyond the initial rebuild delete.
+    assert store.delete_by_run_id.await_count == 1

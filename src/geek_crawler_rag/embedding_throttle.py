@@ -22,7 +22,7 @@ class EmbeddingBatch:
 
 
 class EmbeddingRetryExhausted(RuntimeError):
-    """Transient embedding rate limits exceeded the configured retry budget."""
+    """Legacy name; embedding calls no longer retry in-process."""
 
 
 class EmbeddingThrottle:

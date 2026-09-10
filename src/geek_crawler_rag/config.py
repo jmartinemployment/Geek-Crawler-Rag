@@ -15,15 +15,19 @@ class Settings(BaseSettings):
     qdrant_api_key: str | None = None
     qdrant_collection: str = "geek_crawler_chunks"
     qdrant_ad_templates_collection: str = "geek_ad_templates"
-    qdrant_upsert_delay_seconds: float = 0.0
+    qdrant_upsert_delay_seconds: float = 0.5
 
     openai_api_key: str = ""
     openai_embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = 1536
     openai_embedding_tokens_per_minute: int = 1_000_000
     openai_embedding_max_batch_tokens: int = 50_000
-    openai_embedding_max_retries: int = 8
-    openai_embedding_retry_max_seconds: float = 60.0
+    # Embedding calls are fail-closed (no in-process OpenAI retries).
+    openai_embedding_max_retries: int = 0
+    openai_embedding_retry_max_seconds: float = 0.0
+    embedding_quarantine_dir: str = (
+        "/var/lib/geek-crawler-rag/embedding_quarantine"
+    )
 
     # Legacy uniform chunk defaults (still used as fallback knobs).
     chunk_size_tokens: int = 650
