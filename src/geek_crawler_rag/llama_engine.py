@@ -233,6 +233,7 @@ class LlamaIndexEngine:
                             token_count=batch.token_count,
                             status_code=code,
                             exc_type=type(exc).__name__,
+                            exc=exc,
                         ) from exc
                     raise
             embeddings.extend(result)
@@ -261,6 +262,7 @@ class LlamaIndexEngine:
                         token_count=token_count,
                         status_code=code,
                         exc_type=type(exc).__name__,
+                        exc=exc,
                     ) from exc
                 raise
 

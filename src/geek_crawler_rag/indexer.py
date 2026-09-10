@@ -517,11 +517,13 @@ class IndexService:
         except EmbeddingCircuitOpen as ex:
             self._sync_embedding_stats(status, embedding_baseline)
             logger.error(
-                "Index quarantined for runId=%s quarantine=%s statusCode=%s batchSize=%s",
+                "Index quarantined for runId=%s quarantine=%s statusCode=%s batchSize=%s requestId=%s message=%s",
                 run_id,
                 ex.quarantine_path,
                 ex.status_code,
                 ex.batch_size,
+                ex.request_id,
+                ex.openai_message,
             )
             await self._fail_quarantined(
                 status,

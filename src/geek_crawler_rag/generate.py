@@ -33,6 +33,7 @@ from geek_crawler_rag.agent_models import (
     SpecialistContribution,
     SpecialistReview,
 )
+from geek_crawler_rag.embedding_circuit import describe_openai_error
 from geek_crawler_rag.agents import StageAgentExecutor, create_production_llm
 from geek_crawler_rag.asset_context import AssetContextService
 from geek_crawler_rag.config import Settings
@@ -1028,6 +1029,15 @@ class GenerateService:
             failure = _agent_failure(ex, request)
             if failure is None:
                 raise
+            openai_diag = describe_openai_error(ex)
+            logger.error(
+                "Agent generation failed: jobId=%s stageExecutionId=%s errorType=%s message=%s openaiDiagnostics=%s",
+                request.agent_execution.job_id if request.agent_execution else None,
+                request.agent_execution.stage_execution_id if request.agent_execution else None,
+                type(ex).__name__,
+                str(ex)[:300],
+                openai_diag if any(openai_diag.values()) else None,
+            )
             return GenerateResponse(
                 intent=request.writing_intent,
                 warnings=[failure.detail],

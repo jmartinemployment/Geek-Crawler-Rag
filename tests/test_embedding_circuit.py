@@ -25,7 +25,7 @@ class FakeHttp500(Exception):
 
 
 def test_quarantine_writes_json(tmp_path: Path):
-    path = quarantine_embedding_batch(
+    path, request_id, message = quarantine_embedding_batch(
         texts=["hello\x00world", "second"],
         metadata_list=[
             {"runId": "r1", "pageId": "p1", "chunkId": "c1"},
@@ -45,6 +45,8 @@ def test_quarantine_writes_json(tmp_path: Path):
     assert data["items"][0]["pageId"] == "p1"
     assert "\x00" not in data["items"][0]["textPreview"] or True  # preview may keep raw
     assert len(data["items"][0]["textPreview"]) <= 501
+    assert request_id is None  # no actual OpenAI exception passed
+    assert message is None
 
 
 def test_open_circuit_raises_with_path(tmp_path: Path):
@@ -146,6 +148,57 @@ async def test_index_circuit_open_skips_cleanup(tmp_path: Path):
     assert "quarantine" in status.error.lower()
     # Start may delete once for attempt<=1; quarantine path must not wipe again.
     assert store.delete_by_run_id.await_count == 1
+
+
+def test_openai_error_diagnostics():
+    from geek_crawler_rag.embedding_circuit import describe_openai_error
+
+    class FakeOpenAIError(Exception):
+        def __init__(self):
+            self.request_id = "req-12345"
+            self.type = "invalid_request_error"
+            self.code = "invalid_embedding_model"
+            self.param = "model"
+            self.message = "Model not found"
+
+    err = FakeOpenAIError()
+    diag = describe_openai_error(err)
+    assert diag["requestId"] == "req-12345"
+    assert diag["errorType"] == "invalid_request_error"
+    assert diag["errorCode"] == "invalid_embedding_model"
+    assert diag["errorParam"] == "model"
+    assert "Model not found" in diag["message"]
+
+
+def test_quarantine_with_openai_diagnostics(tmp_path: Path):
+    from geek_crawler_rag.embedding_circuit import describe_openai_error
+
+    class FakeOpenAIError(Exception):
+        def __init__(self):
+            self.request_id = "req-67890"
+            self.type = "server_error"
+            self.code = None
+            self.param = None
+            self.message = "The server is experiencing issues"
+
+    err = FakeOpenAIError()
+    path, request_id, message = quarantine_embedding_batch(
+        texts=["test content"],
+        metadata_list=[{"runId": "r2"}],
+        quarantine_dir=tmp_path,
+        model="text-embedding-3-small",
+        status_code=500,
+        exc_type="InternalServerError",
+        exc=err,
+    )
+    assert path.exists()
+    assert request_id == "req-67890"
+    assert "server is experiencing" in message.lower()
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert data.get("openaiDiagnostics") is not None
+    assert data["openaiDiagnostics"]["requestId"] == "req-67890"
+    assert data["openaiDiagnostics"]["errorType"] == "server_error"
 
 
 def test_empty_input_error_detection():
