@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = 1536
-    openai_embedding_tokens_per_minute: int = 400_000
+    openai_embedding_tokens_per_minute: int = 1_000_000
     openai_embedding_max_batch_tokens: int = 50_000
     openai_embedding_max_retries: int = 8
     openai_embedding_retry_max_seconds: float = 60.0
@@ -40,12 +40,12 @@ class Settings(BaseSettings):
 
     # Durable smallest-first indexing scheduler.
     index_scheduler_enabled: bool = True
-    index_scheduler_interval_seconds: int = 7_200
+    index_scheduler_interval_seconds: int = 300
     index_scheduler_poll_seconds: int = 60
     index_job_lease_seconds: int = 900
     index_job_heartbeat_seconds: int = 60
     index_scheduler_max_attempts: int = 5
-    index_scheduler_retry_seconds: int = 7_200
+    index_scheduler_retry_seconds: int = 300
 
     # Hybrid retrieval + rerank (Phase B4/B5).
     hybrid_dense_limit: int = 30

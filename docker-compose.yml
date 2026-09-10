@@ -11,6 +11,10 @@ services:
       QDRANT__PERFORMANCE__MAX_SEARCH_THREADS: "1"
     volumes:
       - qdrant_data:/qdrant/storage
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
     mem_limit: 3g
     cpus: "0.5"
     healthcheck:
