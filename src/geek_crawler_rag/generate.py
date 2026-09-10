@@ -33,7 +33,6 @@ from geek_crawler_rag.agent_models import (
     SpecialistContribution,
     SpecialistReview,
 )
-from geek_crawler_rag.embedding_circuit import describe_openai_error
 from geek_crawler_rag.agents import StageAgentExecutor, create_production_llm
 from geek_crawler_rag.asset_context import AssetContextService
 from geek_crawler_rag.config import Settings
@@ -41,6 +40,7 @@ from geek_crawler_rag.context_models import (
     RuntimeManifestQueryRequest,
     verify_persisted_manifest,
 )
+from geek_crawler_rag.embedding_circuit import describe_openai_error
 from geek_crawler_rag.models import (
     AGENT_EXECUTION_VERSION,
     ChunkHit,
@@ -51,6 +51,7 @@ from geek_crawler_rag.models import (
     GenerateResponse,
     GenerateSource,
     GenerateValidation,
+    GovernedContextEntry,
     QueryRequest,
     SkillExecutionEnvelope,
     SkillProvenance,
@@ -426,9 +427,7 @@ class CiteableGenerateWorkflow(Workflow):
             if isinstance(payload, dict) and context.selected_field_ids:
                 allowed = {str(field_id) for field_id in context.selected_field_ids}
                 payload = {
-                    key: value
-                    for key, value in payload.items()
-                    if str(key) in allowed
+                    key: value for key, value in payload.items() if str(key) in allowed
                 }
             body = json.dumps(
                 {
@@ -1033,7 +1032,9 @@ class GenerateService:
             logger.error(
                 "Agent generation failed: jobId=%s stageExecutionId=%s errorType=%s message=%s openaiDiagnostics=%s",
                 request.agent_execution.job_id if request.agent_execution else None,
-                request.agent_execution.stage_execution_id if request.agent_execution else None,
+                request.agent_execution.stage_execution_id
+                if request.agent_execution
+                else None,
                 type(ex).__name__,
                 str(ex)[:300],
                 openai_diag if any(openai_diag.values()) else None,
@@ -1188,9 +1189,7 @@ def _style_guide_output_violations(payload: dict[str, Any], output: str) -> list
                 )
         elif kind == "abbreviation":
             short_present = _phrase_present(output, match, case_sensitive=True)
-            long_present = _phrase_present(
-                output, replacement, case_sensitive=False
-            )
+            long_present = _phrase_present(output, replacement, case_sensitive=False)
             if short_present and not long_present:
                 violations.append(
                     "Style Guide abbreviation requires the expanded form before or with "
@@ -1198,7 +1197,9 @@ def _style_guide_output_violations(payload: dict[str, Any], output: str) -> list
                 )
         elif kind == "firstMention":
             short_idx = output.find(match) if match else -1
-            long_idx = output.casefold().find(replacement.casefold()) if replacement else -1
+            long_idx = (
+                output.casefold().find(replacement.casefold()) if replacement else -1
+            )
             if short_idx >= 0 and (long_idx < 0 or long_idx > short_idx):
                 violations.append(
                     "Style Guide first-mention rule requires the expanded form before "
@@ -1257,9 +1258,7 @@ def _style_guide_prompt_constraints(payload: dict[str, Any]) -> list[str]:
                 f'- Introduce "{match}" with the expansion "{replacement}" before relying on the short form.'
             )
         elif kind == "firstMention" and replacement:
-            lines.append(
-                f'- First mention of "{match}" must use "{replacement}".'
-            )
+            lines.append(f'- First mention of "{match}" must use "{replacement}".')
     for phrase in payload.get("prohibitedPhrases", []) or []:
         if isinstance(phrase, str) and phrase.strip():
             lines.append(f'- Never use the phrase "{phrase.strip()}".')
@@ -1272,6 +1271,44 @@ def _style_guide_prompt_constraints(payload: dict[str, Any]) -> list[str]:
     return lines
 
 
+_UNSUPPORTED_PRODUCT_CLAIM_MARKERS = (
+    "guarantees perfect",
+    "guarantee perfect",
+    "perfect accuracy",
+    "100% accurate",
+    "never fails",
+    "always works",
+    "risk-free",
+    "risk free",
+)
+
+
+def _product_output_violations(
+    context: GovernedContextEntry, output: str, stage: str
+) -> list[str]:
+    folded = output.casefold()
+    approved = [
+        phrase.strip()
+        for phrase in (context.approved_claims or [])
+        if phrase and phrase.strip()
+    ]
+    approved_folded = [phrase.casefold() for phrase in approved]
+    violations: list[str] = []
+    if stage in {"complete", "finalSynthesis"}:
+        for phrase in context.mandatory_disclaimers or []:
+            if phrase.strip() and phrase.casefold() not in folded:
+                violations.append(
+                    f"Governed required phrase is missing: {phrase.strip()[:120]}"
+                )
+    for marker in _UNSUPPORTED_PRODUCT_CLAIM_MARKERS:
+        if marker not in folded:
+            continue
+        if any(marker in claim for claim in approved_folded):
+            continue
+        violations.append(f"Unsupported product claim was emitted: {marker}")
+    return violations
+
+
 def _governed_output_violations(
     request: GenerateRequest, result: GenerateResponse
 ) -> list[str]:
@@ -1282,26 +1319,18 @@ def _governed_output_violations(
         return []
     folded = output.casefold()
     prohibited: list[str] = []
-    required: list[str] = []
     violations: list[str] = []
+    stage = _stage(request)
     for context in request.governed_context or []:
         prohibited.extend(context.prohibited_claims or [])
         if context.kind == "style_guide" and isinstance(context.payload, dict):
             violations.extend(_style_guide_output_violations(context.payload, output))
-        if context.kind == "product" and _stage(request) in {
-            "complete",
-            "finalSynthesis",
-        }:
-            required.extend(context.mandatory_disclaimers or [])
+        if context.kind == "product":
+            violations.extend(_product_output_violations(context, output, stage))
     violations.extend(
         f"Governed prohibited phrase was emitted: {phrase[:120]}"
         for phrase in prohibited
         if phrase.strip() and phrase.casefold() in folded
-    )
-    violations.extend(
-        f"Governed required phrase is missing: {phrase[:120]}"
-        for phrase in required
-        if phrase.strip() and phrase.casefold() not in folded
     )
     return violations
 

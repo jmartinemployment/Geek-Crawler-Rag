@@ -529,3 +529,77 @@ def test_style_guide_output_accepts_compliant_text():
         ),
     )
     assert _governed_output_violations(req, result) == []
+
+
+def test_product_output_blocks_missing_disclaimers_and_unsupported_claims():
+    product = GovernedContextEntry(
+        kind="product",
+        stableId="product-1",
+        versionId="product-v1",
+        versionNumber=1,
+        digest=_digest("a"),
+        payload={"pricing": "Contact sales"},
+        approvedClaims=["Evidence Engine cites every claim"],
+        prohibitedClaims=["guarantees perfect accuracy"],
+        mandatoryDisclaimers=["Results depend on source coverage."],
+    )
+    missing = GenerateRequest(
+        writingIntent="Technical Article",
+        topic="Evidence Engine",
+        generationStage="complete",
+        governedContext=[product],
+    )
+    missing_result = GenerateResponse(
+        intent="Technical Article",
+        content="Evidence Engine cites every claim and is ready for launch.",
+    )
+    missing_joined = "\n".join(_governed_output_violations(missing, missing_result))
+    assert "required phrase is missing" in missing_joined
+
+    unsupported = GenerateRequest(
+        writingIntent="Technical Article",
+        topic="Evidence Engine",
+        generationStage="section",
+        governedContext=[product],
+    )
+    unsupported_result = GenerateResponse(
+        intent="Technical Article",
+        content="Evidence Engine never fails and offers risk-free accuracy.",
+    )
+    unsupported_joined = "\n".join(
+        _governed_output_violations(unsupported, unsupported_result)
+    )
+    assert "Unsupported product claim" in unsupported_joined
+
+    prohibited = GenerateRequest(
+        writingIntent="Technical Article",
+        topic="Evidence Engine",
+        generationStage="complete",
+        governedContext=[product],
+    )
+    prohibited_result = GenerateResponse(
+        intent="Technical Article",
+        content=(
+            "Evidence Engine cites every claim and guarantees perfect accuracy. "
+            "Results depend on source coverage."
+        ),
+    )
+    prohibited_joined = "\n".join(
+        _governed_output_violations(prohibited, prohibited_result)
+    )
+    assert "prohibited phrase was emitted" in prohibited_joined
+
+    ok = GenerateRequest(
+        writingIntent="Technical Article",
+        topic="Evidence Engine",
+        generationStage="complete",
+        governedContext=[product],
+    )
+    ok_result = GenerateResponse(
+        intent="Technical Article",
+        content=(
+            "Evidence Engine cites every claim with source links. "
+            "Results depend on source coverage."
+        ),
+    )
+    assert _governed_output_violations(ok, ok_result) == []
