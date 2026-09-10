@@ -25,8 +25,8 @@ from qdrant_client import AsyncQdrantClient, QdrantClient
 from geek_crawler_rag.config import Settings
 from geek_crawler_rag.embedding_circuit import (
     EmbeddingCircuitOpen,
-    is_openai_http_500,
     open_embedding_circuit,
+    should_quarantine_embedding_error,
 )
 from geek_crawler_rag.embedding_sanitize import (
     sanitize_embedding_text,
@@ -130,21 +130,34 @@ class LlamaIndexEngine:
     async def embed_and_upsert(self, nodes: list[TextNode]) -> int:
         if not nodes:
             return 0
-        texts: list[str] = []
+        keep: list[TextNode] = []
+        skipped_empty = 0
         for node in nodes:
             raw = node.get_content()
             safe = sanitize_embedding_text(raw)
             if safe != raw:
                 node.set_content(safe)
-            texts.append(safe)
+            if not safe.strip():
+                skipped_empty += 1
+                continue
+            keep.append(node)
+        if skipped_empty:
+            logger.info(
+                "skipped_empty_embed_texts=%s kept=%s",
+                skipped_empty,
+                len(keep),
+            )
+        if not keep:
+            return 0
+        texts = [n.get_content() for n in keep]
         embeddings = await self.embed_texts(
             texts,
-            metadata_list=[_node_meta(n) for n in nodes],
+            metadata_list=[_node_meta(n) for n in keep],
         )
-        for node, emb in zip(nodes, embeddings, strict=True):
+        for node, emb in zip(keep, embeddings, strict=True):
             node.embedding = emb
-        await self._vector_store.async_add(nodes)
-        return len(nodes)
+        await self._vector_store.async_add(keep)
+        return len(keep)
 
     async def embed_texts(
         self,
@@ -159,6 +172,33 @@ class LlamaIndexEngine:
                 mutated,
                 len(cleaned),
             )
+        # Defense in depth: never send empty strings (OpenAI 400).
+        if metadata_list is not None and len(metadata_list) != len(cleaned):
+            metadata_list = list(metadata_list)[: len(cleaned)]
+        filtered: list[str] = []
+        filtered_meta: list[dict[str, Any] | None] | None = (
+            [] if metadata_list is not None else None
+        )
+        dropped = 0
+        for i, text in enumerate(cleaned):
+            if not text.strip():
+                dropped += 1
+                continue
+            filtered.append(text)
+            if filtered_meta is not None and metadata_list is not None:
+                filtered_meta.append(
+                    metadata_list[i] if i < len(metadata_list) else None
+                )
+        if dropped:
+            logger.info(
+                "skipped_empty_embed_texts=%s kept=%s (embed_texts)",
+                dropped,
+                len(filtered),
+            )
+        if not filtered:
+            return []
+        cleaned = filtered
+        metadata_list = filtered_meta
         embeddings: list[list[float]] = []
         batches = partition_embedding_batches(
             cleaned,
@@ -181,14 +221,17 @@ class LlamaIndexEngine:
                 except EmbeddingCircuitOpen:
                     raise
                 except Exception as exc:
-                    if is_openai_http_500(exc) or isinstance(exc, InternalServerError):
+                    code = should_quarantine_embedding_error(exc)
+                    if code is None and isinstance(exc, InternalServerError):
+                        code = int(getattr(exc, "status_code", 0) or 500)
+                    if code is not None:
                         raise open_embedding_circuit(
                             texts=batch.texts,
                             metadata_list=batch_meta,
                             quarantine_dir=self._settings.embedding_quarantine_dir,
                             model=self._settings.openai_embedding_model,
                             token_count=batch.token_count,
-                            status_code=int(getattr(exc, "status_code", 0) or 500),
+                            status_code=code,
                             exc_type=type(exc).__name__,
                         ) from exc
                     raise
@@ -207,13 +250,16 @@ class LlamaIndexEngine:
             except EmbeddingCircuitOpen:
                 raise
             except Exception as exc:
-                if is_openai_http_500(exc) or isinstance(exc, InternalServerError):
+                code = should_quarantine_embedding_error(exc)
+                if code is None and isinstance(exc, InternalServerError):
+                    code = int(getattr(exc, "status_code", 0) or 500)
+                if code is not None:
                     raise open_embedding_circuit(
                         texts=[text],
                         quarantine_dir=self._settings.embedding_quarantine_dir,
                         model=self._settings.openai_embedding_model,
                         token_count=token_count,
-                        status_code=int(getattr(exc, "status_code", 0) or 500),
+                        status_code=code,
                         exc_type=type(exc).__name__,
                     ) from exc
                 raise

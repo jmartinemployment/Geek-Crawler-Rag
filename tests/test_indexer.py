@@ -150,7 +150,7 @@ async def test_index_upserts_english_chunks():
 
 
 @pytest.mark.asyncio
-async def test_index_flush_failure_cleans_partial_points():
+async def test_index_flush_failure_preserves_partial_points():
     html = (
         "<html><body>"
         + ("This English documentation explains the partner API thoroughly. " * 40)
@@ -189,7 +189,8 @@ async def test_index_flush_failure_cleans_partial_points():
     status = await svc.get_status("r3")
     assert status is not None
     assert status.state == IndexState.FAILED
-    assert store.delete_by_run_id.await_count >= 2
+    assert store.delete_by_run_id.await_count == 1
+    assert status.error and "qdrant down" in status.error.lower()
 
 
 @pytest.mark.asyncio
@@ -251,7 +252,33 @@ async def test_claim_is_revalidated_before_index_execution():
 
 
 @pytest.mark.asyncio
-async def test_shutdown_cleans_partial_qdrant_index():
+async def test_start_does_not_auto_reclaim_stale_leases():
+    mongo = MagicMock()
+    store = MagicMock()
+    status_store = MagicMock()
+    status_store.ensure_indexes = AsyncMock()
+    status_store.claim_recoverable = AsyncMock(
+        return_value=[MagicMock(run_id="stale-run")]
+    )
+    svc = IndexService(
+        mongo,
+        store,
+        Settings(openai_api_key="test"),
+        llama=_llama_mock(),
+        status_store=status_store,
+    )
+
+    await svc.start()
+    try:
+        status_store.ensure_indexes.assert_awaited_once()
+        status_store.claim_recoverable.assert_not_awaited()
+        assert svc._queue.empty()
+    finally:
+        await svc.stop()
+
+
+@pytest.mark.asyncio
+async def test_shutdown_preserves_partial_qdrant_index():
     html = (
         "<html><body>"
         + ("This English documentation explains the partner API thoroughly. " * 40)
@@ -301,4 +328,13 @@ async def test_shutdown_cleans_partial_qdrant_index():
 
     await svc.stop()
 
-    assert store.delete_by_run_id.await_count >= 2
+    # Start may delete once for attempt 1; cancel/stop must not wipe again.
+    assert store.delete_by_run_id.await_count == 1
+    status = await svc.get_status("shutdown")
+    assert status is not None
+    assert status.state == IndexState.FAILED
+    assert status.error
+    assert (
+        "shut down" in status.error.lower()
+        or "cancelled" in status.error.lower()
+    )

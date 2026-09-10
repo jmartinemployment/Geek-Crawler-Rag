@@ -66,16 +66,12 @@ class IndexService:
     async def start(self) -> None:
         if self._status_store is not None:
             await self._status_store.ensure_indexes()
-            recovered = await self._status_store.claim_recoverable(
-                owner=self.owner,
-                lease_seconds=self._settings.index_job_lease_seconds,
-                max_attempts=self._settings.index_scheduler_max_attempts,
+            # Do not auto-reclaim stale pending/running leases into the worker
+            # queue — that path was re-queuing cancelled deploy jobs. Operator
+            # must re-enqueue deliberately (manual POST /v1/index).
+            logger.info(
+                "Index worker started without claim_recoverable auto-requeue"
             )
-            for status in recovered:
-                self._statuses[status.run_id] = status
-                await self._queue.put(status.run_id)
-            if recovered:
-                logger.warning("Recovered %s stale index job(s)", len(recovered))
         if self._worker_task is None or self._worker_task.done():
             self._worker_task = asyncio.create_task(
                 self._worker_loop(), name="index-worker"
@@ -90,10 +86,10 @@ class IndexService:
                 pass
         for status in self._statuses.values():
             if status.state in (IndexState.PENDING, IndexState.RUNNING):
-                status.state = IndexState.FAILED
-                status.error = "Indexer shut down while job was in flight"
-                status.finished_at_utc = utc_now()
-                await self._persist(status)
+                await self._fail_quarantined(
+                    status,
+                    error="Indexer shut down while job was in flight",
+                )
         self._worker_task = None
 
     async def get_status(self, run_id: str) -> IndexStatusResponse | None:
@@ -196,11 +192,10 @@ class IndexService:
             except asyncio.CancelledError:
                 status = self._statuses.get(run_id)
                 if status and status.state in (IndexState.PENDING, IndexState.RUNNING):
-                    status.state = IndexState.FAILED
-                    status.error = "Indexer cancelled while job was in flight"
-                    status.finished_at_utc = utc_now()
-                    await self._safe_cleanup(run_id)
-                    await self._persist(status)
+                    await self._fail_quarantined(
+                        status,
+                        error="Indexer cancelled while job was in flight",
+                    )
                 raise
             except Exception:
                 logger.exception("Unhandled index failure for runId=%s", run_id)
@@ -208,12 +203,12 @@ class IndexService:
                 if status and status.state not in (
                     IndexState.COMPLETE,
                     IndexState.FAILED,
+                    IndexState.SKIPPED,
                 ):
-                    status.state = IndexState.FAILED
-                    status.error = "Unhandled indexer exception"
-                    status.finished_at_utc = utc_now()
-                    await self._safe_cleanup(run_id)
-                    await self._persist(status)
+                    await self._fail_quarantined(
+                        status,
+                        error="Unhandled indexer exception",
+                    )
             finally:
                 if self._status_store is not None:
                     try:
@@ -322,13 +317,19 @@ class IndexService:
         status.embedding_rate_limit_retries = max(0, retries - baseline[0])
         status.embedding_wait_seconds = round(max(0.0, wait - baseline[1]), 3)
 
-    async def _safe_cleanup(self, run_id: str) -> None:
-        try:
-            await self._delete_run_points(run_id)
-        except Exception:
-            logger.exception(
-                "Failed to clean Qdrant points after failure for runId=%s", run_id
-            )
+    async def _fail_quarantined(
+        self,
+        status: IndexStatusResponse,
+        *,
+        error: str,
+    ) -> None:
+        """Park a failed run: FAILED, real error, keep Qdrant points, no auto-retry."""
+        status.state = IndexState.FAILED
+        status.error = error
+        status.finished_at_utc = utc_now()
+        await self._persist(status)
+        if self._webhook is not None:
+            await self._webhook.notify(status)
 
     async def _delete_run_points(self, run_id: str) -> None:
         await self._store.delete_by_run_id(
@@ -515,32 +516,31 @@ class IndexService:
 
         except EmbeddingCircuitOpen as ex:
             self._sync_embedding_stats(status, embedding_baseline)
-            status.state = IndexState.FAILED
-            status.error = (
-                f"OpenAI embedding circuit open (HTTP {ex.status_code}). "
-                f"Quarantine: {ex.quarantine_path}. "
-                f"Already upserted points preserved."
-            )
-            status.finished_at_utc = utc_now()
             logger.error(
-                "Index circuit-open for runId=%s quarantine=%s batchSize=%s",
+                "Index quarantined for runId=%s quarantine=%s statusCode=%s batchSize=%s",
                 run_id,
                 ex.quarantine_path,
+                ex.status_code,
                 ex.batch_size,
             )
-            # Do not wipe Qdrant — preserve progress for deliberate re-run.
-            await self._persist(status)
-            if self._webhook is not None:
-                await self._webhook.notify(status)
+            await self._fail_quarantined(
+                status,
+                error=(
+                    f"OpenAI embedding quarantined (HTTP {ex.status_code}). "
+                    f"Quarantine: {ex.quarantine_path}. "
+                    f"Already upserted points preserved."
+                ),
+            )
             return
         except Exception as ex:
             self._sync_embedding_stats(status, embedding_baseline)
-            status.state = IndexState.FAILED
-            status.error = "Indexing failed due to an internal service error."
-            status.finished_at_utc = utc_now()
             logger.exception("Index failed for runId=%s: %s", run_id, ex)
-            await self._safe_cleanup(run_id)
-            await self._persist(status)
+            # Non-embed failures still fail closed without wipe so usable data
+            # remains for salvage step 3 (keep vs fix+requeue).
+            await self._fail_quarantined(
+                status,
+                error=f"Indexing failed: {type(ex).__name__}: {ex}",
+            )
             return
 
         if status.pages_english == 0:

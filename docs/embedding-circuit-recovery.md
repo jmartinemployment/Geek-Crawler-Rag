@@ -1,18 +1,45 @@
-# Embedding circuit recovery runbook
+# Quarantine workflow for failed index runs
 
-## State machine
+## Workflow
 
 ```
-Job starts (attempt N)
-  Batch 1..K: HTTP 200 -> upsert (points kept; deterministic IDs)
-  Batch K+1: HTTP 500 -> quarantine JSON -> EmbeddingCircuitOpen
-  Job FAILED immediately (no further batches; no Qdrant wipe)
+Run fails
+  -> 1. Quarantine (do not auto-requeue; keep Qdrant points)
+  -> 2. Examine for anomalies
+  -> 3. Can salvage/fix? (empty text cleaning, delete bad chunk, …)
+       Yes -> fix issue -> manual requeue that runId
+       No  -> usable data exists -> keep data, report, do not requeue
 ```
 
-- **Per-batch failure aborts the whole job** (not "skip and continue").
-- **Recovery is deliberate**, not automatic in-process retry.
-- `OPENAI_EMBEDDING_MAX_RETRIES=0` — exponential backoff is off by design.
-- On `attempt > 1`, indexer **skips delete-by-runId**; upserts overwrite the same point IDs.
+The indexer continues other runs as soon as step 1 completes. Steps 2–3 are operator decisions.
+
+### 1. Fail → quarantine
+
+- Job state becomes `FAILED` with the **real** error text.
+- Embed batch failures (HTTP **500** or empty-input **400**) also write `failed_embedding_*.json` under `EMBEDDING_QUARANTINE_DIR`.
+- **No** Qdrant wipe on fail/cancel/stop (so “usable data exists” is still true when it should be).
+- **No** auto-requeue: no `nextRetryAtUtc` on FAILED; FAILED/SKIPPED excluded from scheduler; API start does **not** `claim_recoverable`.
+
+### 2. Examine
+
+| Situation | Where |
+|-----------|--------|
+| Embed 400/500 after this ships | Quarantine dump (`items[]`, `statusCode`, page/chunk ids) + job `error` (includes path) |
+| Cancel / shutdown | API logs + job counters + Qdrant point count for `runId` |
+| Before dump existed | API docker logs only |
+
+Park stub files that only say “stopped requeue” are not examination.
+
+### 3. Salvage
+
+| Answer | Action |
+|--------|--------|
+| **Yes** | Delete/fix the issue (e.g. empty embed texts are skipped before OpenAI) → manual `POST /v1/index` |
+| **No** | Usable data exists → keep points, report, do not requeue |
+
+`OPENAI_EMBEDDING_MAX_RETRIES=0` — no in-process backoff loop.
+
+On `attempt > 1`, indexer skips delete-by-runId at start; upserts overwrite deterministic point IDs.
 
 ## Where quarantine files live
 
@@ -30,34 +57,17 @@ docker exec "$(docker ps -qf name=geek-crawler-rag-api)" \
 
 ## Alerting
 
-On circuit open the API emits a structured ERROR log line:
+On quarantine dump the API emits:
 
-`embedding_circuit_open {"event":"embedding_circuit_open","runId":...,"quarantinePath":...,"batchSize":...,"statusCode":500,...}`
+`embedding_circuit_open {"event":"embedding_circuit_open","runId":...,"quarantinePath":...,"batchSize":...,"statusCode":400|500,...}`
 
-Wire log aggregation (or Grep Docker logs) on `embedding_circuit_open`. Index job status also becomes `failed` with the quarantine path in `error`, and the existing GeekAPI index-status webhook fires when configured.
-
-## Recovery steps (operator)
-
-1. Confirm OpenAI is healthy (billing / status) and that the failure was 500 not 429.
-2. Inspect quarantine JSON on the volume (pageId/chunkId previews). Fix payload issues if sanitizer missed something.
-3. Requeue the same `runId` via the normal index enqueue/scheduler path (do **not** wipe Qdrant manually).
-4. Because point IDs are deterministic and attempt>1 skips wipe, already-good chunks are overwritten idempotently; the previously failing batch is retried as part of the full run.
-5. After success, delete or archive the quarantine file.
-
-There is no separate `retry_quarantine` job yet — requeue the crawl run.
+Job `error` includes `Quarantine: <path>`. GeekAPI index-status webhook fires when configured.
 
 ## What "clean payloads" means
 
-Sanitizer (`embedding_sanitize.py`) only strips **encoding/control junk**:
-
-- Null bytes and C0 controls (keeps tab/LF/CR)
-- Lone UTF-8 surrogates → replacement
-- Zero-width / BOM / soft hyphen
-
-It does **not** strip HTML tags, truncate for tokens, or rewrite semantics. Batch token limits remain enforced by `partition_embedding_batches`.
+Sanitizer (`embedding_sanitize.py`) strips encoding/control junk only. Empty/whitespace texts are **skipped** before OpenAI (not sent). Token limits remain in `partition_embedding_batches`.
 
 ## Phase C notes (vectors on_disk)
 
-- Target: Qdrant container RSS under ~**80% of 3 GiB** (~2.4 GiB) during ingest — safety margin before Docker `mem_limit` OOM/kill (host already swap-backed).
-- Expect higher search I/O latency with `on_disk: true` on 1536-d; acceptable tradeoff on this 8 GiB Hostinger box. Re-measure P95 after optimizer returns **green**.
-- Server is Qdrant **v1.13.4** (`VectorParamsDiff.on_disk`).
+- Target: Qdrant RSS under ~**80% of 3 GiB** during ingest.
+- `on_disk: true` on 1536-d; Qdrant **v1.13.4**.

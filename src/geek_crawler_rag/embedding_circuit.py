@@ -1,16 +1,15 @@
-"""Circuit breaker for OpenAI embedding HTTP 500s.
+"""Quarantine + fail-closed for OpenAI embedding batch failures (HTTP 500 / empty 400).
 
 State machine (per-job abort on first bad batch)
 ------------------------------------------------
 Job starts
   -> Batch N: 200 OK -> upsert N items (kept in Qdrant)
-  -> Batch N+1: HTTP 500 -> quarantine N+1 items -> raise EmbeddingCircuitOpen
+  -> Batch N+1: HTTP 500 or empty-input 400 -> quarantine dump -> EmbeddingCircuitOpen
   -> Job aborts immediately (no further batches)
   -> Already-upserted points are NOT deleted
-  -> Operator inspects quarantine JSON, then deliberately requeues the run
-     (deterministic point IDs; attempt>1 skips wipe-on-start)
+  -> Operator examines quarantine, then salvage Yes (fix + requeue) or No (keep + report)
 
-Recovery is manual/orchestrated (scheduler requeue), not an in-process retry.
+Recovery is manual only after examination. Not an in-process retry.
 Exponential backoff is off by design (OPENAI_EMBEDDING_MAX_RETRIES=0).
 
 Quarantine lifecycle
@@ -36,7 +35,7 @@ _PREVIEW_CHARS = 500
 
 
 class EmbeddingCircuitOpen(RuntimeError):
-    """OpenAI embedding circuit opened after a confirmed HTTP 500."""
+    """Embedding batch failed; quarantine written; job must fail closed (no wipe)."""
 
     def __init__(
         self,
@@ -190,3 +189,22 @@ def is_openai_http_500(exc: BaseException) -> bool:
     if cause is not None and cause is not exc:
         return is_openai_http_500(cause)
     return False
+
+
+def is_empty_embedding_input_error(exc: BaseException) -> bool:
+    """OpenAI rejects batches that contain '' (HTTP 400 invalid_request_error)."""
+    if "input cannot be an empty string" in str(exc).lower():
+        return True
+    cause = getattr(exc, "__cause__", None)
+    if cause is not None and cause is not exc:
+        return is_empty_embedding_input_error(cause)
+    return False
+
+
+def should_quarantine_embedding_error(exc: BaseException) -> int | None:
+    """Return HTTP status to quarantine for, or None if caller should re-raise."""
+    if is_openai_http_500(exc):
+        return int(getattr(exc, "status_code", 0) or 500)
+    if is_empty_embedding_input_error(exc):
+        return int(getattr(exc, "status_code", 0) or 400)
+    return None

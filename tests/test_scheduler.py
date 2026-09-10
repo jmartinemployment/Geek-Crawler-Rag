@@ -162,3 +162,80 @@ async def test_claim_matches_pending_job_with_null_lease_until():
         if c.get("state") == {"$in": [IndexState.PENDING, IndexState.RUNNING]}
     )
     assert {"leaseUntil": None} in pending_branch["$or"]
+
+
+@pytest.mark.asyncio
+async def test_excluded_run_ids_includes_failed_and_skipped_without_retry_window():
+    from geek_crawler_rag.models import IndexState
+    from geek_crawler_rag.status_store import IndexStatusStore
+
+    docs = [
+        {"runId": "complete-run", "state": IndexState.COMPLETE},
+        {"runId": "failed-run", "state": IndexState.FAILED},
+        {"runId": "skipped-run", "state": IndexState.SKIPPED},
+        {
+            "runId": "active-run",
+            "state": IndexState.RUNNING,
+            "leaseUntil": datetime(2099, 1, 1, tzinfo=timezone.utc),
+        },
+    ]
+
+    class FakeCursor:
+        def __init__(self, items):
+            self._items = items
+
+        def sort(self, *_args, **_kwargs):
+            return self
+
+        def limit(self, *_args, **_kwargs):
+            return self
+
+        def __aiter__(self):
+            async def _gen():
+                for item in self._items:
+                    yield item
+
+            return _gen()
+
+    col = MagicMock()
+    captured: dict = {}
+
+    def fake_find(query, *_args, **_kwargs):
+        captured["query"] = query
+        return FakeCursor(docs)
+
+    col.find = MagicMock(side_effect=fake_find)
+    db = MagicMock()
+    db.__getitem__ = MagicMock(side_effect=lambda name: col)
+    store = IndexStatusStore(db)
+
+    excluded = await store.excluded_run_ids(max_attempts=3)
+    assert excluded == {"complete-run", "failed-run", "skipped-run", "active-run"}
+    states = [clause.get("state") for clause in captured["query"]["$or"]]
+    assert IndexState.FAILED in states
+    assert IndexState.SKIPPED in states
+
+
+@pytest.mark.asyncio
+async def test_release_clears_next_retry_for_failed_jobs():
+    from geek_crawler_rag.models import IndexState
+    from geek_crawler_rag.status_store import IndexStatusStore
+
+    col = MagicMock()
+    col.find_one = AsyncMock(
+        return_value={
+            "runId": "failed-run",
+            "state": IndexState.FAILED,
+            "attempt": 2,
+            "leaseOwner": "owner-1",
+        }
+    )
+    col.update_one = AsyncMock()
+    db = MagicMock()
+    db.__getitem__ = MagicMock(side_effect=lambda name: col)
+    store = IndexStatusStore(db)
+
+    await store.release("failed-run", owner="owner-1", retry_seconds=120)
+    update = col.update_one.await_args.args[1]["$set"]
+    assert update["nextRetryAtUtc"] is None
+    assert update["leaseOwner"] is None

@@ -142,9 +142,88 @@ async def test_index_circuit_open_skips_cleanup(tmp_path: Path):
     status = await svc.get_status("r1")
     assert status is not None
     assert status.state == IndexState.FAILED
-    assert status.error and "circuit open" in status.error.lower()
+    assert status.error and "quarantined" in status.error.lower()
     assert "quarantine" in status.error.lower()
-    # Start may delete once for attempt<=1; circuit path must not call cleanup again
-    # via _safe_cleanup. delete_by_run_id at start is OK; assert not called after fail
-    # beyond the initial rebuild delete.
+    # Start may delete once for attempt<=1; quarantine path must not wipe again.
+    assert store.delete_by_run_id.await_count == 1
+
+
+def test_empty_input_error_detection():
+    from geek_crawler_rag.embedding_circuit import (
+        is_empty_embedding_input_error,
+        should_quarantine_embedding_error,
+    )
+
+    err = Exception(
+        "Error code: 400 - {'error': {'message': "
+        "\"Invalid 'input[31]': input cannot be an empty string.\"}}"
+    )
+    assert is_empty_embedding_input_error(err)
+    assert should_quarantine_embedding_error(err) == 400
+    assert should_quarantine_embedding_error(Exception("other")) is None
+
+
+@pytest.mark.asyncio
+async def test_index_empty_embed_400_quarantines_without_wipe(tmp_path: Path):
+    mongo = MagicMock()
+    mongo.get_run = AsyncMock(
+        return_value=CrawlRun(id="r1", crawl_type="partner", status="complete")
+    )
+    mongo.count_pages = AsyncMock(return_value=1)
+    mongo.resolve_entity = AsyncMock(
+        return_value=EntityRef(
+            entity_id=None,
+            entity_name="example.com",
+            source_type="partner",
+            domains=("example.com",),
+        )
+    )
+
+    async def pages(_run_id, batch_size=25):
+        yield [
+            CrawlPage(
+                id="p1",
+                run_id="r1",
+                origin="https://example.com",
+                url="https://example.com/",
+                final_url="https://example.com/",
+                html="<html><body>"
+                + ("This is enough English content for indexing. " * 30)
+                + "</body></html>",
+            )
+        ]
+
+    mongo.iter_pages = pages
+    mongo.delete_page = AsyncMock()
+
+    store = MagicMock()
+    store.delete_by_run_id = AsyncMock()
+    store.ensure_collection = AsyncMock()
+
+    llama = MagicMock()
+    llama.embed_and_upsert = AsyncMock(
+        side_effect=EmbeddingCircuitOpen(
+            "empty",
+            quarantine_path=str(tmp_path / "q400.json"),
+            status_code=400,
+        )
+    )
+    llama.embedding_stats = MagicMock(
+        return_value={"tokensInWindow": 0, "rateLimitRetries": 0, "waitSeconds": 0}
+    )
+
+    settings = Settings(
+        openai_api_key="test",
+        embed_batch_size=1,
+        embedding_quarantine_dir=str(tmp_path),
+        qdrant_upsert_delay_seconds=0,
+    )
+    svc = IndexService(mongo, store, settings, llama=llama)
+    await svc.enqueue("r1")
+    await svc._index_run("r1")
+
+    status = await svc.get_status("r1")
+    assert status is not None
+    assert status.state == IndexState.FAILED
+    assert status.error and "400" in status.error
     assert store.delete_by_run_id.await_count == 1

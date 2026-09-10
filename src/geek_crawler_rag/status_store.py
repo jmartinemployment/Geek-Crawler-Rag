@@ -109,6 +109,8 @@ class IndexStatusStore:
                         IndexState.PENDING,
                         IndexState.RUNNING,
                         IndexState.COMPLETE,
+                        IndexState.FAILED,
+                        IndexState.SKIPPED,
                     ]
                 }
             }
@@ -165,8 +167,10 @@ class IndexStatusStore:
             "leaseOwner": None,
             "leaseUntil": now,
         }
+        # Do not schedule automatic retries for failed jobs — operator must
+        # inspect quarantine / re-enqueue manually.
         if status and status.state == IndexState.FAILED:
-            update["nextRetryAtUtc"] = now + timedelta(seconds=retry_seconds)
+            update["nextRetryAtUtc"] = None
         await self._col.update_one(
             {"runId": run_id, "leaseOwner": owner},
             {"$set": update},
@@ -214,15 +218,13 @@ class IndexStatusStore:
             {
                 "$or": [
                     {"state": IndexState.COMPLETE},
+                    {"state": IndexState.FAILED},
+                    {"state": IndexState.SKIPPED},
                     {
                         "state": {"$in": [IndexState.PENDING, IndexState.RUNNING]},
                         "leaseUntil": {"$gt": now},
                     },
                     {"attempt": {"$gte": max_attempts}},
-                    {
-                        "state": IndexState.FAILED,
-                        "nextRetryAtUtc": {"$gt": now},
-                    },
                 ]
             },
             {"runId": 1, "_id": 0},
