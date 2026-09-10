@@ -1,27 +1,39 @@
 name: Deploy to Hostinger VPS
 
 on:
-  push:
-    branches:
-      - main
+  workflow_run:
+    workflows: ["Build and push image"]
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     steps:
       - name: Install SSH key
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.HOSTINGER_SSH_KEY }}" > ~/.ssh/hostinger_key
+          printf '%s\n' "${{ secrets.HOSTINGER_SSH_KEY }}" > ~/.ssh/hostinger_key
           chmod 600 ~/.ssh/hostinger_key
-          ssh-keyscan -H 2.24.101.90 >> ~/.ssh/known_hosts
+          ssh-keyscan -H 2.24.101.90 >> ~/.ssh/known_hosts 2>/dev/null
 
-      - name: Deploy to VPS
+      - name: Deploy
         run: |
           ssh -i ~/.ssh/hostinger_key -o StrictHostKeyChecking=no root@2.24.101.90 \
-            "cd /docker/geek-crawler-rag && docker compose -f deploy/hostinger-compose.yml pull && docker compose -f deploy/hostinger-compose.yml up -d"
+            'cd /docker/geek-crawler-rag && docker compose pull && docker compose up -d'
 
-      - name: Verify deployment
+      - name: Verify health
         run: |
-          ssh -i ~/.ssh/hostinger_key -o StrictHostKeyChecking=no root@2.24.101.90 \
-            "curl -s http://localhost:8080/health | jq ."
+          for i in $(seq 1 12); do
+            body=$(curl -fsS --max-time 10 http://2.24.101.90:8080/health) && \
+              echo "$body" | grep -q '"status":"ok"' && echo "$body" && exit 0
+            echo "waiting for API to come up ($i/12)..."
+            sleep 10
+          done
+          echo "health check never returned status ok"
+          exit 1
