@@ -198,6 +198,34 @@ Point `MONGO_CRAWLER_URL` at the existing Hostinger Mongo `geek_crawler` databas
 
 GeekAPI: set `GEEK_CRAWLER_RAG_URL` / optional `GEEK_CRAWLER_RAG_API_KEY`.
 
+### Deploy to the VPS
+
+CI builds and pushes `ghcr.io/jmartinemployment/geek-crawler-rag:latest` on every
+push to `main`, but **it does not deploy**. Updating the live box is manual.
+
+The server layout differs from this repo: there is no `deploy/` directory on the
+VPS. The compose file is `/docker/geek-crawler-rag/docker-compose.yml`, with all
+values inline (no `env_file`). Passing `-f deploy/hostinger-compose.yml` fails
+with `no such file or directory`.
+
+```bash
+ssh -i ~/.ssh/hostinger_rag_ed25519 root@2.24.101.90 \
+  'cd /docker/geek-crawler-rag && docker compose pull && docker compose up -d'
+```
+
+Verify:
+
+```bash
+curl -s http://2.24.101.90:8080/health
+```
+
+Qdrant is pinned to `v1.13.4`, so only the API container is recreated. A deploy
+interrupts any in-flight index run; the scheduler's lease/heartbeat recovery
+re-claims it on the next tick and no Qdrant points are wiped.
+
+A green `/health` alone does **not** prove the new image is live — confirm the
+API container's uptime reset via `docker ps`.
+
 ## Troubleshooting OpenAI errors
 
 When indexing fails with OpenAI HTTP 500 errors, the service captures OpenAI's
