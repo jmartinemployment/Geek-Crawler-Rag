@@ -198,6 +198,19 @@ Point `MONGO_CRAWLER_URL` at the existing Hostinger Mongo `geek_crawler` databas
 
 GeekAPI: set `GEEK_CRAWLER_RAG_URL` / optional `GEEK_CRAWLER_RAG_API_KEY`.
 
+## Troubleshooting OpenAI errors
+
+When indexing fails with OpenAI HTTP 500 errors, the service captures OpenAI's
+request ID and error message for diagnosis. See [`docs/embedding-circuit-recovery.md`](./docs/embedding-circuit-recovery.md)
+for quarantine workflow, examining error details, and recovery procedures.
+
+Key points:
+- Embedding failures (HTTP 400 or 500) write quarantine JSON to `EMBEDDING_QUARANTINE_DIR`
+- Quarantine files include `openaiDiagnostics` with `requestId`, `errorType`, and `message`
+- Use the request ID to check [OpenAI status](https://status.openai.com/) and distinguish genuine outages from request-shape issues
+- Failed runs are marked `FAILED` with no Qdrant wipe (points are preserved for recovery)
+- Re-index is manual; use operator decision after examining the quarantine
+
 ## Consumers
 
 - **gcc-v2 WRITE** (via GeekAPI): HTTP query client — resolve `runId`, call `/v1/query`, inject chunks; on miss **notify-and-skip** (do not block generate).
