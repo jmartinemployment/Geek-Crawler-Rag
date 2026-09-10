@@ -21,6 +21,34 @@ def point_id(run_id: str, page_id: str, chunk_key: int | str) -> str:
     return str(uuid.uuid5(_POINT_NS, f"{run_id}:{page_id}:{chunk_key}"))
 
 
+async def find_existing_point_ids(
+    client: AsyncQdrantClient,
+    collection: str,
+    ids: list[str],
+    *,
+    batch: int = 256,
+) -> set[str]:
+    """Return the subset of `ids` already present in `collection`.
+
+    Point IDs are deterministic (see `point_id`), so a re-run can skip chunks
+    it already committed instead of re-embedding them. Payload and vectors are
+    left off so this stays cheap.
+    """
+    found: set[str] = set()
+    for start in range(0, len(ids), batch):
+        chunk = ids[start : start + batch]
+        if not chunk:
+            continue
+        records = await client.retrieve(
+            collection_name=collection,
+            ids=chunk,
+            with_payload=False,
+            with_vectors=False,
+        )
+        found.update(str(rec.id) for rec in records)
+    return found
+
+
 class QdrantStore:
     def __init__(
         self,
@@ -36,6 +64,14 @@ class QdrantStore:
 
     async def close(self) -> None:
         await self._client.close()
+
+    async def points_exist(
+        self, ids: list[str], *, batch: int = 256
+    ) -> set[str]:
+        """Subset of `ids` already in this collection. See find_existing_point_ids."""
+        return await find_existing_point_ids(
+            self._client, self._collection, ids, batch=batch
+        )
 
     async def ping(self) -> bool:
         await self._client.get_collections()

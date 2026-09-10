@@ -23,6 +23,7 @@ from openai import InternalServerError
 from qdrant_client import AsyncQdrantClient, QdrantClient
 
 from geek_crawler_rag.config import Settings
+from geek_crawler_rag.qdrant_store import find_existing_point_ids
 from geek_crawler_rag.embedding_circuit import (
     EmbeddingCircuitOpen,
     open_embedding_circuit,
@@ -149,6 +150,29 @@ class LlamaIndexEngine:
             )
         if not keep:
             return 0
+
+        # Resume support: point IDs are deterministic (qdrant_store.point_id)
+        # and already assigned as node.id_ before embedding, so a re-run can
+        # skip chunks it already committed. Without this a retried job
+        # re-embeds every chunk from zero, which is why large runs never
+        # converge past a transient upstream failure.
+        already = await find_existing_point_ids(
+            self._aclient,
+            self._settings.qdrant_collection,
+            [str(n.id_) for n in keep],
+        )
+        if already:
+            before = len(keep)
+            keep = [n for n in keep if str(n.id_) not in already]
+            logger.info(
+                "resume_skipped_existing_points=%s remaining=%s of=%s",
+                before - len(keep),
+                len(keep),
+                before,
+            )
+            if not keep:
+                return 0
+
         texts = [n.get_content() for n in keep]
         embeddings = await self.embed_texts(
             texts,
