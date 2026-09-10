@@ -366,3 +366,59 @@ class PillarOutlineArtifact(StrictContract):
     )
     warnings: list[str]
     provenance: ContentProvenance
+
+
+class PillarArticleRequest(StrictContract):
+    contract_version: Literal["pillarArticleInput.v1"] = Field(
+        "pillarArticleInput.v1", alias="contractVersion"
+    )
+    topic: str = Field(..., min_length=1, max_length=500)
+    source_document: DiagnosticDocument | None = Field(
+        None, alias="sourceDocument"
+    )
+    queries: list[QueryProvenance] = Field(default_factory=list, max_length=100)
+    supporting_content_hints: list[str] = Field(
+        default_factory=list, alias="supportingContentHints", max_length=50
+    )
+
+    @model_validator(mode="after")
+    def reject_hypothesis_queries(self) -> PillarArticleRequest:
+        for query in self.queries:
+            if query.origin == QueryOrigin.GENERATED_HYPOTHESIS:
+                raise ValueError(
+                    "Caller queries cannot use generatedHypothesis origin; "
+                    "hypotheses are created only by the generator."
+                )
+        return self
+
+
+class PillarArticleSection(StrictContract):
+    section_id: str = Field(..., alias="sectionId")
+    heading: str
+    body_markdown: str = Field(..., alias="bodyMarkdown")
+    evidence_ids: list[str] = Field(default_factory=list, alias="evidenceIds")
+    grounded: bool
+
+
+class PillarArticleArtifact(StrictContract):
+    artifact_type: Literal["pillarArticle.v1"] = Field(
+        "pillarArticle.v1", alias="artifactType"
+    )
+    generator_version: Literal["pillar-article-heuristic.v1"] = Field(
+        "pillar-article-heuristic.v1", alias="generatorVersion"
+    )
+    methodology: str = (
+        "Compose a full pillar Markdown draft from the deterministic topic-cluster outline. "
+        "Section bodies use supplied source spans when available; otherwise they stay "
+        "explicitly scaffolded without inventing statistics. Supporting content plans remain "
+        "generatedHypothesis."
+    )
+    topic: str
+    title: str
+    markdown: str
+    sections: list[PillarArticleSection]
+    supporting_content_plan: list[SupportingContentPlanItem] = Field(
+        alias="supportingContentPlan"
+    )
+    warnings: list[str]
+    provenance: ContentProvenance

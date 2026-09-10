@@ -16,6 +16,8 @@ from geek_crawler_rag.content_models import (
     CompetitiveResponseRequest,
     FaqGeneratorRequest,
     FaqSetArtifact,
+    PillarArticleArtifact,
+    PillarArticleRequest,
     PillarOutlineArtifact,
     PillarOutlineRequest,
 )
@@ -323,3 +325,29 @@ def test_pillar_outline_contract_round_trip_forbids_extras() -> None:
     payload["unexpected"] = True
     with pytest.raises(ValidationError):
         PillarOutlineArtifact.model_validate(payload)
+
+
+def test_pillar_article_composes_markdown_from_outline() -> None:
+    service = ContentService()
+    request = PillarArticleRequest.model_validate(
+        {
+            **json.loads(PILLAR_FIXTURE.read_text()),
+            "contractVersion": "pillarArticleInput.v1",
+        }
+    )
+    first = service.pillar_article(request)
+    second = service.pillar_article(request)
+
+    assert first.model_dump(mode="json", by_alias=True) == second.model_dump(
+        mode="json", by_alias=True
+    )
+    assert first.artifact_type == "pillarArticle.v1"
+    assert first.markdown.startswith("# ")
+    assert "## " in first.markdown
+    assert first.sections
+    assert any(section.grounded for section in first.sections)
+    assert first.supporting_content_plan
+    assert not any("not a full article" in warning.casefold() for warning in first.warnings)
+    assert PillarArticleArtifact.model_validate(
+        first.model_dump(mode="json", by_alias=True)
+    ) == first

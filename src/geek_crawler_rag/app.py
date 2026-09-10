@@ -53,6 +53,8 @@ from geek_crawler_rag.content_models import (
     CompetitiveResponseRequest,
     FaqGeneratorRequest,
     FaqSetArtifact,
+    PillarArticleArtifact,
+    PillarArticleRequest,
     PillarOutlineArtifact,
     PillarOutlineRequest,
 )
@@ -608,6 +610,17 @@ async def competitive_response(
 async def pillar_outline(body: PillarOutlineRequest) -> PillarOutlineArtifact:
     """Produce a deterministic topic-cluster pillar outline (not a full article)."""
     return state.content.pillar_outline(body)
+
+
+@app.post(
+    "/v1/content/pillar-article",
+    response_model=PillarArticleArtifact,
+    response_model_by_alias=True,
+    dependencies=[Depends(require_api_key)],
+)
+async def pillar_article(body: PillarArticleRequest) -> PillarArticleArtifact:
+    """Produce a grounded pillar Markdown draft plus supporting-content plan."""
+    return state.content.pillar_article(body)
 
 
 @app.post(

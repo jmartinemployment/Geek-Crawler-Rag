@@ -21,6 +21,9 @@ from geek_crawler_rag.content_models import (
     FaqPair,
     FaqSetArtifact,
     GeneratedHypothesisText,
+    PillarArticleArtifact,
+    PillarArticleRequest,
+    PillarArticleSection,
     PillarOutlineArtifact,
     PillarOutlineRequest,
     PillarOutlineSection,
@@ -850,6 +853,95 @@ class ContentService:
                 evidenceIds=[item.evidence_id for item in evidence],
                 evidence=evidence,
             ),
+        )
+
+    def pillar_article(self, request: PillarArticleRequest) -> PillarArticleArtifact:
+        outline = self.pillar_outline(
+            PillarOutlineRequest.model_validate(
+                {
+                    "contractVersion": "pillarOutlineInput.v1",
+                    "topic": request.topic,
+                    "sourceDocument": (
+                        request.source_document.model_dump(mode="python", by_alias=True)
+                        if request.source_document is not None
+                        else None
+                    ),
+                    "queries": [
+                        item.model_dump(mode="python", by_alias=True)
+                        for item in request.queries
+                    ],
+                    "supportingContentHints": list(request.supporting_content_hints),
+                }
+            )
+        )
+        document = request.source_document
+        text = _visible_text(document) if document else ""
+        evidence_by_id = {
+            item.evidence_id: item for item in outline.provenance.evidence
+        }
+        article_sections: list[PillarArticleSection] = []
+        markdown_parts = [f"# {outline.topic.strip()}", ""]
+        warnings = [
+            warning
+            for warning in outline.warnings
+            if "not a full article" not in warning.casefold()
+        ]
+        warnings.append(
+            "Pillar article bodies are grounded in supplied source spans when present; "
+            "ungrounded sections are scaffolds and must not be treated as verified claims."
+        )
+
+        for section in outline.sections:
+            body_chunks: list[str] = []
+            evidence_ids = list(section.evidence_ids)
+            grounded = False
+            for evidence_id in evidence_ids:
+                ref = evidence_by_id.get(evidence_id)
+                if ref is None or not ref.quote.strip():
+                    continue
+                body_chunks.append(ref.quote.strip())
+                grounded = True
+            if not body_chunks and text and document is not None:
+                answer, evidence_ref, status = _answer_for_query(
+                    section.heading, document, text
+                )
+                if status != "unverifiable" and evidence_ref is not None:
+                    body_chunks.append(answer.strip())
+                    evidence_ids = [evidence_ref.evidence_id]
+                    grounded = True
+            if not body_chunks:
+                body_chunks.append(
+                    f"{section.answer_first_prompt} "
+                    "[Scaffold — no supplied source span grounded this section.]"
+                )
+            body = "\n\n".join(body_chunks)
+            article_sections.append(
+                PillarArticleSection(
+                    sectionId=section.section_id,
+                    heading=section.heading,
+                    bodyMarkdown=body,
+                    evidenceIds=evidence_ids,
+                    grounded=grounded,
+                )
+            )
+            markdown_parts.append(f"## {section.heading}")
+            markdown_parts.append("")
+            markdown_parts.append(body)
+            markdown_parts.append("")
+
+        if not any(section.grounded for section in article_sections):
+            warnings.append(
+                "No section was grounded in supplied source evidence; treat the draft as a scaffold only."
+            )
+
+        return PillarArticleArtifact(
+            topic=outline.topic,
+            title=outline.topic,
+            markdown="\n".join(markdown_parts).strip() + "\n",
+            sections=article_sections,
+            supportingContentPlan=outline.supporting_content_plan,
+            warnings=_unique(warnings),
+            provenance=outline.provenance,
         )
 
 
