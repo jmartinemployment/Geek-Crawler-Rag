@@ -956,6 +956,7 @@ class GenerateService:
                         "visual_guideline",
                         "product_schema",
                         "product",
+                        "brand_kit",
                     }
                     and entry.version_id is not None
                 }
@@ -1416,6 +1417,38 @@ def _audience_output_violations(payload: dict[str, Any], output: str) -> list[st
     return violations
 
 
+def _brand_voice_prompt_constraints(payload: dict[str, Any]) -> list[str]:
+    lines: list[str] = []
+    for tone in _audience_string_list(payload, "toneAttributes"):
+        lines.append(f'- Prefer Brand Voice tone attribute "{tone}".')
+    for phrase in _audience_string_list(payload, "preferredPhrases"):
+        lines.append(f'- Prefer Brand Voice phrase "{phrase}" when natural.')
+    for phrase in _audience_string_list(payload, "avoidPhrases"):
+        lines.append(f'- Never use the Brand Voice avoid-phrase "{phrase}".')
+    for claim in _audience_string_list(payload, "bannedClaims"):
+        lines.append(f'- Never emit banned Brand Voice claim "{claim}".')
+    custom = payload.get("customInstructions")
+    if isinstance(custom, str) and custom.strip():
+        lines.append(f"- Custom Brand Voice instructions: {custom.strip()}")
+    return lines
+
+
+def _brand_voice_output_violations(payload: dict[str, Any], output: str) -> list[str]:
+    folded = output.casefold()
+    violations: list[str] = []
+    for phrase in _audience_string_list(payload, "avoidPhrases"):
+        if phrase.casefold() in folded:
+            violations.append(
+                f"Brand Voice avoid-phrase was emitted: {phrase[:120]}"
+            )
+    for claim in _audience_string_list(payload, "bannedClaims"):
+        if claim.casefold() in folded:
+            violations.append(
+                f"Brand Voice banned claim was emitted: {claim[:120]}"
+            )
+    return violations
+
+
 _UNSUPPORTED_PRODUCT_CLAIM_MARKERS = (
     "guarantees perfect",
     "guarantee perfect",
@@ -1476,6 +1509,8 @@ def _governed_output_violations(
             )
         if context.kind == "audience" and isinstance(context.payload, dict):
             violations.extend(_audience_output_violations(context.payload, output))
+        if context.kind == "brand_kit" and isinstance(context.payload, dict):
+            violations.extend(_brand_voice_output_violations(context.payload, output))
         if context.kind == "product":
             violations.extend(_product_output_violations(context, output, stage))
     violations.extend(
@@ -1662,6 +1697,7 @@ def _build_prompts(
     style_constraints: list[str] = []
     visual_constraints: list[str] = []
     audience_constraints: list[str] = []
+    brand_voice_constraints: list[str] = []
     for context in req.governed_context or []:
         if context.kind == "style_guide" and isinstance(context.payload, dict):
             style_constraints.extend(_style_guide_prompt_constraints(context.payload))
@@ -1671,19 +1707,27 @@ def _build_prompts(
             )
         if context.kind == "audience" and isinstance(context.payload, dict):
             audience_constraints.extend(_audience_prompt_constraints(context.payload))
+        if context.kind == "brand_kit" and isinstance(context.payload, dict):
+            brand_voice_constraints.extend(
+                _brand_voice_prompt_constraints(context.payload)
+            )
 
     system = (
         "You are a B2B content writer. Use ONLY the provided source markdown. "
         "Every factual claim must be supportable by a verbatim quote from a source. "
         "Return strict JSON. Do not invent URLs or quotes. "
         "Never use meta descriptions or marketing fluff as quotes when a concrete claim exists."
-        " Governed audience, style, and visual policies are mandatory constraints. Governed product "
+        " Governed audience, style, visual, and Brand Voice policies are mandatory constraints. Governed product "
         "facts may be used only as supplied; prohibited claims are forbidden and mandatory "
         "disclaimers must appear in complete or final-synthesis output."
     )
     if audience_constraints:
         system += "\nAudience deterministic constraints:\n" + "\n".join(
             audience_constraints
+        )
+    if brand_voice_constraints:
+        system += "\nBrand Voice deterministic constraints:\n" + "\n".join(
+            brand_voice_constraints
         )
     if style_constraints:
         system += "\nStyle Guide deterministic constraints:\n" + "\n".join(

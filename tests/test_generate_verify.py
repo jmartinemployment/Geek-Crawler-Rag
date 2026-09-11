@@ -729,6 +729,93 @@ def test_audience_output_accepts_compliant_text():
     assert _governed_output_violations(req, result) == []
 
 
+def test_brand_voice_prompt_includes_deterministic_constraints():
+    req = GenerateRequest(
+        writingIntent="Technical Article",
+        topic="CRM synchronization",
+        generationStage="section",
+        governedContext=[
+            GovernedContextEntry(
+                kind="brand_kit",
+                stableId="brand-1",
+                versionId="brand-v1",
+                versionNumber=1,
+                digest=_digest("c"),
+                payload={
+                    "schemaVersion": 1,
+                    "toneAttributes": ["precise"],
+                    "preferredPhrases": ["evidence-first"],
+                    "avoidPhrases": ["synergy"],
+                    "bannedClaims": ["guaranteed ROI"],
+                    "customInstructions": "Sound like a careful operator.",
+                },
+            )
+        ],
+    )
+    system, _ = _build_prompts(req, "long", [])
+    assert "Brand Voice deterministic constraints" in system
+    assert 'Prefer Brand Voice tone attribute "precise"' in system
+    assert 'Never use the Brand Voice avoid-phrase "synergy"' in system
+    assert 'Never emit banned Brand Voice claim "guaranteed ROI"' in system
+    assert "Sound like a careful operator" in system
+
+
+def test_brand_voice_output_violations_cover_avoid_phrases_and_banned_claims():
+    req = GenerateRequest(
+        writingIntent="Technical Article",
+        topic="CRM synchronization",
+        generationStage="section",
+        governedContext=[
+            GovernedContextEntry(
+                kind="brand_kit",
+                stableId="brand-1",
+                versionId="brand-v1",
+                versionNumber=1,
+                digest=_digest("d"),
+                payload={
+                    "avoidPhrases": ["synergy"],
+                    "bannedClaims": ["guaranteed ROI"],
+                },
+            )
+        ],
+    )
+    result = GenerateResponse(
+        intent="Technical Article",
+        content="Our synergy delivers guaranteed ROI for every buyer.",
+    )
+    joined = "\n".join(_governed_output_violations(req, result))
+    assert "Brand Voice avoid-phrase" in joined
+    assert "synergy" in joined
+    assert "banned claim" in joined
+    assert "guaranteed ROI" in joined
+
+
+def test_brand_voice_output_accepts_compliant_text():
+    req = GenerateRequest(
+        writingIntent="Technical Article",
+        topic="CRM synchronization",
+        generationStage="section",
+        governedContext=[
+            GovernedContextEntry(
+                kind="brand_kit",
+                stableId="brand-1",
+                versionId="brand-v1",
+                versionNumber=1,
+                digest=_digest("e"),
+                payload={
+                    "avoidPhrases": ["synergy"],
+                    "bannedClaims": ["guaranteed ROI"],
+                },
+            )
+        ],
+    )
+    result = GenerateResponse(
+        intent="Technical Article",
+        content="Evidence-first drafts cite every operational claim for technical buyers.",
+    )
+    assert _governed_output_violations(req, result) == []
+
+
 def test_product_output_blocks_missing_disclaimers_and_unsupported_claims():
     product = GovernedContextEntry(
         kind="product",
