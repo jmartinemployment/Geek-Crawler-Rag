@@ -950,7 +950,13 @@ class GenerateService:
                     (entry.context_kind, entry.version_id, entry.content_sha256)
                     for entry in context_payload.entries
                     if entry.context_kind
-                    in {"audience", "style_guide", "product_schema", "product"}
+                    in {
+                        "audience",
+                        "style_guide",
+                        "visual_guideline",
+                        "product_schema",
+                        "product",
+                    }
                     and entry.version_id is not None
                 }
                 supplied = {
@@ -1271,6 +1277,93 @@ def _style_guide_prompt_constraints(payload: dict[str, Any]) -> list[str]:
     return lines
 
 
+def _visual_string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [
+        str(entry).strip()
+        for entry in value
+        if isinstance(entry, str) and entry.strip()
+    ]
+
+
+def _visual_guideline_prompt_constraints(payload: dict[str, Any]) -> list[str]:
+    lines: list[str] = []
+    palette = payload.get("palette")
+    if isinstance(palette, dict):
+        colors = [
+            f"{key}={value.strip()}"
+            for key in ("primary", "secondary", "accent", "background", "text")
+            if isinstance((value := palette.get(key)), str) and value.strip()
+        ]
+        if colors:
+            lines.append(f"- Prefer the governed palette: {', '.join(colors)}.")
+    typography = payload.get("typography")
+    if isinstance(typography, dict):
+        display = typography.get("displayFont")
+        body = typography.get("bodyFont")
+        if isinstance(display, str) and display.strip():
+            lines.append(f'- Prefer display typography "{display.strip()}".')
+        if isinstance(body, str) and body.strip():
+            lines.append(f'- Prefer body typography "{body.strip()}".')
+        min_size = typography.get("minBodySizePx")
+        if isinstance(min_size, (int, float)) and min_size > 0:
+            lines.append(f"- Keep body text at least {min_size:g}px when describing UI.")
+    logo = payload.get("logoUsage")
+    if isinstance(logo, dict):
+        for treatment in _visual_string_list(logo.get("prohibitedTreatments")):
+            lines.append(f'- Never describe logo treatment "{treatment}".')
+        for background in _visual_string_list(logo.get("allowedBackgrounds")):
+            lines.append(f'- Logo backgrounds should stay within allowed set including "{background}".')
+        ratio = logo.get("clearSpaceRatio")
+        if isinstance(ratio, (int, float)) and ratio >= 0:
+            lines.append(f"- Preserve logo clear-space ratio of at least {ratio:g}.")
+    layout = payload.get("layout")
+    if isinstance(layout, dict):
+        if layout.get("preferFullBleedHero") is True:
+            lines.append("- Prefer full-bleed hero imagery over inset cards.")
+        elif layout.get("preferFullBleedHero") is False:
+            lines.append("- Do not rely on full-bleed hero imagery.")
+        width = layout.get("maxContentWidthPx")
+        if isinstance(width, (int, float)) and width > 0:
+            lines.append(f"- Keep content width guidance near {width:g}px.")
+        radius = layout.get("cornerRadiusPx")
+        if isinstance(radius, (int, float)) and radius >= 0:
+            lines.append(f"- Prefer corner radius near {radius:g}px when describing UI chrome.")
+    imagery = payload.get("imagery")
+    if isinstance(imagery, dict):
+        notes = imagery.get("styleNotes")
+        if isinstance(notes, str) and notes.strip():
+            lines.append(f"- Imagery style notes: {notes.strip()}")
+        for motif in _visual_string_list(imagery.get("prohibitedMotifs")):
+            lines.append(f'- Never use imagery motif "{motif}".')
+    custom = payload.get("customInstructions")
+    if isinstance(custom, str) and custom.strip():
+        lines.append(f"- Custom visual instructions: {custom.strip()}")
+    return lines
+
+
+def _visual_guideline_output_violations(payload: dict[str, Any], output: str) -> list[str]:
+    folded = output.casefold()
+    violations: list[str] = []
+    imagery = payload.get("imagery")
+    if isinstance(imagery, dict):
+        for motif in _visual_string_list(imagery.get("prohibitedMotifs")):
+            if motif.casefold() in folded:
+                violations.append(
+                    f"Visual Guidelines prohibited imagery motif was emitted: {motif[:120]}"
+                )
+    logo = payload.get("logoUsage")
+    if isinstance(logo, dict):
+        for treatment in _visual_string_list(logo.get("prohibitedTreatments")):
+            if treatment.casefold() in folded:
+                violations.append(
+                    "Visual Guidelines prohibited logo treatment was emitted: "
+                    f"{treatment[:120]}"
+                )
+    return violations
+
+
 _UNSUPPORTED_PRODUCT_CLAIM_MARKERS = (
     "guarantees perfect",
     "guarantee perfect",
@@ -1325,6 +1418,10 @@ def _governed_output_violations(
         prohibited.extend(context.prohibited_claims or [])
         if context.kind == "style_guide" and isinstance(context.payload, dict):
             violations.extend(_style_guide_output_violations(context.payload, output))
+        if context.kind == "visual_guideline" and isinstance(context.payload, dict):
+            violations.extend(
+                _visual_guideline_output_violations(context.payload, output)
+            )
         if context.kind == "product":
             violations.extend(_product_output_violations(context, output, stage))
     violations.extend(
@@ -1509,22 +1606,31 @@ def _build_prompts(
         indent=2,
     )
     style_constraints: list[str] = []
+    visual_constraints: list[str] = []
     for context in req.governed_context or []:
         if context.kind == "style_guide" and isinstance(context.payload, dict):
             style_constraints.extend(_style_guide_prompt_constraints(context.payload))
+        if context.kind == "visual_guideline" and isinstance(context.payload, dict):
+            visual_constraints.extend(
+                _visual_guideline_prompt_constraints(context.payload)
+            )
 
     system = (
         "You are a B2B content writer. Use ONLY the provided source markdown. "
         "Every factual claim must be supportable by a verbatim quote from a source. "
         "Return strict JSON. Do not invent URLs or quotes. "
         "Never use meta descriptions or marketing fluff as quotes when a concrete claim exists."
-        " Governed audience and style policies are mandatory constraints. Governed product "
+        " Governed audience, style, and visual policies are mandatory constraints. Governed product "
         "facts may be used only as supplied; prohibited claims are forbidden and mandatory "
         "disclaimers must appear in complete or final-synthesis output."
     )
     if style_constraints:
         system += "\nStyle Guide deterministic constraints:\n" + "\n".join(
             style_constraints
+        )
+    if visual_constraints:
+        system += "\nVisual Guidelines deterministic constraints:\n" + "\n".join(
+            visual_constraints
         )
     skills = _active_skills(req)
     if skills:

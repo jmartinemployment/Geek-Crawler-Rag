@@ -531,6 +531,110 @@ def test_style_guide_output_accepts_compliant_text():
     assert _governed_output_violations(req, result) == []
 
 
+def test_visual_guideline_prompt_includes_deterministic_constraints():
+    req = GenerateRequest(
+        writingIntent="Technical Article",
+        topic="CRM synchronization",
+        generationStage="section",
+        governedContext=[
+            GovernedContextEntry(
+                kind="visual_guideline",
+                stableId="visual-1",
+                versionId="visual-v1",
+                versionNumber=1,
+                digest=_digest("d"),
+                payload={
+                    "schemaVersion": 1,
+                    "palette": {"primary": "#0F172A", "accent": "#0F766E"},
+                    "typography": {
+                        "displayFont": "Source Serif 4",
+                        "bodyFont": "IBM Plex Sans",
+                        "minBodySizePx": 16,
+                    },
+                    "logoUsage": {
+                        "clearSpaceRatio": 0.5,
+                        "allowedBackgrounds": ["light"],
+                        "prohibitedTreatments": ["stretch", "recolor"],
+                    },
+                    "layout": {"preferFullBleedHero": True, "maxContentWidthPx": 1200},
+                    "imagery": {
+                        "styleNotes": "Natural light documentary shots.",
+                        "prohibitedMotifs": ["stock handshake"],
+                    },
+                    "customInstructions": "Prefer full-bleed photography over inset cards.",
+                },
+            )
+        ],
+    )
+    system, _ = _build_prompts(req, "long", [])
+    assert "Visual Guidelines deterministic constraints" in system
+    assert "primary=#0F172A" in system
+    assert 'Prefer display typography "Source Serif 4"' in system
+    assert 'Never describe logo treatment "stretch"' in system
+    assert "Prefer full-bleed hero imagery" in system
+    assert 'Never use imagery motif "stock handshake"' in system
+    assert "Prefer full-bleed photography over inset cards" in system
+
+
+def test_visual_guideline_output_violations_cover_prohibited_motifs():
+    req = GenerateRequest(
+        writingIntent="Technical Article",
+        topic="CRM synchronization",
+        generationStage="section",
+        governedContext=[
+            GovernedContextEntry(
+                kind="visual_guideline",
+                stableId="visual-1",
+                versionId="visual-v1",
+                versionNumber=1,
+                digest=_digest("e"),
+                payload={
+                    "logoUsage": {"prohibitedTreatments": ["recolor"]},
+                    "imagery": {"prohibitedMotifs": ["stock handshake"]},
+                },
+            )
+        ],
+    )
+    result = GenerateResponse(
+        intent="Technical Article",
+        content=(
+            "Hero art uses a stock handshake and a recolor of the logo "
+            "against a busy background."
+        ),
+    )
+    joined = "\n".join(_governed_output_violations(req, result))
+    assert "prohibited imagery motif" in joined
+    assert "stock handshake" in joined
+    assert "prohibited logo treatment" in joined
+    assert "recolor" in joined
+
+
+def test_visual_guideline_output_accepts_compliant_text():
+    req = GenerateRequest(
+        writingIntent="Technical Article",
+        topic="CRM synchronization",
+        generationStage="section",
+        governedContext=[
+            GovernedContextEntry(
+                kind="visual_guideline",
+                stableId="visual-1",
+                versionId="visual-v1",
+                versionNumber=1,
+                digest=_digest("f"),
+                payload={
+                    "logoUsage": {"prohibitedTreatments": ["stretch"]},
+                    "imagery": {"prohibitedMotifs": ["stock handshake"]},
+                },
+            )
+        ],
+    )
+    result = GenerateResponse(
+        intent="Technical Article",
+        content="Use full-bleed documentary photography with clear logo spacing.",
+    )
+    assert _governed_output_violations(req, result) == []
+
+
 def test_product_output_blocks_missing_disclaimers_and_unsupported_claims():
     product = GovernedContextEntry(
         kind="product",
