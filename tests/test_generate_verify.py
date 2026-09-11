@@ -635,6 +635,100 @@ def test_visual_guideline_output_accepts_compliant_text():
     assert _governed_output_violations(req, result) == []
 
 
+def test_audience_prompt_includes_deterministic_constraints():
+    req = GenerateRequest(
+        writingIntent="Technical Article",
+        topic="CRM synchronization",
+        generationStage="section",
+        governedContext=[
+            GovernedContextEntry(
+                kind="audience",
+                stableId="audience-1",
+                versionId="audience-v1",
+                versionNumber=1,
+                digest=_digest("1"),
+                payload={
+                    "schemaVersion": 1,
+                    "summary": "Technical buyers evaluating evidence systems.",
+                    "locale": "en",
+                    "roles": ["VP Engineering"],
+                    "pains": ["ungrounded AI claims"],
+                    "goals": ["citeable drafts"],
+                    "readingLevel": "professional",
+                    "preferredLanguage": ["specific", "operational"],
+                    "bannedTopics": ["hype"],
+                    "avoidPhrases": ["synergy"],
+                    "positioningStatement": "Evidence first.",
+                    "customInstructions": "Prefer concrete systems over slogans.",
+                },
+            )
+        ],
+    )
+    system, _ = _build_prompts(req, "long", [])
+    assert "Audience deterministic constraints" in system
+    assert "Technical buyers evaluating evidence systems" in system
+    assert 'Address roles such as "VP Engineering"' in system
+    assert 'Never cover banned topic "hype"' in system
+    assert 'Never use the audience avoid-phrase "synergy"' in system
+    assert "Prefer concrete systems over slogans" in system
+
+
+def test_audience_output_violations_cover_banned_topics_and_avoid_phrases():
+    req = GenerateRequest(
+        writingIntent="Technical Article",
+        topic="CRM synchronization",
+        generationStage="section",
+        governedContext=[
+            GovernedContextEntry(
+                kind="audience",
+                stableId="audience-1",
+                versionId="audience-v1",
+                versionNumber=1,
+                digest=_digest("2"),
+                payload={
+                    "bannedTopics": ["hype"],
+                    "avoidPhrases": ["synergy"],
+                },
+            )
+        ],
+    )
+    result = GenerateResponse(
+        intent="Technical Article",
+        content="This launch is pure hype and synergy for enterprise buyers.",
+    )
+    joined = "\n".join(_governed_output_violations(req, result))
+    assert "banned topic" in joined
+    assert "hype" in joined
+    assert "avoid-phrase" in joined
+    assert "synergy" in joined
+
+
+def test_audience_output_accepts_compliant_text():
+    req = GenerateRequest(
+        writingIntent="Technical Article",
+        topic="CRM synchronization",
+        generationStage="section",
+        governedContext=[
+            GovernedContextEntry(
+                kind="audience",
+                stableId="audience-1",
+                versionId="audience-v1",
+                versionNumber=1,
+                digest=_digest("3"),
+                payload={
+                    "bannedTopics": ["hype"],
+                    "avoidPhrases": ["synergy"],
+                },
+            )
+        ],
+    )
+    result = GenerateResponse(
+        intent="Technical Article",
+        content="Evidence-first drafts cite every operational claim for technical buyers.",
+    )
+    assert _governed_output_violations(req, result) == []
+
+
 def test_product_output_blocks_missing_disclaimers_and_unsupported_claims():
     product = GovernedContextEntry(
         kind="product",

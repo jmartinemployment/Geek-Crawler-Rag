@@ -1364,6 +1364,58 @@ def _visual_guideline_output_violations(payload: dict[str, Any], output: str) ->
     return violations
 
 
+def _audience_string_list(payload: dict[str, Any], key: str) -> list[str]:
+    return _visual_string_list(payload.get(key))
+
+
+def _audience_prompt_constraints(payload: dict[str, Any]) -> list[str]:
+    lines: list[str] = []
+    summary = payload.get("summary")
+    if isinstance(summary, str) and summary.strip():
+        lines.append(f"- Write for this audience: {summary.strip()}")
+    locale = payload.get("locale")
+    if isinstance(locale, str) and locale.strip():
+        lines.append(f'- Prefer locale "{locale.strip()}".')
+    reading = payload.get("readingLevel")
+    if isinstance(reading, str) and reading.strip():
+        lines.append(f'- Target reading level: {reading.strip()}.')
+    positioning = payload.get("positioningStatement")
+    if isinstance(positioning, str) and positioning.strip():
+        lines.append(f"- Positioning: {positioning.strip()}")
+    for role in _audience_string_list(payload, "roles"):
+        lines.append(f'- Address roles such as "{role}".')
+    for pain in _audience_string_list(payload, "pains"):
+        lines.append(f'- Acknowledge pain: "{pain}".')
+    for goal in _audience_string_list(payload, "goals"):
+        lines.append(f'- Prefer outcomes aligned with goal: "{goal}".')
+    for phrase in _audience_string_list(payload, "preferredLanguage"):
+        lines.append(f'- Prefer language that is {phrase}.')
+    for topic in _audience_string_list(payload, "bannedTopics"):
+        lines.append(f'- Never cover banned topic "{topic}".')
+    for phrase in _audience_string_list(payload, "avoidPhrases"):
+        lines.append(f'- Never use the audience avoid-phrase "{phrase}".')
+    custom = payload.get("customInstructions")
+    if isinstance(custom, str) and custom.strip():
+        lines.append(f"- Custom audience instructions: {custom.strip()}")
+    return lines
+
+
+def _audience_output_violations(payload: dict[str, Any], output: str) -> list[str]:
+    folded = output.casefold()
+    violations: list[str] = []
+    for topic in _audience_string_list(payload, "bannedTopics"):
+        if topic.casefold() in folded:
+            violations.append(
+                f"Audience banned topic was emitted: {topic[:120]}"
+            )
+    for phrase in _audience_string_list(payload, "avoidPhrases"):
+        if phrase.casefold() in folded:
+            violations.append(
+                f"Audience avoid-phrase was emitted: {phrase[:120]}"
+            )
+    return violations
+
+
 _UNSUPPORTED_PRODUCT_CLAIM_MARKERS = (
     "guarantees perfect",
     "guarantee perfect",
@@ -1422,6 +1474,8 @@ def _governed_output_violations(
             violations.extend(
                 _visual_guideline_output_violations(context.payload, output)
             )
+        if context.kind == "audience" and isinstance(context.payload, dict):
+            violations.extend(_audience_output_violations(context.payload, output))
         if context.kind == "product":
             violations.extend(_product_output_violations(context, output, stage))
     violations.extend(
@@ -1607,6 +1661,7 @@ def _build_prompts(
     )
     style_constraints: list[str] = []
     visual_constraints: list[str] = []
+    audience_constraints: list[str] = []
     for context in req.governed_context or []:
         if context.kind == "style_guide" and isinstance(context.payload, dict):
             style_constraints.extend(_style_guide_prompt_constraints(context.payload))
@@ -1614,6 +1669,8 @@ def _build_prompts(
             visual_constraints.extend(
                 _visual_guideline_prompt_constraints(context.payload)
             )
+        if context.kind == "audience" and isinstance(context.payload, dict):
+            audience_constraints.extend(_audience_prompt_constraints(context.payload))
 
     system = (
         "You are a B2B content writer. Use ONLY the provided source markdown. "
@@ -1624,6 +1681,10 @@ def _build_prompts(
         "facts may be used only as supplied; prohibited claims are forbidden and mandatory "
         "disclaimers must appear in complete or final-synthesis output."
     )
+    if audience_constraints:
+        system += "\nAudience deterministic constraints:\n" + "\n".join(
+            audience_constraints
+        )
     if style_constraints:
         system += "\nStyle Guide deterministic constraints:\n" + "\n".join(
             style_constraints
