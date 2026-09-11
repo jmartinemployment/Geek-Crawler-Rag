@@ -20,7 +20,11 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = 1536
-    openai_embedding_tokens_per_minute: int = 1_000_000
+    # Stay well under the account ceiling. Setting this AT the limit
+    # (1,000,000 TPM for text-embedding-3-small) caused sustained runs to
+    # return HTTP 500 server_error instead of clean 429s — see
+    # plans/embedding-cache-and-duplicate-results.md.
+    openai_embedding_tokens_per_minute: int = 400_000
     openai_embedding_max_batch_tokens: int = 50_000
     # Embedding calls are fail-closed (no in-process OpenAI retries).
     openai_embedding_max_retries: int = 0

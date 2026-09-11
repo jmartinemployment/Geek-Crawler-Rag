@@ -109,3 +109,76 @@ async def test_embed_and_upsert_no_openai_call_when_all_present(monkeypatch):
 
     assert await le.LlamaIndexEngine.embed_and_upsert(engine, nodes) == 0
     engine._vector_store.async_add.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_embed_cache_sends_each_distinct_string_once(monkeypatch):
+    """Identical parent/child text must cost one OpenAI call, not two."""
+    from llama_index.core.schema import TextNode
+    from geek_crawler_rag import llama_engine as le
+
+    nodes = [
+        TextNode(id_="p0", text="SAME"),   # parent
+        TextNode(id_="c0", text="SAME"),   # child, identical text
+        TextNode(id_="c1", text="OTHER"),
+    ]
+    sent: list[list[str]] = []
+
+    async def fake_embed_texts(texts, *, metadata_list=None):
+        sent.append(list(texts))
+        return [[float(i)] for i in range(len(texts))]
+
+    engine = MagicMock()
+    engine._settings = MagicMock(qdrant_collection="coll")
+    engine._aclient = MagicMock()
+    engine._vector_store = MagicMock()
+    engine._vector_store.async_add = AsyncMock()
+    engine.embed_texts = fake_embed_texts
+
+    async def no_existing(client, collection, ids, *, batch=256):
+        return set()
+
+    monkeypatch.setattr(le, "find_existing_point_ids", no_existing)
+
+    n = await le.LlamaIndexEngine.embed_and_upsert(engine, nodes)
+
+    assert n == 3
+    assert sent == [["SAME", "OTHER"]], "duplicate string was sent twice"
+    added = engine._vector_store.async_add.await_args.args[0]
+    assert [x.id_ for x in added] == ["p0", "c0", "c1"]
+    # both nodes sharing text get the same vector
+    assert added[0].embedding == added[1].embedding
+    assert added[2].embedding != added[0].embedding
+
+
+@pytest.mark.asyncio
+async def test_embed_cache_falls_back_on_length_mismatch(monkeypatch):
+    """A short return from embed_texts must not mis-map vectors onto nodes."""
+    from llama_index.core.schema import TextNode
+    from geek_crawler_rag import llama_engine as le
+
+    nodes = [TextNode(id_="p0", text="SAME"), TextNode(id_="c0", text="SAME")]
+    calls: list[list[str]] = []
+
+    async def flaky_embed_texts(texts, *, metadata_list=None):
+        calls.append(list(texts))
+        if len(calls) == 1:
+            return []                      # mismatch on the cached attempt
+        return [[1.0]] * len(texts)        # fallback path
+
+    engine = MagicMock()
+    engine._settings = MagicMock(qdrant_collection="coll")
+    engine._aclient = MagicMock()
+    engine._vector_store = MagicMock()
+    engine._vector_store.async_add = AsyncMock()
+    engine.embed_texts = flaky_embed_texts
+
+    async def no_existing(client, collection, ids, *, batch=256):
+        return set()
+
+    monkeypatch.setattr(le, "find_existing_point_ids", no_existing)
+
+    n = await le.LlamaIndexEngine.embed_and_upsert(engine, nodes)
+
+    assert n == 2
+    assert calls == [["SAME"], ["SAME", "SAME"]], "did not fall back uncached"

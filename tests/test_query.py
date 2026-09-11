@@ -93,7 +93,11 @@ def test_select_ranked_candidates_collapses_and_backfills():
     ]
     ranked = [(0, 0.9), (1, 0.8), (2, 0.7), (3, 0.6), (4, 0.5), (5, 0.4)]
     selected = _select_ranked_candidates(
-        pool, ranked, target_top_k=4, collapse_parents=True
+        pool,
+        ranked,
+        request=QueryRequest(need="n", runId="r"),
+        target_top_k=4,
+        collapse_parents=True,
     )
     assert [c["id"] for c, _ in selected] == ["a1", "b1", "c1", "d1"]
 
@@ -105,7 +109,11 @@ def test_select_ranked_candidates_insufficient_unique_parents():
     ]
     ranked = [(0, 0.9), (1, 0.8)]
     selected = _select_ranked_candidates(
-        pool, ranked, target_top_k=3, collapse_parents=True
+        pool,
+        ranked,
+        request=QueryRequest(need="n", runId="r"),
+        target_top_k=3,
+        collapse_parents=True,
     )
     assert len(selected) == 1
     assert selected[0][0]["id"] == "a1"
@@ -327,3 +335,55 @@ async def test_query_graph_mode_returns_themes():
     assert resp.themes is not None
     assert len(resp.themes) >= 1
     assert resp.retrieval and resp.retrieval.startswith("graph+")
+
+
+def test_select_ranked_candidates_drops_duplicate_text_without_collapse():
+    """Identical text must be dropped even when collapse_parents is off."""
+    pool = [
+        {"id": "child", "payload": {"pageId": "p", "sectionTitle": "A",
+                                    "parentText": "SAME", "childText": "SAME",
+                                    "text": "SAME"}},
+        {"id": "parent", "payload": {"pageId": "p", "sectionTitle": "A",
+                                     "parentText": "SAME", "childText": "",
+                                     "text": "SAME"}},
+        {"id": "other", "payload": {"pageId": "p", "sectionTitle": "B",
+                                    "parentText": "DIFF", "childText": "DIFF",
+                                    "text": "DIFF"}},
+    ]
+    ranked = [(0, 0.9), (1, 0.8), (2, 0.7)]
+    selected = _select_ranked_candidates(
+        pool,
+        ranked,
+        request=QueryRequest(need="n", runId="r"),
+        target_top_k=2,
+        collapse_parents=False,
+    )
+    # duplicate "SAME" collapses; freed slot is filled by the distinct candidate
+    assert [c["id"] for c, _ in selected] == ["child", "other"]
+
+
+def test_select_ranked_candidates_fills_top_k_with_distinct_text():
+    """Starvation regression: dedup must not shrink the result below top_k."""
+    pool = []
+    ranked = []
+    # 8 distinct texts, each duplicated once -> 16 candidates, 8 unique
+    for i in range(8):
+        for role in ("child", "parent"):
+            pool.append({
+                "id": f"{role}{i}",
+                "payload": {"pageId": "p", "sectionTitle": f"S{i}",
+                            "parentText": f"T{i}", "childText": f"T{i}",
+                            "text": f"T{i}"},
+            })
+    ranked = [(i, 1.0 - i * 0.01) for i in range(len(pool))]
+    selected = _select_ranked_candidates(
+        pool,
+        ranked,
+        request=QueryRequest(need="n", runId="r"),
+        target_top_k=8,
+        collapse_parents=False,
+    )
+    texts = [_return_text(c["payload"], QueryRequest(need="n", runId="r"))
+             for c, _ in selected]
+    assert len(selected) == 8, "dedup starved the result below top_k"
+    assert len(set(texts)) == 8, "returned duplicate text"

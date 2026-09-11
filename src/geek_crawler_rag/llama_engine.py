@@ -174,10 +174,46 @@ class LlamaIndexEngine:
                 return 0
 
         texts = [n.get_content() for n in keep]
-        embeddings = await self.embed_texts(
-            texts,
-            metadata_list=[_node_meta(n) for n in keep],
-        )
+
+        # Embedding cache: a heading section shorter than child_chunk_size_tokens
+        # cannot be sliced, so parent_child_units emits a child byte-identical to
+        # its parent (chunk.py). Both points are still written, but the vector is
+        # the same, so send each distinct string to OpenAI once. Measured ~29% of
+        # calls on real marketing pages.
+        uniq_texts = list(dict.fromkeys(texts))
+        embeddings: list[list[float]] | None = None
+        if len(uniq_texts) < len(texts):
+            first_meta: dict[str, dict[str, Any] | None] = {}
+            for node, text in zip(keep, texts, strict=True):
+                first_meta.setdefault(text, _node_meta(node))
+            uniq_vectors = await self.embed_texts(
+                uniq_texts,
+                metadata_list=[first_meta[t] for t in uniq_texts],
+            )
+            # embed_texts sanitizes and may drop empties, so its result is aligned
+            # to its filtered input. On any length mismatch fall back rather than
+            # mis-map vectors onto the wrong nodes.
+            if len(uniq_vectors) == len(uniq_texts):
+                by_text = dict(zip(uniq_texts, uniq_vectors, strict=True))
+                embeddings = [by_text[t] for t in texts]
+                logger.info(
+                    "embed_cache_saved_calls=%s unique=%s of=%s",
+                    len(texts) - len(uniq_texts),
+                    len(uniq_texts),
+                    len(texts),
+                )
+            else:
+                logger.warning(
+                    "embed_cache_length_mismatch got=%s want=%s; embedding uncached",
+                    len(uniq_vectors),
+                    len(uniq_texts),
+                )
+
+        if embeddings is None:
+            embeddings = await self.embed_texts(
+                texts,
+                metadata_list=[_node_meta(n) for n in keep],
+            )
         for node, emb in zip(keep, embeddings, strict=True):
             node.embedding = emb
         await self._vector_store.async_add(keep)

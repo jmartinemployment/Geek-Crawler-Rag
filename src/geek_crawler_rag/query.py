@@ -109,7 +109,11 @@ class QueryService:
             search_role = "child"
 
         try:
-            dense_limit = max(request.top_k, self._settings.hybrid_dense_limit)
+            # Over-fetch: short sections produce a child byte-identical to its
+            # parent, so ~half the pool can collapse during dedup below. Without
+            # headroom a large top_k starves (measured: top_k=40 yielded 21).
+            fetch_target = max(request.top_k * 2, self._settings.hybrid_dense_limit)
+            dense_limit = fetch_target
             dense_nodes = await self._llama.dense_query(
                 request.need,
                 run_id=request.run_id,
@@ -131,7 +135,7 @@ class QueryService:
                 visibility=request.visibility,
                 crawl_type=request.crawl_type,
                 host=host,
-                top_k=self._settings.hybrid_lexical_limit,
+                top_k=max(fetch_target, self._settings.hybrid_lexical_limit),
                 chunk_role=search_role,
                 source_types=request.source_types,
                 entity_names=request.entity_names,
@@ -169,7 +173,8 @@ class QueryService:
         fused_candidates = [id_to_cand[i] for i, _ in fused if i in id_to_cand]
 
         pool_n = min(
-            len(fused_candidates), max(request.top_k, self._settings.rerank_pool_size)
+            len(fused_candidates),
+            max(request.top_k * 2, self._settings.rerank_pool_size),
         )
         pool = fused_candidates[:pool_n]
         collapse_parents = _should_collapse_parents(request)
@@ -183,6 +188,7 @@ class QueryService:
         selected = _select_ranked_candidates(
             pool,
             ranked,
+            request=request,
             target_top_k=request.top_k,
             collapse_parents=collapse_parents,
         )
@@ -325,18 +331,31 @@ def _select_ranked_candidates(
     pool: list[dict[str, Any]],
     ranked: list[tuple[int, float]],
     *,
+    request: QueryRequest,
     target_top_k: int,
     collapse_parents: bool,
 ) -> list[tuple[dict[str, Any], float]]:
-    """Keep Cohere order; optionally collapse sibling children sharing a parent."""
+    """Keep Cohere order; drop repeated text; optionally collapse siblings.
+
+    Exact-text dedup runs unconditionally. A section shorter than the child
+    window yields a child identical to its parent, so both points score the same
+    and the duplicate lands in the adjacent slot. Deduping here rather than at
+    assembly means the top_k cap is spent on distinct text.
+    """
     selected: list[tuple[dict[str, Any], float]] = []
     seen_parents: set[str] = set()
+    seen_text: set[str] = set()
     for orig_idx, rerank_score in ranked:
         if len(selected) >= target_top_k:
             break
         if orig_idx < 0 or orig_idx >= len(pool):
             continue
         cand = pool[orig_idx]
+        text = _return_text(cand["payload"], request)
+        if text:
+            if text in seen_text:
+                continue
+            seen_text.add(text)
         if collapse_parents:
             key = _parent_lineage_key(cand["payload"])
             if key in seen_parents:
