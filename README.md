@@ -84,6 +84,14 @@ Geek-Crawler-v2 → MongoDB → Geek-Crawler-Rag/Qdrant
 ```
 
 - Default `retrievalMode`: `hybrid` (LlamaIndex dense + BM25/text RRF + optional Cohere).
+- **Results are de-duplicated by text.** A heading section shorter than the child
+  window produces a child chunk identical to its parent, and identical vectors
+  score identically, so the pair would otherwise occupy adjacent slots. Exact
+  repeated text is dropped before the `topK` cap is applied, and the candidate
+  pool over-fetches so `topK` is filled with distinct results.
+- `preferParent` / `preferChild` select which text a hit returns. They no longer
+  affect de-duplication, which is unconditional. Setting `preferParent: true`
+  additionally collapses sibling children that share one parent.
 - `retrievalMode: "graph"`: parent-biased hybrid plus `themes[]` (entity / category / co-occurrence) for slides/strategy.
 - Index writes parent + child LlamaIndex nodes with `parentText` / `childText` and entity metadata.
 - `GET /health` includes `"engine": "llamaindex"` and `"features": ["hybrid","graph","ad-templates"]`.
@@ -128,7 +136,7 @@ At index start the service logs **`mongoPageCount`**. Runs with `mongoPageCount`
 
 ### Scheduled indexing and OpenAI rate limits
 
-Production schedules one eligible run every **7,200 seconds (2 hours)**. The
+Production schedules one eligible run every **300 seconds** (`INDEX_SCHEDULER_INTERVAL_SECONDS`). The
 scheduler persists its next due time in Mongo, takes an atomic lease, and chooses
 the smallest completed run whose crawl-level `MarkdownReadyAt` confirms every
 persisted page has Markdown and which is not already indexed. Index jobs also use
@@ -136,17 +144,29 @@ Mongo leases, heartbeats, stale-job recovery, bounded retries, and a maximum
 attempt count.
 
 All corpus, query, and ad-template embeddings pass through one rolling
-token-per-minute limiter. Calls are sequentially partitioned by item and token
-count; transient OpenAI 429 responses honor `Retry-After` and retry with bounded
-jitter. `insufficient_quota` remains a terminal error. Defaults leave capacity
-for other workloads sharing the OpenAI organization:
+token-per-minute limiter, sequentially partitioned by item and token count.
+Embedding calls are **fail-closed with no in-process retries**: the first HTTP
+500 or empty-input 400 quarantines the batch and fails the job with already
+upserted points preserved (see [`docs/embedding-circuit-recovery.md`](./docs/embedding-circuit-recovery.md)).
 
-- `OPENAI_EMBEDDING_TOKENS_PER_MINUTE=400000`
+**Keep the throttle well under the account ceiling.** Your OpenAI TPM limit is
+returned in `x-ratelimit-limit-tokens` on any embeddings response. Setting the
+throttle *at* that limit rather than below it causes sustained runs to receive
+HTTP 500 `server_error` instead of clean 429s — a 1,000,000 setting against a
+1,000,000 ceiling killed multi-hour runs until it was lowered to 400,000.
+
+- `OPENAI_EMBEDDING_TOKENS_PER_MINUTE=400000` (40% of a 1,000,000 ceiling)
 - `OPENAI_EMBEDDING_MAX_BATCH_TOKENS=50000`
 - `EMBED_BATCH_SIZE=32`
-- `OPENAI_EMBEDDING_MAX_RETRIES=8`
-- `QDRANT_UPSERT_DELAY_SECONDS=2`
-- `INDEX_SCHEDULER_INTERVAL_SECONDS=7200`
+- `OPENAI_EMBEDDING_MAX_RETRIES=0` (fail-closed by design; do not raise)
+- `QDRANT_UPSERT_DELAY_SECONDS=0.5`
+- `INDEX_SCHEDULER_INTERVAL_SECONDS=300`
+
+Re-running a failed job resumes rather than restarting: point IDs are
+deterministic, so chunks already committed to Qdrant are skipped. Identical
+strings within a batch are embedded once and the vector reused for every point
+that shares that text (short heading sections yield a child identical to its
+parent, ~29% of calls on marketing pages).
 
 `GET /health` reports current throttle counters and scheduler state. Per-job
 status includes `attempt`, `trigger`, `embeddingRateLimitRetries`, and
