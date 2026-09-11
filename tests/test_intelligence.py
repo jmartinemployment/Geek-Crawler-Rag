@@ -298,6 +298,31 @@ def test_competitor_positioning_preserves_observations_and_labels_hypotheses() -
     )
 
 
+def test_competitor_positioning_multi_competitor_cohort_warning() -> None:
+    payload = json.loads(POSITIONING_FIXTURE.read_text())
+    primary = payload["competitorPages"][0]
+    second = json.loads(json.dumps(primary))
+    second["competitorId"] = "alt-co"
+    second["competitorName"] = "Alt Co"
+    second["source"]["sourceId"] = "competitor-alt"
+    second["source"]["title"] = "Alt Co page"
+    second["visibleContent"] = "# Alt\n\nTrusted by 200 teams."
+    second["evidence"] = []
+    payload["competitorPages"] = [primary, second]
+    artifact = IntelligenceService().competitor_positioning(
+        CompetitorPositioningRequest.model_validate(payload)
+    )
+    assert any(
+        "Positioning map considers 2 competitor pages." in warning
+        for warning in artifact.warnings
+    )
+    assert any(
+        attr.competitor_id == "alt-co"
+        for attr in artifact.attribute_map
+        if attr.party == "competitor"
+    )
+
+
 def test_partial_brand_positioning_never_asserts_absence() -> None:
     request = _positioning_request()
     request.brand_pages[0].content_completeness = "partial"

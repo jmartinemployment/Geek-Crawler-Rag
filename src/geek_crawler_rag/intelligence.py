@@ -743,6 +743,10 @@ class IntelligenceService:
             ),
             _no_demand_warning(),
         ]
+        if len(request.competitor_pages) > 1:
+            warnings.append(
+                f"Positioning map considers {len(request.competitor_pages)} competitor pages."
+            )
         warnings.extend(_digest_warnings(all_pages))
         if brand_partial:
             warnings.append(
