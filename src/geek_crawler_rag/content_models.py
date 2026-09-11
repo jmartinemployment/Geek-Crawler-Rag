@@ -418,9 +418,9 @@ class PillarArticleArtifact(StrictContract):
     )
     methodology: str = (
         "Compose a full pillar Markdown draft from the deterministic topic-cluster outline. "
-        "Section bodies use supplied source spans when available; otherwise they stay "
-        "explicitly scaffolded without inventing statistics. Supporting content plans remain "
-        "generatedHypothesis."
+        "Section bodies prefer multi-paragraph spans under matching source headings; otherwise "
+        "they stay explicitly scaffolded without inventing statistics. Supporting content plans "
+        "remain generatedHypothesis."
     )
     topic: str
     title: str

@@ -19,7 +19,7 @@
       "url": "https://subject.example/readiness",
       "title": "AI Content Readiness Guide"
     },
-    "visibleContent": "# AI Content Readiness Guide\n\n## What is AI content readiness?\n\nAI content readiness means pages provide answer-first structure, evidence, and schema that systems can cite.\n\n## Measuring readiness\n\nUse a seven-dimension rubric with explicit evidence.",
+    "visibleContent": "# AI Content Readiness Guide\n\n## What is AI content readiness?\n\nAI content readiness means pages provide answer-first structure, evidence, and schema that systems can cite.\n\nTeams use readiness to decide which pages need stronger claims before publishing.\n\n## Measuring readiness\n\nUse a seven-dimension rubric with explicit evidence.\n\nScore only what the supplied page actually shows.",
     "mediaType": "text/markdown",
     "contentCompleteness": "full",
     "queries": [],

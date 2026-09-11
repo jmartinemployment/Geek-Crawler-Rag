@@ -897,33 +897,58 @@ class ContentService:
             if "not a full article" not in warning.casefold()
         ]
         warnings.append(
-            "Pillar article bodies are grounded in supplied source spans when present; "
-            "ungrounded sections are scaffolds and must not be treated as verified claims."
+            "Pillar article bodies prefer multi-paragraph source spans under matching headings; "
+            "ungrounded sections stay scaffolds and must not be treated as verified claims."
         )
 
         for section in outline.sections:
             body_chunks: list[str] = []
-            evidence_ids = list(section.evidence_ids)
+            evidence_ids: list[str] = []
             grounded = False
-            for evidence_id in evidence_ids:
-                ref = evidence_by_id.get(evidence_id)
-                if ref is None or not ref.quote.strip():
-                    continue
-                body_chunks.append(ref.quote.strip())
-                grounded = True
-            if not body_chunks and text and document is not None:
-                answer, evidence_ref, status = _answer_for_query(
+
+            if document is not None and text:
+                grounded_body, grounded_evidence = _ground_section_from_source(
                     section.heading, document, text
                 )
-                if status != "unverifiable" and evidence_ref is not None:
-                    body_chunks.append(answer.strip())
-                    evidence_ids = [evidence_ref.evidence_id]
+                if grounded_body and grounded_evidence:
+                    body_chunks = [grounded_body]
+                    evidence_ids = [item.evidence_id for item in grounded_evidence]
+                    evidence_by_id.update(
+                        {item.evidence_id: item for item in grounded_evidence}
+                    )
                     grounded = True
+
+            if not body_chunks:
+                for evidence_id in section.evidence_ids:
+                    ref = evidence_by_id.get(evidence_id)
+                    if ref is None or not ref.quote.strip():
+                        continue
+                    body_chunks.append(ref.quote.strip())
+                    evidence_ids.append(evidence_id)
+                    grounded = True
+
+            if not body_chunks and text and document is not None:
+                heading_l = section.heading.casefold()
+                allow_answer_lookup = bool(section.related_queries) or heading_l.endswith(
+                    "?"
+                ) or heading_l.startswith("what is")
+                if allow_answer_lookup:
+                    answer, evidence_ref, status = _answer_for_query(
+                        section.heading, document, text
+                    )
+                    if status != "unverifiable" and evidence_ref is not None:
+                        body_chunks.append(answer.strip())
+                        evidence_ids = [evidence_ref.evidence_id]
+                        evidence_by_id[evidence_ref.evidence_id] = evidence_ref
+                        grounded = True
+
             if not body_chunks:
                 body_chunks.append(
                     f"{section.answer_first_prompt} "
                     "[Scaffold — no supplied source span grounded this section.]"
                 )
+                evidence_ids = []
+
             body = "\n\n".join(body_chunks)
             article_sections.append(
                 PillarArticleSection(
@@ -944,6 +969,9 @@ class ContentService:
                 "No section was grounded in supplied source evidence; treat the draft as a scaffold only."
             )
 
+        provenance_evidence = _dedupe_evidence(
+            [*outline.provenance.evidence, *evidence_by_id.values()]
+        )
         return PillarArticleArtifact(
             topic=outline.topic,
             title=outline.topic,
@@ -951,7 +979,12 @@ class ContentService:
             sections=article_sections,
             supportingContentPlan=outline.supporting_content_plan,
             warnings=_unique(warnings),
-            provenance=outline.provenance,
+            provenance=ContentProvenance(
+                source=outline.provenance.source,
+                queries=list(outline.provenance.queries),
+                evidenceIds=[item.evidence_id for item in provenance_evidence],
+                evidence=provenance_evidence,
+            ),
         )
 
 
@@ -1006,19 +1039,98 @@ def _answer_for_query(
     return (answer, evidence_ref, "supported")
 
 
-def _first_paragraph(following: str) -> str:
-    lines: list[str] = []
+def _ground_section_from_source(
+    heading: str,
+    document,
+    text: str,
+    *,
+    max_paragraphs: int = 3,
+) -> tuple[str | None, list[EvidenceReference]]:
+    """Pull up to N consecutive body paragraphs under the best matching source heading."""
+    if not text or document is None:
+        return None, []
+    tokens = [token for token in _TOKEN.findall(heading.casefold()) if len(token) > 2]
+    best_match: tuple[int, int] | None = None
+    for match in _HEADING.finditer(text):
+        source_heading = match.group(1).strip()
+        if not source_heading:
+            continue
+        if _normalize_query(source_heading) == _normalize_query(heading):
+            best_match = (100, match.end())
+            break
+        score = sum(1 for token in tokens if token in source_heading.casefold())
+        required = max(2, (len(tokens) + 1) // 2) if tokens else 2
+        if score < required:
+            continue
+        if best_match is None or score > best_match[0]:
+            best_match = (score, match.end())
+
+    search_from = 0
+    if best_match is not None:
+        search_from = best_match[1]
+    else:
+        lowered = heading.casefold()
+        if not (lowered.startswith("what is") or "introduction" in lowered):
+            return None, []
+        # Intro-style sections can ground from the first body block after the title.
+        first_heading = _HEADING.search(text)
+        search_from = first_heading.end() if first_heading else 0
+
+    following = text[search_from:].lstrip("\n")
+    paragraphs = _paragraphs_under(following, max_paragraphs=max_paragraphs)
+    if not paragraphs:
+        return None, []
+
+    evidence_rows: list[EvidenceReference] = []
+    bodies: list[str] = []
+    cursor = search_from
+    for paragraph in paragraphs:
+        quote_start = text.find(paragraph, cursor)
+        if quote_start < 0:
+            quote_start = text.find(paragraph)
+        if quote_start < 0:
+            continue
+        evidence_rows.append(
+            _evidence(
+                document.source.source_id,
+                text,
+                quote_start,
+                quote_start + len(paragraph),
+                paragraph,
+            )
+        )
+        bodies.append(paragraph)
+        cursor = quote_start + len(paragraph)
+    if not bodies:
+        return None, []
+    return "\n\n".join(bodies), evidence_rows
+
+
+def _paragraphs_under(following: str, *, max_paragraphs: int = 3) -> list[str]:
+    paragraphs: list[str] = []
+    current: list[str] = []
     for line in following.splitlines():
         value = line.strip()
-        if not value:
-            if lines:
-                break
-            continue
-        if value.startswith("#") or value.endswith("?"):
+        if value.startswith("#"):
             break
-        lines.append(value)
-    return " ".join(lines).strip()
+        if not value:
+            if current:
+                paragraphs.append(" ".join(current).strip())
+                current = []
+                if len(paragraphs) >= max_paragraphs:
+                    break
+            continue
+        if value.endswith("?") and not current:
+            break
+        current.append(value)
+    if current and len(paragraphs) < max_paragraphs:
+        paragraphs.append(" ".join(current).strip())
+    return [item for item in paragraphs if item]
 
+
+def _first_paragraph(following: str) -> str:
+    paragraphs = _paragraphs_under(following, max_paragraphs=1)
+    return paragraphs[0] if paragraphs else ""
 
 def _pair(
     question: str,

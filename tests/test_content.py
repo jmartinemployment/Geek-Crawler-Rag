@@ -411,8 +411,37 @@ def test_pillar_article_composes_markdown_from_outline() -> None:
     assert "## " in first.markdown
     assert first.sections
     assert any(section.grounded for section in first.sections)
+    grounded = next(section for section in first.sections if section.grounded)
+    assert "\n\n" in grounded.body_markdown or len(grounded.evidence_ids) >= 1
+    multi_para = next(
+        (
+            section
+            for section in first.sections
+            if section.grounded and "\n\n" in section.body_markdown
+        ),
+        None,
+    )
+    assert multi_para is not None
+    assert len(multi_para.evidence_ids) >= 2
     assert first.supporting_content_plan
     assert not any("not a full article" in warning.casefold() for warning in first.warnings)
+    assert any("multi-paragraph" in warning.casefold() for warning in first.warnings)
     assert PillarArticleArtifact.model_validate(
         first.model_dump(mode="json", by_alias=True)
     ) == first
+
+
+def test_pillar_article_marks_ungrounded_template_sections_as_scaffold() -> None:
+    payload = json.loads(PILLAR_FIXTURE.read_text())
+    payload["queries"] = []
+    payload["supportingContentHints"] = []
+    artifact = ContentService().pillar_article(
+        PillarArticleRequest.model_validate(
+            {**payload, "contractVersion": "pillarArticleInput.v1"}
+        )
+    )
+    scaffold = [
+        section for section in artifact.sections if not section.grounded
+    ]
+    assert scaffold
+    assert any("[Scaffold" in section.body_markdown for section in scaffold)
