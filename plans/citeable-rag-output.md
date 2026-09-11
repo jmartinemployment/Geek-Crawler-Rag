@@ -10,7 +10,14 @@ Sibling repos: **Geek-Crawler-Rag** (producer), **GeekBackend** (proxy), **conte
 | **No page Markdown API** | Query returns chunk `text` only; `pageId` is in Qdrant but not on `ChunkHit`. Writers cannot open full Mongo Markdown to pick real quotes. | Rag: expose `pageId` on hits + `GET /v1/pages/{pageId}` (Markdown/title/url). |
 | **GeekAPI one-shot generate** | Single `/v1/query` → one OpenAI complete; sources are URL+title only; no retrieve→read→verify. | Rag: `POST /v1/generate` (LlamaIndex Workflow / LlamaAgents). GeekAPI becomes thin proxy. |
 
-Secondary: main creates research (`GccV2GeekCrawlerResearchResolver`) queries Rag **without** `preferParent` — same Phase 1 retrieval fixes apply.
+Secondary: main creates research (`GccV2GeekCrawlerResearchResolver`) already
+queries with `preferParent: true` / `preferChild: false` at `topK: 12`. Corpus
+`/v1/query` now also applies unconditional exact-text dedup — see
+`embedding-cache-and-duplicate-results.md` § Consumer impact and
+`content-creator-v2/plan/crawl-architecture.md` § What `POST /v1/query` returns.
+ShortForm RAG generate (`preferChild: true`, `topK: 5`) is the worst
+*proportional* consumer exposure; the `topK: 12` WRITE path is the largest
+*absolute* token-growth risk.
 
 ## Ownership
 

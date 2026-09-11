@@ -126,6 +126,9 @@ class EntityMapRequest(StrictContract):
     )
     document: DiagnosticDocument
     seeds: list[EntitySeed] = Field(default_factory=list, max_length=200)
+    competitor_document: DiagnosticDocument | None = Field(
+        None, alias="competitorDocument"
+    )
 
 
 class SchemaMarkupRequest(StrictContract):
@@ -234,6 +237,21 @@ class EntityRelationship(StrictContract):
     evidence_ids: list[str] = Field(alias="evidenceIds", min_length=1)
 
 
+class EntityCoverageComparison(StrictContract):
+    entity_id: str = Field(..., alias="entityId")
+    canonical_name: str = Field(..., alias="canonicalName")
+    on_subject: bool = Field(..., alias="onSubject")
+    on_competitor: bool = Field(..., alias="onCompetitor")
+    status: Literal["presentBoth", "missingOnSubject", "competitorOnly"]
+
+
+class EntityCoverageRecommendation(StrictContract):
+    recommendation_id: str = Field(..., alias="recommendationId")
+    related_entity_id: str = Field(..., alias="relatedEntityId")
+    action: str = Field(..., min_length=1, max_length=500)
+    evidence_ids: list[str] = Field(..., alias="evidenceIds", min_length=1)
+
+
 class EntityMapArtifact(StrictContract):
     artifact_type: Literal["entityMap.v1"] = Field("entityMap.v1", alias="artifactType")
     mapper_version: Literal["canonical-entity-map.v1"] = Field(
@@ -241,6 +259,10 @@ class EntityMapArtifact(StrictContract):
     )
     entities: list[CanonicalEntity]
     relationships: list[EntityRelationship]
+    coverage_comparisons: list[EntityCoverageComparison] = Field(
+        default_factory=list, alias="coverageComparisons"
+    )
+    recommendations: list[EntityCoverageRecommendation] = Field(default_factory=list)
     warnings: list[str]
     provenance: ArtifactProvenance
 

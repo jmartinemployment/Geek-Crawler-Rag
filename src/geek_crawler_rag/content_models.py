@@ -143,6 +143,12 @@ class CitableClaim(StrictContract):
     source_statement: str | None = Field(None, alias="sourceStatement")
 
 
+class ClaimContradictionPair(StrictContract):
+    left_claim_id: str = Field(..., alias="leftClaimId")
+    right_claim_id: str = Field(..., alias="rightClaimId")
+    reason: Literal["conflictingQuantities", "negationConflict"]
+
+
 class ClaimLedgerArtifact(StrictContract):
     artifact_type: Literal["claimLedger.v1"] = Field(
         "claimLedger.v1", alias="artifactType"
@@ -156,6 +162,9 @@ class ClaimLedgerArtifact(StrictContract):
         "quotes exist. Never invent statistics or unsupported specifics."
     )
     claims: list[CitableClaim]
+    contradiction_pairs: list[ClaimContradictionPair] = Field(
+        default_factory=list, alias="contradictionPairs"
+    )
     warnings: list[str]
     provenance: ContentProvenance
 

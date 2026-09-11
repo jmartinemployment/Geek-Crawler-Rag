@@ -1,6 +1,8 @@
 # Cache identical embeddings and drop duplicate search results
 
-Status: **Not started**
+Status: **Query-result exact-text dedup shipped** (Change 2). Embedding-text cache
+(Change 1) and throttle pin (Change 3) — confirm against deploy before treating as
+done.
 Measured: **2026-09-11** against live Qdrant (run `99c6b00b`, page `699f3333…`)
 Prerequisite shipped: resume-from-Qdrant (`731b30d`), throttle 1,000,000 → 400,000
 
@@ -43,14 +45,33 @@ topK=40  40 returned, 21 distinct, 19 redundant   (48%)
 ```
 
 Identical vectors score identically, so the duplicate always lands in the
-immediately adjacent slot. `prefer_parent` defaults to `None` (`models.py:87`) and
-`_should_collapse_parents` (`query.py:298`) requires it truthy, so a caller that
-omits the flags receives ~37% less distinct context than it asked for.
+immediately adjacent slot. Before Change 2, `_should_collapse_parents`
+(`query.py`) required `preferParent` truthy **and** `preferChild` false, so:
 
-`GccV2GeekCrawlerResearchResolver.cs:501` passes the safe combination, but
-`HttpGeekCrawlerRagClient` takes both as `bool?` defaulting to null, so any new
-caller lands on the broken path. Content Creator is not production yet — this is
-the cheap moment.
+- Callers that **omitted** both flags received ~37% less distinct context than
+  `topK` requested.
+- Callers with **`preferChild: true`** (notably GeekAPI ShortForm) also skipped
+  parent collapse — the tightest budgets took the largest *proportional* loss.
+
+`GccV2GeekCrawlerResearchResolver` already passed `preferParent: true` /
+`preferChild: false`. Exact-text dedup is now unconditional for every
+`/v1/query` caller; sibling collapse via `_should_collapse_parents` stays opt-in.
+
+## Consumer impact (re-measure prompts / injection)
+
+Same `topK` request now returns denser distinct evidence. **Out of scope:**
+`QueryTemplatesAsync` / `/v1/templates/query` (ad-template index).
+
+| Call site | topK | Old collapse? | Exposure |
+|-----------|------|---------------|----------|
+| `RagGenerateService` ShortForm (`preferChild: true`) | 5 | No | Worst *proportional* — no old dedup on smallest corpus budget |
+| `GccV2GeekCrawlerResearchResolver` | 12 | Yes | Largest *absolute* token growth |
+| `RagGenerateService` Slides / default | 10 | Yes | Moderate |
+| `RagGenerateService` Battlecard | 8 | Yes | Moderate |
+| `HttpGeekCrawlerRagClient.QueryAsync` default | 8 | Caller-dependent | Any omit-flags caller |
+
+Canonical consumer note: `content-creator-v2/plan/crawl-architecture.md` §
+“What `POST /v1/query` returns”.
 
 ## Change 1 — cache identical embeddings (`llama_engine.py`)
 

@@ -180,6 +180,35 @@ def test_citable_claims_marks_quantity_contradiction_as_possible() -> None:
     assert len(possible) >= 2
     assert any("Possible contradiction" in warning for warning in artifact.warnings)
     assert any("conflicting quantities" in warning for warning in artifact.warnings)
+    assert artifact.contradiction_pairs
+    assert all(
+        pair.reason == "conflictingQuantities" for pair in artifact.contradiction_pairs
+    )
+    claim_ids = {claim.claim_id for claim in possible}
+    assert all(
+        pair.left_claim_id in claim_ids and pair.right_claim_id in claim_ids
+        for pair in artifact.contradiction_pairs
+    )
+
+
+def test_citable_claims_evidence_spans_match_source_text() -> None:
+    request = _claims_request()
+    artifact = ContentService().citable_claims(request)
+    text = request.source_document.visible_content
+    by_id = {item.evidence_id: item for item in artifact.provenance.evidence}
+    supported = [
+        claim for claim in artifact.claims if claim.verification_status == "supported"
+    ]
+    assert supported
+    for claim in supported:
+        assert claim.evidence_ids
+        for evidence_id in claim.evidence_ids:
+            evidence = by_id[evidence_id]
+            assert evidence.start_char is not None
+            assert evidence.end_char is not None
+            assert evidence.end_char > evidence.start_char
+            assert text[evidence.start_char : evidence.end_char] == evidence.quote
+            assert evidence.quote in text
 
 
 def test_citable_claims_compatible_claims_stay_none() -> None:
@@ -224,6 +253,24 @@ def test_comparison_brief_is_deterministic_and_labeled() -> None:
     )
     assert any("not a full article" in warning for warning in first.warnings)
     assert first.provenance.sources
+
+
+def test_comparison_brief_multi_competitor_cohort_warning() -> None:
+    payload = json.loads(COMPARISON_FIXTURE.read_text())
+    primary = payload["competitorPages"][0]
+    second = json.loads(json.dumps(primary))
+    second["competitorId"] = "competitor-alt"
+    second["source"]["sourceId"] = "competitor-page-alt"
+    second["source"]["title"] = "Alt Co"
+    second["visibleContent"] = "# Alt Co\n\nPlans start at $25 per month."
+    payload["competitorPages"] = [primary, second]
+    payload["competitorName"] = "Competitor Inc. · Alt Co"
+    artifact = ContentService().comparison_brief(
+        ComparisonBriefRequest.model_validate(payload)
+    )
+    assert any(
+        "Compared against 2 competitor pages." in warning for warning in artifact.warnings
+    )
 
 
 def test_comparison_brief_partial_keeps_unknown() -> None:
@@ -275,6 +322,24 @@ def test_competitive_response_selects_mode_without_copying() -> None:
         for angle in first.content_angles
     )
     assert "Trusted by 500 customer teams." not in first.rationale
+
+
+def test_competitive_response_multi_competitor_cohort_warning() -> None:
+    payload = json.loads(RESPONSE_FIXTURE.read_text())
+    primary = payload["competitorPages"][0]
+    second = json.loads(json.dumps(primary))
+    second["competitorId"] = "competitor-alt"
+    second["source"]["sourceId"] = "competitor-page-alt"
+    second["source"]["title"] = "Alt Co"
+    second["visibleContent"] = "# Alt Co\n\nTrusted by 200 teams."
+    payload["competitorPages"] = [primary, second]
+    artifact = ContentService().competitive_response(
+        CompetitiveResponseRequest.model_validate(payload)
+    )
+    assert any(
+        "Response plan considers 2 competitor pages." in warning
+        for warning in artifact.warnings
+    )
 
 
 def test_competitive_response_contract_round_trip_forbids_extras() -> None:

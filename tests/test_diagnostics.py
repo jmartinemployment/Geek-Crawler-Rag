@@ -115,9 +115,54 @@ def test_entity_map_is_canonical_typed_and_evidence_linked() -> None:
         relationship.relation == "coOccursWith"
         for relationship in artifact.relationships
     )
+    assert artifact.coverage_comparisons == []
+    assert artifact.recommendations == []
     assert set(artifact.provenance.evidence_ids) == {
         evidence.evidence_id for evidence in artifact.provenance.evidence
     }
+
+
+def test_entity_map_competitor_coverage_delta() -> None:
+    subject = _readiness_request().document
+    competitor = subject.model_copy(
+        update={
+            "visible_content": (
+                "# Rival overview\n\n"
+                "Rival Labs positions Trust Layer next to Acme Analyzer on shortlists."
+            ),
+            "source": subject.source.model_copy(
+                update={"source_id": "competitor:rival", "url": "https://rival.example/page"}
+            ),
+        }
+    )
+    artifact = DiagnosticService().entity_map(
+        EntityMapRequest(
+            document=subject,
+            competitorDocument=competitor,
+            seeds=[
+                {
+                    "canonicalName": "Acme Analyzer",
+                    "entityType": "product",
+                    "aliases": ["Analyzer"],
+                },
+                {
+                    "canonicalName": "Trust Layer",
+                    "entityType": "product",
+                    "aliases": [],
+                },
+            ],
+        )
+    )
+
+    by_name = {
+        row.canonical_name: row for row in artifact.coverage_comparisons
+    }
+    assert by_name["Acme Analyzer"].status == "presentBoth"
+    assert by_name["Trust Layer"].status == "missingOnSubject"
+    assert by_name["Trust Layer"].on_subject is False
+    assert by_name["Trust Layer"].on_competitor is True
+    assert any("Trust Layer" in item.action for item in artifact.recommendations)
+    assert all(item.evidence_ids for item in artifact.recommendations)
 
 
 def test_schema_markup_generates_only_visible_applicable_shapes() -> None:

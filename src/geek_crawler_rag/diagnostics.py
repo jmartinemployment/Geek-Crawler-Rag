@@ -18,9 +18,12 @@ from geek_crawler_rag.diagnostic_models import (
     ClaimAssessment,
     DiagnosticDocument,
     DimensionScore,
+    EntityCoverageComparison,
+    EntityCoverageRecommendation,
     EntityMapArtifact,
     EntityMapRequest,
     EntityRelationship,
+    EntitySeed,
     EvidenceReference,
     FactDensityArtifact,
     FactDensityRequest,
@@ -217,90 +220,72 @@ class DiagnosticService:
 
     def entity_map(self, request: EntityMapRequest) -> EntityMapArtifact:
         document = request.document
-        text = _visible_text(document)
-        aliases: dict[str, tuple[str, str, set[str]]] = {}
-        for seed in request.seeds:
-            names = {seed.canonical_name, *seed.aliases}
-            for name in names:
-                aliases[name.casefold()] = (
-                    seed.canonical_name,
-                    seed.entity_type,
-                    names - {seed.canonical_name},
+        entities, relationships, generated_evidence = _extract_entity_graph(
+            document, request.seeds
+        )
+        coverage_comparisons: list[EntityCoverageComparison] = []
+        recommendations: list[EntityCoverageRecommendation] = []
+        warnings = _base_warnings(document)
+        if request.competitor_document is not None:
+            competitor_entities, _, competitor_evidence = _extract_entity_graph(
+                request.competitor_document, request.seeds
+            )
+            generated_evidence.extend(competitor_evidence)
+            subject_by_key = {
+                entity.canonical_name.casefold(): entity for entity in entities
+            }
+            competitor_by_key = {
+                entity.canonical_name.casefold(): entity
+                for entity in competitor_entities
+            }
+            for key in sorted(set(subject_by_key) | set(competitor_by_key)):
+                subject_entity = subject_by_key.get(key)
+                competitor_entity = competitor_by_key.get(key)
+                on_subject = subject_entity is not None
+                on_competitor = competitor_entity is not None
+                if on_subject and on_competitor:
+                    status = "presentBoth"
+                    entity = subject_entity
+                elif on_competitor and not on_subject:
+                    seeded = any(
+                        seed.canonical_name.casefold() == key
+                        or any(alias.casefold() == key for alias in seed.aliases)
+                        for seed in request.seeds
+                    )
+                    status = "missingOnSubject" if seeded else "competitorOnly"
+                    entity = competitor_entity
+                else:
+                    # Subject-only entities are not competitor coverage deltas.
+                    continue
+                assert entity is not None
+                coverage_comparisons.append(
+                    EntityCoverageComparison(
+                        entityId=entity.entity_id,
+                        canonicalName=entity.canonical_name,
+                        onSubject=on_subject,
+                        onCompetitor=on_competitor,
+                        status=status,
+                    )
                 )
-        mentions: dict[str, list[tuple[int, int, str, str, set[str]]]] = {}
-        candidates = list(_ENTITY.finditer(text))
-        for match in candidates:
-            value = match.group(0).strip()
-            if value in _ENTITY_STOP or len(value) < 3:
-                continue
-            canonical, entity_type, known_aliases = aliases.get(
-                value.casefold(), (value, "other", set())
-            )
-            mentions.setdefault(canonical.casefold(), []).append(
-                (match.start(), match.end(), value, entity_type, known_aliases)
-            )
-        # Explicit seeds are emitted only if the canonical name or an alias is visible.
-        entities: list[CanonicalEntity] = []
-        generated_evidence: list[EvidenceReference] = []
-        entity_spans: dict[str, list[tuple[int, int]]] = {}
-        for key in sorted(mentions):
-            rows = mentions[key]
-            canonical = aliases.get(key, (rows[0][2], rows[0][3], set()))[0]
-            entity_id = _stable_id("entity", canonical.casefold())
-            evidence_ids: list[str] = []
-            visible_aliases = {row[2] for row in rows if row[2] != canonical}
-            known_aliases = set().union(*(row[4] for row in rows))
-            entity_type = rows[0][3]
-            spans: list[tuple[int, int]] = []
-            for start, end, value, _, _ in rows:
-                evidence = _span_evidence(document, text, start, end, value)
-                if evidence.evidence_id not in evidence_ids:
-                    evidence_ids.append(evidence.evidence_id)
-                    generated_evidence.append(evidence)
-                spans.append((start, end))
-            entity_spans[entity_id] = spans
-            entities.append(
-                CanonicalEntity(
-                    entityId=entity_id,
-                    canonicalName=canonical,
-                    entityType=entity_type,
-                    aliases=sorted(visible_aliases | known_aliases),
-                    confidence=round(min(0.95, 0.55 + 0.1 * len(rows)), 2),
-                    evidenceIds=evidence_ids,
-                )
-            )
-        relationships: list[EntityRelationship] = []
-        sentences_with_offsets = _sentences_with_offsets(text)
-        for left_index, left in enumerate(entities):
-            for right in entities[left_index + 1 :]:
-                shared_evidence: list[str] = []
-                for sentence, start, end in sentences_with_offsets:
-                    if any(
-                        start <= span[0] < end for span in entity_spans[left.entity_id]
-                    ) and any(
-                        start <= span[0] < end for span in entity_spans[right.entity_id]
-                    ):
-                        evidence = _span_evidence(
-                            document, text, start, end, sentence.strip()
-                        )
-                        generated_evidence.append(evidence)
-                        shared_evidence.append(evidence.evidence_id)
-                if shared_evidence:
-                    relationships.append(
-                        EntityRelationship(
-                            relationshipId=_stable_id(
-                                "relationship", left.entity_id, right.entity_id
+                if status in {"missingOnSubject", "competitorOnly"}:
+                    recommendations.append(
+                        EntityCoverageRecommendation(
+                            recommendationId=_stable_id(
+                                "entity-coverage", entity.entity_id
                             ),
-                            sourceEntityId=left.entity_id,
-                            targetEntityId=right.entity_id,
-                            relation="coOccursWith",
-                            confidence=round(
-                                min(0.9, 0.55 + 0.1 * len(shared_evidence)), 2
+                            relatedEntityId=entity.entity_id,
+                            action=(
+                                f"Add verified owned coverage for "
+                                f"{entity.canonical_name}; competitor content "
+                                f"mentions it and the subject page does not."
                             ),
-                            evidenceIds=_unique(shared_evidence),
+                            evidenceIds=list(entity.evidence_ids),
                         )
                     )
-        warnings = _base_warnings(document)
+            if request.competitor_document.content_completeness == "partial":
+                warnings.append(
+                    "Competitor document is partial; coverage comparisons may omit entities."
+                )
         if not entities:
             warnings.append(
                 "No canonical entity candidates were present in supplied content."
@@ -308,6 +293,8 @@ class DiagnosticService:
         return EntityMapArtifact(
             entities=entities,
             relationships=relationships,
+            coverageComparisons=coverage_comparisons,
+            recommendations=recommendations,
             warnings=_unique(warnings),
             provenance=_provenance(
                 document, evidence=_dedupe_evidence(generated_evidence)
@@ -382,6 +369,94 @@ class DiagnosticService:
             warnings=_unique(warnings),
             provenance=_provenance(document),
         )
+
+
+def _extract_entity_graph(
+    document: DiagnosticDocument,
+    seeds: list[EntitySeed],
+) -> tuple[list[CanonicalEntity], list[EntityRelationship], list[EvidenceReference]]:
+    text = _visible_text(document)
+    aliases: dict[str, tuple[str, str, set[str]]] = {}
+    for seed in seeds:
+        names = {seed.canonical_name, *seed.aliases}
+        for name in names:
+            aliases[name.casefold()] = (
+                seed.canonical_name,
+                seed.entity_type,
+                names - {seed.canonical_name},
+            )
+    mentions: dict[str, list[tuple[int, int, str, str, set[str]]]] = {}
+    for match in _ENTITY.finditer(text):
+        value = match.group(0).strip()
+        if value in _ENTITY_STOP or len(value) < 3:
+            continue
+        canonical, entity_type, known_aliases = aliases.get(
+            value.casefold(), (value, "other", set())
+        )
+        mentions.setdefault(canonical.casefold(), []).append(
+            (match.start(), match.end(), value, entity_type, known_aliases)
+        )
+    entities: list[CanonicalEntity] = []
+    generated_evidence: list[EvidenceReference] = []
+    entity_spans: dict[str, list[tuple[int, int]]] = {}
+    for key in sorted(mentions):
+        rows = mentions[key]
+        canonical = aliases.get(key, (rows[0][2], rows[0][3], set()))[0]
+        entity_id = _stable_id("entity", canonical.casefold())
+        evidence_ids: list[str] = []
+        visible_aliases = {row[2] for row in rows if row[2] != canonical}
+        known_aliases = set().union(*(row[4] for row in rows))
+        entity_type = rows[0][3]
+        spans: list[tuple[int, int]] = []
+        for start, end, value, _, _ in rows:
+            evidence = _span_evidence(document, text, start, end, value)
+            if evidence.evidence_id not in evidence_ids:
+                evidence_ids.append(evidence.evidence_id)
+                generated_evidence.append(evidence)
+            spans.append((start, end))
+        entity_spans[entity_id] = spans
+        entities.append(
+            CanonicalEntity(
+                entityId=entity_id,
+                canonicalName=canonical,
+                entityType=entity_type,
+                aliases=sorted(visible_aliases | known_aliases),
+                confidence=round(min(0.95, 0.55 + 0.1 * len(rows)), 2),
+                evidenceIds=evidence_ids,
+            )
+        )
+    relationships: list[EntityRelationship] = []
+    sentences_with_offsets = _sentences_with_offsets(text)
+    for left_index, left in enumerate(entities):
+        for right in entities[left_index + 1 :]:
+            shared_evidence: list[str] = []
+            for sentence, start, end in sentences_with_offsets:
+                if any(
+                    start <= span[0] < end for span in entity_spans[left.entity_id]
+                ) and any(
+                    start <= span[0] < end for span in entity_spans[right.entity_id]
+                ):
+                    evidence = _span_evidence(
+                        document, text, start, end, sentence.strip()
+                    )
+                    generated_evidence.append(evidence)
+                    shared_evidence.append(evidence.evidence_id)
+            if shared_evidence:
+                relationships.append(
+                    EntityRelationship(
+                        relationshipId=_stable_id(
+                            "relationship", left.entity_id, right.entity_id
+                        ),
+                        sourceEntityId=left.entity_id,
+                        targetEntityId=right.entity_id,
+                        relation="coOccursWith",
+                        confidence=round(
+                            min(0.9, 0.55 + 0.1 * len(shared_evidence)), 2
+                        ),
+                        evidenceIds=_unique(shared_evidence),
+                    )
+                )
+    return entities, relationships, generated_evidence
 
 
 def _visible_text(document: DiagnosticDocument) -> str:

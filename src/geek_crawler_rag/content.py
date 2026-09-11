@@ -9,6 +9,7 @@ from typing import Literal
 from geek_crawler_rag.content_models import (
     CitableClaim,
     CitableClaimsRequest,
+    ClaimContradictionPair,
     ClaimLedgerArtifact,
     ComparisonBriefArtifact,
     ComparisonBriefRequest,
@@ -311,12 +312,13 @@ class ContentService:
             )
 
         evidence = _dedupe_evidence(evidence)
-        claims, contradiction_warnings = _annotate_claim_contradictions(
-            claims[: request.max_claims]
+        claims, contradiction_pairs, contradiction_warnings = (
+            _annotate_claim_contradictions(claims[: request.max_claims])
         )
         warnings.extend(contradiction_warnings)
         return ClaimLedgerArtifact(
             claims=claims,
+            contradictionPairs=contradiction_pairs,
             warnings=_unique(warnings),
             provenance=ContentProvenance(
                 source=document.source,
@@ -474,6 +476,10 @@ class ContentService:
             "Comparison brief is a structured signal summary, not a full article draft.",
             _no_demand_warning(),
         ]
+        if len(request.competitor_pages) > 1:
+            warnings.append(
+                f"Compared against {len(request.competitor_pages)} competitor pages."
+            )
         if subject_partial or competitor_partial:
             warnings.append(
                 "Partial page input(s) present; missing signals are unknown, not "
@@ -666,6 +672,10 @@ class ContentService:
             "Content angles are generatedHypothesis labels, not measured demand.",
             _no_demand_warning(),
         ]
+        if len(request.competitor_pages) > 1:
+            warnings.append(
+                f"Response plan considers {len(request.competitor_pages)} competitor pages."
+            )
         if brand_partial:
             warnings.append(
                 "At least one brand page is partial; missing brand signals stay "
@@ -1285,14 +1295,14 @@ def _negation_conflict(left_text: str, right_text: str) -> bool:
 
 def _annotate_claim_contradictions(
     claims: list[CitableClaim],
-) -> tuple[list[CitableClaim], list[str]]:
+) -> tuple[list[CitableClaim], list[ClaimContradictionPair], list[str]]:
     """Mark pairwise quantity/negation conflicts as possible contradictions.
 
     Partial/unverifiable claims keep contradictionState=unknown and are never
     upgraded to possible. Compatible supported claims stay none.
     """
     if len(claims) < 2:
-        return claims, []
+        return claims, [], []
 
     states: list[Literal["none", "possible", "unknown"]] = [
         "unknown"
@@ -1307,7 +1317,7 @@ def _annotate_claim_contradictions(
         for index, claim in enumerate(claims)
         if states[index] != "unknown" and claim.verification_status == "supported"
     ]
-    groups: list[tuple[str, str, str]] = []
+    pairs: list[ClaimContradictionPair] = []
     for offset, left_index in enumerate(eligible):
         left = claims[left_index]
         left_tokens = _claim_content_tokens(left.claim_text)
@@ -1318,26 +1328,39 @@ def _annotate_claim_contradictions(
             if not _claims_share_subject(left_tokens, right_tokens):
                 continue
             right_qty = _claim_quantities(right.claim_text)
-            reason: str | None = None
+            reason: Literal["conflictingQuantities", "negationConflict"] | None = None
             if _quantity_conflict(left_qty, right_qty):
-                reason = "conflicting quantities"
+                reason = "conflictingQuantities"
             elif _negation_conflict(left.claim_text, right.claim_text):
-                reason = "negation conflict"
+                reason = "negationConflict"
             if reason is None:
                 continue
             states[left_index] = "possible"
             states[right_index] = "possible"
-            groups.append((left.claim_id, right.claim_id, reason))
+            pairs.append(
+                ClaimContradictionPair(
+                    leftClaimId=left.claim_id,
+                    rightClaimId=right.claim_id,
+                    reason=reason,
+                )
+            )
 
     annotated = [
         claim.model_copy(update={"contradiction_state": states[index]})
         for index, claim in enumerate(claims)
     ]
+    reason_labels = {
+        "conflictingQuantities": "conflicting quantities",
+        "negationConflict": "negation conflict",
+    }
     warnings = [
-        f"Possible contradiction ({reason}) between claims {left_id} and {right_id}."
-        for left_id, right_id, reason in groups
+        (
+            f"Possible contradiction ({reason_labels[pair.reason]}) between claims "
+            f"{pair.left_claim_id} and {pair.right_claim_id}."
+        )
+        for pair in pairs
     ]
-    return annotated, warnings
+    return annotated, pairs, warnings
 
 
 def _normalize_query(value: str) -> str:
