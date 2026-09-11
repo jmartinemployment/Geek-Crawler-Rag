@@ -1,0 +1,833 @@
+{
+  "artifactType": "competitorAudit.v1",
+  "analyzerVersion": "competitor-audit-heuristic.v1",
+  "methodology": "Compose deterministic competitor-page dimension findings with comparative content-gap analysis and priority-ranked remediation actions from supplied documents only.",
+  "pageAnalyses": [
+    {
+      "artifactType": "competitorPageAnalysis.v1",
+      "analyzerVersion": "competitor-page-heuristic.v1",
+      "methodology": "Detect explicit visible-content signals with deterministic patterns; attach exact source spans; treat absences in partial inputs as unknown.",
+      "competitorId": "competitor-1",
+      "dimensions": [
+        {
+          "dimension": "topics",
+          "present": true,
+          "summary": "Found 3 supplied-content signal(s) for topics.",
+          "signals": [
+            "How it works",
+            "Pricing",
+            "Can I try it?"
+          ],
+          "evidenceIds": [
+            "1d41d4d893cd56c277635a1c",
+            "fe66970ee602c6a7cc5db38a",
+            "eab90251e1d48d23b7f7ecae"
+          ]
+        },
+        {
+          "dimension": "questions",
+          "present": true,
+          "summary": "Found 1 supplied-content signal(s) for questions.",
+          "signals": [
+            "Can I try it?"
+          ],
+          "evidenceIds": [
+            "eab90251e1d48d23b7f7ecae"
+          ]
+        },
+        {
+          "dimension": "capabilities",
+          "present": true,
+          "summary": "Found 1 supplied-content signal(s) for capabilities.",
+          "signals": [
+            "## Can I try it?"
+          ],
+          "evidenceIds": [
+            "8fb92df2058b9a2431e1f49b"
+          ]
+        },
+        {
+          "dimension": "proof",
+          "present": true,
+          "summary": "Found 1 supplied-content signal(s) for proof.",
+          "signals": [
+            "Trusted by 500 customer teams."
+          ],
+          "evidenceIds": [
+            "28372c492741aadd66066960"
+          ]
+        },
+        {
+          "dimension": "pricing",
+          "present": true,
+          "summary": "Found 2 supplied-content signal(s) for pricing.",
+          "signals": [
+            "## Pricing",
+            "Plans start at $20 per month."
+          ],
+          "evidenceIds": [
+            "954a72815cda33b0115378b5",
+            "dd0642565034c50bb334ff1d"
+          ]
+        },
+        {
+          "dimension": "process",
+          "present": true,
+          "summary": "Found 3 supplied-content signal(s) for process.",
+          "signals": [
+            "## How it works",
+            "1. Upload a document.",
+            "2. Review the findings."
+          ],
+          "evidenceIds": [
+            "9819ff4e63151bb14235f598",
+            "a7e39587f44fe6ba2a2e8aa7",
+            "54d55ada5cef8faed9ab26a7"
+          ]
+        },
+        {
+          "dimension": "callsToAction",
+          "present": true,
+          "summary": "Found 1 supplied-content signal(s) for callsToAction.",
+          "signals": [
+            "Yes. Start a free trial."
+          ],
+          "evidenceIds": [
+            "1cdd43e8a3244740b8256305"
+          ]
+        }
+      ],
+      "opportunities": [],
+      "warnings": [
+        "Analysis uses supplied documents only. It does not infer traffic, search volume, audience demand, rankings, or competitor performance."
+      ],
+      "provenance": {
+        "engineVersion": "deterministic-competitor-intelligence.v1",
+        "sources": [
+          {
+            "sourceId": "competitor-page-1",
+            "url": "https://competitor.example/analyzer",
+            "title": "Competitor Analyzer",
+            "retrievedAtUtc": null,
+            "sourceDigest": null,
+            "parserId": null,
+            "parserVersion": null
+          }
+        ],
+        "evidenceIds": [
+          "supplied-price-evidence",
+          "1d41d4d893cd56c277635a1c",
+          "fe66970ee602c6a7cc5db38a",
+          "eab90251e1d48d23b7f7ecae",
+          "8fb92df2058b9a2431e1f49b",
+          "28372c492741aadd66066960",
+          "954a72815cda33b0115378b5",
+          "dd0642565034c50bb334ff1d",
+          "9819ff4e63151bb14235f598",
+          "a7e39587f44fe6ba2a2e8aa7",
+          "54d55ada5cef8faed9ab26a7",
+          "1cdd43e8a3244740b8256305"
+        ],
+        "evidence": [
+          {
+            "evidenceId": "supplied-price-evidence",
+            "sourceId": "competitor-page-1",
+            "quote": "Plans start at $20 per month.",
+            "startChar": null,
+            "endChar": null
+          },
+          {
+            "evidenceId": "1d41d4d893cd56c277635a1c",
+            "sourceId": "competitor-page-1",
+            "quote": "How it works",
+            "startChar": 58,
+            "endChar": 70
+          },
+          {
+            "evidenceId": "fe66970ee602c6a7cc5db38a",
+            "sourceId": "competitor-page-1",
+            "quote": ".\n\n## Pricing\n\nPlan",
+            "startChar": 116,
+            "endChar": 135
+          },
+          {
+            "evidenceId": "eab90251e1d48d23b7f7ecae",
+            "sourceId": "competitor-page-1",
+            "quote": "Can I try it?",
+            "startChar": 165,
+            "endChar": 178
+          },
+          {
+            "evidenceId": "8fb92df2058b9a2431e1f49b",
+            "sourceId": "competitor-page-1",
+            "quote": "## Can I try it?",
+            "startChar": 162,
+            "endChar": 178
+          },
+          {
+            "evidenceId": "28372c492741aadd66066960",
+            "sourceId": "competitor-page-1",
+            "quote": "Trusted by 500 customer teams.",
+            "startChar": 23,
+            "endChar": 53
+          },
+          {
+            "evidenceId": "954a72815cda33b0115378b5",
+            "sourceId": "competitor-page-1",
+            "quote": "ngs.\n\n## Pricing\n\nPlan",
+            "startChar": 113,
+            "endChar": 135
+          },
+          {
+            "evidenceId": "dd0642565034c50bb334ff1d",
+            "sourceId": "competitor-page-1",
+            "quote": "Plans start at $20 per month.",
+            "startChar": 131,
+            "endChar": 160
+          },
+          {
+            "evidenceId": "9819ff4e63151bb14235f598",
+            "sourceId": "competitor-page-1",
+            "quote": "## How it works",
+            "startChar": 55,
+            "endChar": 70
+          },
+          {
+            "evidenceId": "a7e39587f44fe6ba2a2e8aa7",
+            "sourceId": "competitor-page-1",
+            "quote": "1. Upload a document.",
+            "startChar": 72,
+            "endChar": 93
+          },
+          {
+            "evidenceId": "54d55ada5cef8faed9ab26a7",
+            "sourceId": "competitor-page-1",
+            "quote": "2. Review the findings.",
+            "startChar": 94,
+            "endChar": 117
+          },
+          {
+            "evidenceId": "1cdd43e8a3244740b8256305",
+            "sourceId": "competitor-page-1",
+            "quote": "Yes. Start a free trial.",
+            "startChar": 180,
+            "endChar": 204
+          }
+        ]
+      }
+    }
+  ],
+  "contentGap": {
+    "artifactType": "contentGapAnalysis.v1",
+    "analyzerVersion": "comparative-content-gap-heuristic.v1",
+    "methodology": "Compare deterministic visible-content signals by dimension. A supported gap requires complete subject input, absent subject signals, and supplied competitor evidence. Partial subject input yields coverageUnknown, never an asserted absence.",
+    "dimensions": [
+      {
+        "dimension": "topics",
+        "subjectCoverage": true,
+        "competitorCoverageCount": 1,
+        "competitorPageCount": 1,
+        "subjectEvidenceIds": [
+          "727f57fba06b99d34769056d"
+        ],
+        "competitorEvidenceIds": [
+          "1d41d4d893cd56c277635a1c",
+          "fe66970ee602c6a7cc5db38a",
+          "eab90251e1d48d23b7f7ecae"
+        ],
+        "summary": "Subject topics coverage is present; 1 of 1 supplied competitor page(s) contain matching signals."
+      },
+      {
+        "dimension": "questions",
+        "subjectCoverage": false,
+        "competitorCoverageCount": 1,
+        "competitorPageCount": 1,
+        "subjectEvidenceIds": [],
+        "competitorEvidenceIds": [
+          "eab90251e1d48d23b7f7ecae"
+        ],
+        "summary": "Subject questions coverage is absent; 1 of 1 supplied competitor page(s) contain matching signals."
+      },
+      {
+        "dimension": "capabilities",
+        "subjectCoverage": true,
+        "competitorCoverageCount": 1,
+        "competitorPageCount": 1,
+        "subjectEvidenceIds": [
+          "2a74aeb02d02c5586ab85fe8",
+          "d2b72d93716b83943c007ed7"
+        ],
+        "competitorEvidenceIds": [
+          "8fb92df2058b9a2431e1f49b"
+        ],
+        "summary": "Subject capabilities coverage is present; 1 of 1 supplied competitor page(s) contain matching signals."
+      },
+      {
+        "dimension": "proof",
+        "subjectCoverage": false,
+        "competitorCoverageCount": 1,
+        "competitorPageCount": 1,
+        "subjectEvidenceIds": [],
+        "competitorEvidenceIds": [
+          "28372c492741aadd66066960"
+        ],
+        "summary": "Subject proof coverage is absent; 1 of 1 supplied competitor page(s) contain matching signals."
+      },
+      {
+        "dimension": "pricing",
+        "subjectCoverage": false,
+        "competitorCoverageCount": 1,
+        "competitorPageCount": 1,
+        "subjectEvidenceIds": [],
+        "competitorEvidenceIds": [
+          "954a72815cda33b0115378b5",
+          "dd0642565034c50bb334ff1d"
+        ],
+        "summary": "Subject pricing coverage is absent; 1 of 1 supplied competitor page(s) contain matching signals."
+      },
+      {
+        "dimension": "process",
+        "subjectCoverage": false,
+        "competitorCoverageCount": 1,
+        "competitorPageCount": 1,
+        "subjectEvidenceIds": [],
+        "competitorEvidenceIds": [
+          "9819ff4e63151bb14235f598",
+          "a7e39587f44fe6ba2a2e8aa7",
+          "54d55ada5cef8faed9ab26a7"
+        ],
+        "summary": "Subject process coverage is absent; 1 of 1 supplied competitor page(s) contain matching signals."
+      },
+      {
+        "dimension": "callsToAction",
+        "subjectCoverage": false,
+        "competitorCoverageCount": 1,
+        "competitorPageCount": 1,
+        "subjectEvidenceIds": [],
+        "competitorEvidenceIds": [
+          "1cdd43e8a3244740b8256305"
+        ],
+        "summary": "Subject callsToAction coverage is absent; 1 of 1 supplied competitor page(s) contain matching signals."
+      }
+    ],
+    "gaps": [
+      {
+        "gapId": "dbdf97db7a7d963110f798ed",
+        "dimension": "questions",
+        "signal": "questions",
+        "status": "supportedGap",
+        "opportunity": "Answer relevant user questions explicitly in visible content.",
+        "competitorSourceIds": [
+          "competitor-page-1"
+        ],
+        "evidenceIds": [
+          "eab90251e1d48d23b7f7ecae"
+        ],
+        "confidence": "high"
+      },
+      {
+        "gapId": "4869acf01dd7bcc11b21bea8",
+        "dimension": "proof",
+        "signal": "proof",
+        "status": "supportedGap",
+        "opportunity": "Add verifiable proof such as sourced results or case studies.",
+        "competitorSourceIds": [
+          "competitor-page-1"
+        ],
+        "evidenceIds": [
+          "28372c492741aadd66066960"
+        ],
+        "confidence": "high"
+      },
+      {
+        "gapId": "4d894b58e878a4acb8fd8621",
+        "dimension": "pricing",
+        "signal": "pricing",
+        "status": "supportedGap",
+        "opportunity": "Clarify pricing or plan information when commercially appropriate.",
+        "competitorSourceIds": [
+          "competitor-page-1"
+        ],
+        "evidenceIds": [
+          "954a72815cda33b0115378b5",
+          "dd0642565034c50bb334ff1d"
+        ],
+        "confidence": "high"
+      },
+      {
+        "gapId": "f6a3293a68427df9b69e04ca",
+        "dimension": "process",
+        "signal": "process",
+        "status": "supportedGap",
+        "opportunity": "Explain the process or workflow in explicit steps.",
+        "competitorSourceIds": [
+          "competitor-page-1"
+        ],
+        "evidenceIds": [
+          "9819ff4e63151bb14235f598",
+          "a7e39587f44fe6ba2a2e8aa7",
+          "54d55ada5cef8faed9ab26a7"
+        ],
+        "confidence": "high"
+      },
+      {
+        "gapId": "25f1fd30df1527dbf38c33e6",
+        "dimension": "callsToAction",
+        "signal": "callsToAction",
+        "status": "supportedGap",
+        "opportunity": "Provide a clear next action aligned with the page purpose.",
+        "competitorSourceIds": [
+          "competitor-page-1"
+        ],
+        "evidenceIds": [
+          "1cdd43e8a3244740b8256305"
+        ],
+        "confidence": "high"
+      },
+      {
+        "gapId": "bb5200e2fa1a1d33352787c6",
+        "dimension": "topics",
+        "signal": "Can I try it?",
+        "status": "supportedGap",
+        "opportunity": "Consider explicit coverage of the supplied competitor topic \"Can I try it?\" when relevant to the subject.",
+        "competitorSourceIds": [
+          "competitor-page-1"
+        ],
+        "evidenceIds": [
+          "eab90251e1d48d23b7f7ecae"
+        ],
+        "confidence": "medium"
+      },
+      {
+        "gapId": "cac804a69cc50678bdbe7569",
+        "dimension": "topics",
+        "signal": "How it works",
+        "status": "supportedGap",
+        "opportunity": "Consider explicit coverage of the supplied competitor topic \"How it works\" when relevant to the subject.",
+        "competitorSourceIds": [
+          "competitor-page-1"
+        ],
+        "evidenceIds": [
+          "1d41d4d893cd56c277635a1c"
+        ],
+        "confidence": "medium"
+      },
+      {
+        "gapId": "8909833d1319a77aa14a126d",
+        "dimension": "topics",
+        "signal": "Pricing",
+        "status": "supportedGap",
+        "opportunity": "Consider explicit coverage of the supplied competitor topic \"Pricing\" when relevant to the subject.",
+        "competitorSourceIds": [
+          "competitor-page-1"
+        ],
+        "evidenceIds": [
+          "fe66970ee602c6a7cc5db38a"
+        ],
+        "confidence": "medium"
+      }
+    ],
+    "warnings": [
+      "Analysis uses supplied documents only. It does not infer traffic, search volume, audience demand, rankings, or competitor performance."
+    ],
+    "provenance": {
+      "engineVersion": "deterministic-competitor-intelligence.v1",
+      "sources": [
+        {
+          "sourceId": "subject-page-1",
+          "url": "https://subject.example/analyzer",
+          "title": "Subject Analyzer",
+          "retrievedAtUtc": null,
+          "sourceDigest": null,
+          "parserId": null,
+          "parserVersion": null
+        },
+        {
+          "sourceId": "competitor-page-1",
+          "url": "https://competitor.example/analyzer",
+          "title": "Competitor Analyzer",
+          "retrievedAtUtc": null,
+          "sourceDigest": null,
+          "parserId": null,
+          "parserVersion": null
+        }
+      ],
+      "evidenceIds": [
+        "supplied-price-evidence",
+        "727f57fba06b99d34769056d",
+        "2a74aeb02d02c5586ab85fe8",
+        "d2b72d93716b83943c007ed7",
+        "1d41d4d893cd56c277635a1c",
+        "fe66970ee602c6a7cc5db38a",
+        "eab90251e1d48d23b7f7ecae",
+        "8fb92df2058b9a2431e1f49b",
+        "28372c492741aadd66066960",
+        "954a72815cda33b0115378b5",
+        "dd0642565034c50bb334ff1d",
+        "9819ff4e63151bb14235f598",
+        "a7e39587f44fe6ba2a2e8aa7",
+        "54d55ada5cef8faed9ab26a7",
+        "1cdd43e8a3244740b8256305"
+      ],
+      "evidence": [
+        {
+          "evidenceId": "supplied-price-evidence",
+          "sourceId": "competitor-page-1",
+          "quote": "Plans start at $20 per month.",
+          "startChar": null,
+          "endChar": null
+        },
+        {
+          "evidenceId": "727f57fba06b99d34769056d",
+          "sourceId": "subject-page-1",
+          "quote": "Capabilities",
+          "startChar": 69,
+          "endChar": 81
+        },
+        {
+          "evidenceId": "2a74aeb02d02c5586ab85fe8",
+          "sourceId": "subject-page-1",
+          "quote": "## Capabilities",
+          "startChar": 66,
+          "endChar": 81
+        },
+        {
+          "evidenceId": "d2b72d93716b83943c007ed7",
+          "sourceId": "subject-page-1",
+          "quote": "It supports Markdown analysis.",
+          "startChar": 83,
+          "endChar": 113
+        },
+        {
+          "evidenceId": "1d41d4d893cd56c277635a1c",
+          "sourceId": "competitor-page-1",
+          "quote": "How it works",
+          "startChar": 58,
+          "endChar": 70
+        },
+        {
+          "evidenceId": "fe66970ee602c6a7cc5db38a",
+          "sourceId": "competitor-page-1",
+          "quote": ".\n\n## Pricing\n\nPlan",
+          "startChar": 116,
+          "endChar": 135
+        },
+        {
+          "evidenceId": "eab90251e1d48d23b7f7ecae",
+          "sourceId": "competitor-page-1",
+          "quote": "Can I try it?",
+          "startChar": 165,
+          "endChar": 178
+        },
+        {
+          "evidenceId": "8fb92df2058b9a2431e1f49b",
+          "sourceId": "competitor-page-1",
+          "quote": "## Can I try it?",
+          "startChar": 162,
+          "endChar": 178
+        },
+        {
+          "evidenceId": "28372c492741aadd66066960",
+          "sourceId": "competitor-page-1",
+          "quote": "Trusted by 500 customer teams.",
+          "startChar": 23,
+          "endChar": 53
+        },
+        {
+          "evidenceId": "954a72815cda33b0115378b5",
+          "sourceId": "competitor-page-1",
+          "quote": "ngs.\n\n## Pricing\n\nPlan",
+          "startChar": 113,
+          "endChar": 135
+        },
+        {
+          "evidenceId": "dd0642565034c50bb334ff1d",
+          "sourceId": "competitor-page-1",
+          "quote": "Plans start at $20 per month.",
+          "startChar": 131,
+          "endChar": 160
+        },
+        {
+          "evidenceId": "9819ff4e63151bb14235f598",
+          "sourceId": "competitor-page-1",
+          "quote": "## How it works",
+          "startChar": 55,
+          "endChar": 70
+        },
+        {
+          "evidenceId": "a7e39587f44fe6ba2a2e8aa7",
+          "sourceId": "competitor-page-1",
+          "quote": "1. Upload a document.",
+          "startChar": 72,
+          "endChar": 93
+        },
+        {
+          "evidenceId": "54d55ada5cef8faed9ab26a7",
+          "sourceId": "competitor-page-1",
+          "quote": "2. Review the findings.",
+          "startChar": 94,
+          "endChar": 117
+        },
+        {
+          "evidenceId": "1cdd43e8a3244740b8256305",
+          "sourceId": "competitor-page-1",
+          "quote": "Yes. Start a free trial.",
+          "startChar": 180,
+          "endChar": 204
+        }
+      ]
+    }
+  },
+  "prioritizedActions": [
+    {
+      "actionId": "119079e0891ed2449a459fd4",
+      "priority": "high",
+      "dimension": "callsToAction",
+      "action": "Provide a clear next action aligned with the page purpose.",
+      "rationale": "Gap status=supportedGap, confidence=high, competitorSourceCount=1.",
+      "evidenceIds": [
+        "1cdd43e8a3244740b8256305"
+      ],
+      "gapId": "25f1fd30df1527dbf38c33e6",
+      "origin": "supportedGap"
+    },
+    {
+      "actionId": "2450f9f9accd6360c7d7a459",
+      "priority": "high",
+      "dimension": "proof",
+      "action": "Add verifiable proof such as sourced results or case studies.",
+      "rationale": "Gap status=supportedGap, confidence=high, competitorSourceCount=1.",
+      "evidenceIds": [
+        "28372c492741aadd66066960"
+      ],
+      "gapId": "4869acf01dd7bcc11b21bea8",
+      "origin": "supportedGap"
+    },
+    {
+      "actionId": "36839ec8ed26d5ec6e9a12e4",
+      "priority": "high",
+      "dimension": "process",
+      "action": "Explain the process or workflow in explicit steps.",
+      "rationale": "Gap status=supportedGap, confidence=high, competitorSourceCount=1.",
+      "evidenceIds": [
+        "9819ff4e63151bb14235f598",
+        "a7e39587f44fe6ba2a2e8aa7",
+        "54d55ada5cef8faed9ab26a7"
+      ],
+      "gapId": "f6a3293a68427df9b69e04ca",
+      "origin": "supportedGap"
+    },
+    {
+      "actionId": "8f9f6ff65a4c46ca81b61529",
+      "priority": "high",
+      "dimension": "pricing",
+      "action": "Clarify pricing or plan information when commercially appropriate.",
+      "rationale": "Gap status=supportedGap, confidence=high, competitorSourceCount=1.",
+      "evidenceIds": [
+        "954a72815cda33b0115378b5",
+        "dd0642565034c50bb334ff1d"
+      ],
+      "gapId": "4d894b58e878a4acb8fd8621",
+      "origin": "supportedGap"
+    },
+    {
+      "actionId": "a0096c556e3092d08c8bc5a5",
+      "priority": "high",
+      "dimension": "questions",
+      "action": "Answer relevant user questions explicitly in visible content.",
+      "rationale": "Gap status=supportedGap, confidence=high, competitorSourceCount=1.",
+      "evidenceIds": [
+        "eab90251e1d48d23b7f7ecae"
+      ],
+      "gapId": "dbdf97db7a7d963110f798ed",
+      "origin": "supportedGap"
+    },
+    {
+      "actionId": "5bec15d688ca076ef338410f",
+      "priority": "medium",
+      "dimension": "topics",
+      "action": "Consider explicit coverage of the supplied competitor topic \"How it works\" when relevant to the subject.",
+      "rationale": "Gap status=supportedGap, confidence=medium, competitorSourceCount=1.",
+      "evidenceIds": [
+        "1d41d4d893cd56c277635a1c"
+      ],
+      "gapId": "cac804a69cc50678bdbe7569",
+      "origin": "supportedGap"
+    },
+    {
+      "actionId": "5ead278ca2f2a33ef50e1b4d",
+      "priority": "medium",
+      "dimension": "topics",
+      "action": "Consider explicit coverage of the supplied competitor topic \"Pricing\" when relevant to the subject.",
+      "rationale": "Gap status=supportedGap, confidence=medium, competitorSourceCount=1.",
+      "evidenceIds": [
+        "fe66970ee602c6a7cc5db38a"
+      ],
+      "gapId": "8909833d1319a77aa14a126d",
+      "origin": "supportedGap"
+    },
+    {
+      "actionId": "cf50b582bce79795875c7499",
+      "priority": "medium",
+      "dimension": "topics",
+      "action": "Consider explicit coverage of the supplied competitor topic \"Can I try it?\" when relevant to the subject.",
+      "rationale": "Gap status=supportedGap, confidence=medium, competitorSourceCount=1.",
+      "evidenceIds": [
+        "eab90251e1d48d23b7f7ecae"
+      ],
+      "gapId": "bb5200e2fa1a1d33352787c6",
+      "origin": "supportedGap"
+    }
+  ],
+  "warnings": [
+    "Competitor audit findings are heuristic comparisons of supplied documents only; they do not measure traffic, demand, rankings, citations won, or market perception.",
+    "Analysis uses supplied documents only. It does not infer traffic, search volume, audience demand, rankings, or competitor performance."
+  ],
+  "provenance": {
+    "engineVersion": "deterministic-competitor-intelligence.v1",
+    "sources": [
+      {
+        "sourceId": "subject-page-1",
+        "url": "https://subject.example/analyzer",
+        "title": "Subject Analyzer",
+        "retrievedAtUtc": null,
+        "sourceDigest": null,
+        "parserId": null,
+        "parserVersion": null
+      },
+      {
+        "sourceId": "competitor-page-1",
+        "url": "https://competitor.example/analyzer",
+        "title": "Competitor Analyzer",
+        "retrievedAtUtc": null,
+        "sourceDigest": null,
+        "parserId": null,
+        "parserVersion": null
+      }
+    ],
+    "evidenceIds": [
+      "supplied-price-evidence",
+      "727f57fba06b99d34769056d",
+      "2a74aeb02d02c5586ab85fe8",
+      "d2b72d93716b83943c007ed7",
+      "1d41d4d893cd56c277635a1c",
+      "fe66970ee602c6a7cc5db38a",
+      "eab90251e1d48d23b7f7ecae",
+      "8fb92df2058b9a2431e1f49b",
+      "28372c492741aadd66066960",
+      "954a72815cda33b0115378b5",
+      "dd0642565034c50bb334ff1d",
+      "9819ff4e63151bb14235f598",
+      "a7e39587f44fe6ba2a2e8aa7",
+      "54d55ada5cef8faed9ab26a7",
+      "1cdd43e8a3244740b8256305"
+    ],
+    "evidence": [
+      {
+        "evidenceId": "supplied-price-evidence",
+        "sourceId": "competitor-page-1",
+        "quote": "Plans start at $20 per month.",
+        "startChar": null,
+        "endChar": null
+      },
+      {
+        "evidenceId": "727f57fba06b99d34769056d",
+        "sourceId": "subject-page-1",
+        "quote": "Capabilities",
+        "startChar": 69,
+        "endChar": 81
+      },
+      {
+        "evidenceId": "2a74aeb02d02c5586ab85fe8",
+        "sourceId": "subject-page-1",
+        "quote": "## Capabilities",
+        "startChar": 66,
+        "endChar": 81
+      },
+      {
+        "evidenceId": "d2b72d93716b83943c007ed7",
+        "sourceId": "subject-page-1",
+        "quote": "It supports Markdown analysis.",
+        "startChar": 83,
+        "endChar": 113
+      },
+      {
+        "evidenceId": "1d41d4d893cd56c277635a1c",
+        "sourceId": "competitor-page-1",
+        "quote": "How it works",
+        "startChar": 58,
+        "endChar": 70
+      },
+      {
+        "evidenceId": "fe66970ee602c6a7cc5db38a",
+        "sourceId": "competitor-page-1",
+        "quote": ".\n\n## Pricing\n\nPlan",
+        "startChar": 116,
+        "endChar": 135
+      },
+      {
+        "evidenceId": "eab90251e1d48d23b7f7ecae",
+        "sourceId": "competitor-page-1",
+        "quote": "Can I try it?",
+        "startChar": 165,
+        "endChar": 178
+      },
+      {
+        "evidenceId": "8fb92df2058b9a2431e1f49b",
+        "sourceId": "competitor-page-1",
+        "quote": "## Can I try it?",
+        "startChar": 162,
+        "endChar": 178
+      },
+      {
+        "evidenceId": "28372c492741aadd66066960",
+        "sourceId": "competitor-page-1",
+        "quote": "Trusted by 500 customer teams.",
+        "startChar": 23,
+        "endChar": 53
+      },
+      {
+        "evidenceId": "954a72815cda33b0115378b5",
+        "sourceId": "competitor-page-1",
+        "quote": "ngs.\n\n## Pricing\n\nPlan",
+        "startChar": 113,
+        "endChar": 135
+      },
+      {
+        "evidenceId": "dd0642565034c50bb334ff1d",
+        "sourceId": "competitor-page-1",
+        "quote": "Plans start at $20 per month.",
+        "startChar": 131,
+        "endChar": 160
+      },
+      {
+        "evidenceId": "9819ff4e63151bb14235f598",
+        "sourceId": "competitor-page-1",
+        "quote": "## How it works",
+        "startChar": 55,
+        "endChar": 70
+      },
+      {
+        "evidenceId": "a7e39587f44fe6ba2a2e8aa7",
+        "sourceId": "competitor-page-1",
+        "quote": "1. Upload a document.",
+        "startChar": 72,
+        "endChar": 93
+      },
+      {
+        "evidenceId": "54d55ada5cef8faed9ab26a7",
+        "sourceId": "competitor-page-1",
+        "quote": "2. Review the findings.",
+        "startChar": 94,
+        "endChar": 117
+      },
+      {
+        "evidenceId": "1cdd43e8a3244740b8256305",
+        "sourceId": "competitor-page-1",
+        "quote": "Yes. Start a free trial.",
+        "startChar": 180,
+        "endChar": 204
+      }
+    ]
+  }
+}

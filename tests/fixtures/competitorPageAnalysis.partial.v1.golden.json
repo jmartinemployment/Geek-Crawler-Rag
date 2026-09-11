@@ -1,0 +1,78 @@
+{
+  "artifactType": "competitorPageAnalysis.v1",
+  "analyzerVersion": "competitor-page-heuristic.v1",
+  "methodology": "Detect explicit visible-content signals with deterministic patterns; attach exact source spans; treat absences in partial inputs as unknown.",
+  "competitorId": "competitor-1",
+  "dimensions": [
+    {
+      "dimension": "topics",
+      "present": null,
+      "summary": "No topics signal occurred in the partial supplied content; full-page coverage is unknown.",
+      "signals": [],
+      "evidenceIds": []
+    },
+    {
+      "dimension": "questions",
+      "present": null,
+      "summary": "No questions signal occurred in the partial supplied content; full-page coverage is unknown.",
+      "signals": [],
+      "evidenceIds": []
+    },
+    {
+      "dimension": "capabilities",
+      "present": null,
+      "summary": "No capabilities signal occurred in the partial supplied content; full-page coverage is unknown.",
+      "signals": [],
+      "evidenceIds": []
+    },
+    {
+      "dimension": "proof",
+      "present": null,
+      "summary": "No proof signal occurred in the partial supplied content; full-page coverage is unknown.",
+      "signals": [],
+      "evidenceIds": []
+    },
+    {
+      "dimension": "pricing",
+      "present": null,
+      "summary": "No pricing signal occurred in the partial supplied content; full-page coverage is unknown.",
+      "signals": [],
+      "evidenceIds": []
+    },
+    {
+      "dimension": "process",
+      "present": null,
+      "summary": "No process signal occurred in the partial supplied content; full-page coverage is unknown.",
+      "signals": [],
+      "evidenceIds": []
+    },
+    {
+      "dimension": "callsToAction",
+      "present": null,
+      "summary": "No callsToAction signal occurred in the partial supplied content; full-page coverage is unknown.",
+      "signals": [],
+      "evidenceIds": []
+    }
+  ],
+  "opportunities": [],
+  "warnings": [
+    "Analysis uses supplied documents only. It does not infer traffic, search volume, audience demand, rankings, or competitor performance.",
+    "Competitor page input is partial; absent signals are reported as unknown and do not produce absence-based opportunities."
+  ],
+  "provenance": {
+    "engineVersion": "deterministic-competitor-intelligence.v1",
+    "sources": [
+      {
+        "sourceId": "competitor-page-1",
+        "url": "https://competitor.example/analyzer",
+        "title": "Competitor Analyzer",
+        "retrievedAtUtc": null,
+        "sourceDigest": null,
+        "parserId": null,
+        "parserVersion": null
+      }
+    ],
+    "evidenceIds": [],
+    "evidence": []
+  }
+}

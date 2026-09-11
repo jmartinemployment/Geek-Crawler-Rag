@@ -229,6 +229,67 @@ def test_citable_claims_contract_round_trip_forbids_extras() -> None:
         ClaimLedgerArtifact.model_validate(payload)
 
 
+def test_claim_ledger_golden_matches_live_service_output() -> None:
+    """Shared camelCase golden consumed by GeekBackend content contract tests."""
+    live = ContentService().citable_claims(_claims_request())
+    path = FIXTURES / "claimLedger.v1.golden.json"
+    golden = json.loads(path.read_text())
+    assert golden["artifactType"] == "claimLedger.v1"
+    assert ClaimLedgerArtifact.model_validate(golden) == live
+    assert golden == json.loads(live.model_dump_json(by_alias=True))
+    supported = [
+        claim for claim in golden["claims"] if claim.get("verificationStatus") == "supported"
+    ]
+    assert supported
+    assert all(claim.get("evidenceIds") for claim in supported)
+    evidence = golden["provenance"].get("evidence") or []
+    assert evidence
+    assert all(
+        isinstance(row.get("quote"), str)
+        and isinstance(row.get("startChar"), int)
+        and isinstance(row.get("endChar"), int)
+        for row in evidence
+    )
+
+
+def test_faq_set_golden_matches_live_service_output() -> None:
+    """Shared camelCase golden consumed by GeekBackend content contract tests."""
+    live = ContentService().faq_set(_faq_request())
+    path = FIXTURES / "faqSet.v1.golden.json"
+    golden = json.loads(path.read_text())
+    assert golden["artifactType"] == "faqSet.v1"
+    assert FaqSetArtifact.model_validate(golden) == live
+    assert golden == json.loads(live.model_dump_json(by_alias=True))
+    supported = [
+        pair for pair in golden["pairs"] if pair.get("verificationStatus") == "supported"
+    ]
+    assert supported
+    assert all(pair.get("citations") for pair in supported)
+    evidence = golden["provenance"].get("evidence") or []
+    assert evidence
+    assert all(
+        isinstance(row.get("quote"), str)
+        and isinstance(row.get("startChar"), int)
+        and isinstance(row.get("endChar"), int)
+        for row in evidence
+    )
+
+
+def test_comparison_brief_golden_matches_live_service_output() -> None:
+    """Shared camelCase golden consumed by GeekBackend content contract tests."""
+    live = ContentService().comparison_brief(_comparison_request())
+    path = FIXTURES / "comparisonBrief.v1.golden.json"
+    golden = json.loads(path.read_text())
+    assert golden["artifactType"] == "comparisonBrief.v1"
+    assert ComparisonBriefArtifact.model_validate(golden) == live
+    assert golden == json.loads(live.model_dump_json(by_alias=True))
+    assert golden["subjectName"] == "Subject Analyzer"
+    assert golden["competitorName"] == "Competitor Inc."
+    assert len(golden["criteria"]) == 4
+    assert golden["recommendedVerdict"]["disclaimer"]
+    assert golden["provenance"].get("sources")
+
+
 def test_comparison_brief_is_deterministic_and_labeled() -> None:
     service = ContentService()
     first = service.comparison_brief(_comparison_request())
@@ -351,6 +412,18 @@ def test_competitive_response_contract_round_trip_forbids_extras() -> None:
         CompetitiveResponseArtifact.model_validate(payload)
 
 
+def test_competitive_response_golden_matches_live_service_output() -> None:
+    live = ContentService().competitive_response(_response_request())
+    path = FIXTURES / "competitiveResponse.v1.golden.json"
+    golden = json.loads(path.read_text())
+    assert golden["artifactType"] == "competitiveResponse.v1"
+    assert CompetitiveResponseArtifact.model_validate(golden) == live
+    assert golden == json.loads(live.model_dump_json(by_alias=True))
+    assert golden["selectedMode"]
+    assert golden["outlineSections"]
+    assert golden["provenance"].get("sources")
+
+
 def test_pillar_outline_builds_cluster_sections() -> None:
     service = ContentService()
     first = service.pillar_outline(_pillar_request())
@@ -392,14 +465,30 @@ def test_pillar_outline_contract_round_trip_forbids_extras() -> None:
         PillarOutlineArtifact.model_validate(payload)
 
 
-def test_pillar_article_composes_markdown_from_outline() -> None:
-    service = ContentService()
-    request = PillarArticleRequest.model_validate(
+def test_pillar_outline_golden_matches_live_service_output() -> None:
+    live = ContentService().pillar_outline(_pillar_request())
+    path = FIXTURES / "pillarOutline.v1.golden.json"
+    golden = json.loads(path.read_text())
+    assert golden["artifactType"] == "pillarOutline.v1"
+    assert PillarOutlineArtifact.model_validate(golden) == live
+    assert golden == json.loads(live.model_dump_json(by_alias=True))
+    assert golden["topic"] == "AI content readiness"
+    assert golden["sections"]
+    assert golden["supportingContentPlan"]
+
+
+def _pillar_article_request() -> PillarArticleRequest:
+    return PillarArticleRequest.model_validate(
         {
             **json.loads(PILLAR_FIXTURE.read_text()),
             "contractVersion": "pillarArticleInput.v1",
         }
     )
+
+
+def test_pillar_article_composes_markdown_from_outline() -> None:
+    service = ContentService()
+    request = _pillar_article_request()
     first = service.pillar_article(request)
     second = service.pillar_article(request)
 
@@ -429,6 +518,18 @@ def test_pillar_article_composes_markdown_from_outline() -> None:
     assert PillarArticleArtifact.model_validate(
         first.model_dump(mode="json", by_alias=True)
     ) == first
+
+
+def test_pillar_article_golden_matches_live_service_output() -> None:
+    live = ContentService().pillar_article(_pillar_article_request())
+    path = FIXTURES / "pillarArticle.v1.golden.json"
+    golden = json.loads(path.read_text())
+    assert golden["artifactType"] == "pillarArticle.v1"
+    assert PillarArticleArtifact.model_validate(golden) == live
+    assert golden == json.loads(live.model_dump_json(by_alias=True))
+    assert golden["markdown"].startswith("# ")
+    assert any(section.get("grounded") for section in golden["sections"])
+    assert golden["supportingContentPlan"]
 
 
 def test_pillar_article_marks_ungrounded_template_sections_as_scaffold() -> None:

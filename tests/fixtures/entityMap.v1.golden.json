@@ -1,0 +1,927 @@
+{
+  "artifactType": "entityMap.v1",
+  "mapperVersion": "canonical-entity-map.v1",
+  "entities": [
+    {
+      "entityId": "2fdd6e88c8d1d7874e87292b",
+      "canonicalName": "AA-1",
+      "entityType": "other",
+      "aliases": [],
+      "confidence": 0.65,
+      "evidenceIds": [
+        "2f4b72464c9bb06ddeb2a688"
+      ]
+    },
+    {
+      "entityId": "b0d70f4f94134c01f9c03e1e",
+      "canonicalName": "According",
+      "entityType": "other",
+      "aliases": [],
+      "confidence": 0.65,
+      "evidenceIds": [
+        "88b40cc52ba141e9ebf374ca"
+      ]
+    },
+    {
+      "entityId": "bbd5a94ca9041a116508abc0",
+      "canonicalName": "Acme Analyzer",
+      "entityType": "other",
+      "aliases": [],
+      "confidence": 0.95,
+      "evidenceIds": [
+        "951c72f2347fc0ca3ef9d1fa",
+        "342f9b117e3193c4913924b0",
+        "63fd4cae7ccc82cb81ab158f",
+        "f7c86f610c38a68c3367ac38",
+        "96684d880fd3fad99a2738fc",
+        "d3fb1d14ca0c1e24a1ec0abd",
+        "6fb388e97374e83eb7e8015d",
+        "1af11c4a6a289b33cd147961",
+        "c73324f1cd96e06cad5856c0"
+      ]
+    },
+    {
+      "entityId": "8f8a891448dfb9fa1e82b5da",
+      "canonicalName": "Acme Research",
+      "entityType": "other",
+      "aliases": [],
+      "confidence": 0.95,
+      "evidenceIds": [
+        "e2a23c9db03fddfff25abfd8",
+        "367fa9565e16a56751119c3b",
+        "18d7d6c4e9697a0254d13958",
+        "726da187ac0f8e742347e8b3"
+      ]
+    },
+    {
+      "entityId": "70dfb59d0d2f669cd856b8be",
+      "canonicalName": "Author",
+      "entityType": "other",
+      "aliases": [],
+      "confidence": 0.65,
+      "evidenceIds": [
+        "96e994134ab6e279789ba296"
+      ]
+    },
+    {
+      "entityId": "d021d23274b3beda978bee9f",
+      "canonicalName": "Brand",
+      "entityType": "other",
+      "aliases": [],
+      "confidence": 0.65,
+      "evidenceIds": [
+        "9f3b5aff3ea99415c2289c44"
+      ]
+    },
+    {
+      "entityId": "d4a4b5921f4222eec1af3c8b",
+      "canonicalName": "Currency",
+      "entityType": "other",
+      "aliases": [],
+      "confidence": 0.65,
+      "evidenceIds": [
+        "4a1353459d429bd22809c1a0"
+      ]
+    },
+    {
+      "entityId": "ba4cf17f7b6acc518d7e1aae",
+      "canonicalName": "Description",
+      "entityType": "other",
+      "aliases": [],
+      "confidence": 0.65,
+      "evidenceIds": [
+        "a9f796b81ebbee3931855521"
+      ]
+    },
+    {
+      "entityId": "7b0a03effac04e00d0dd8cd3",
+      "canonicalName": "Install Acme Analyzer",
+      "entityType": "other",
+      "aliases": [],
+      "confidence": 0.65,
+      "evidenceIds": [
+        "e96ca6e935a3eea0ca380f1d"
+      ]
+    },
+    {
+      "entityId": "ade2b1c65c8cd80a2674e332",
+      "canonicalName": "Jane Doe",
+      "entityType": "other",
+      "aliases": [],
+      "confidence": 0.65,
+      "evidenceIds": [
+        "56d3764052c4c55c6c5d43fd"
+      ]
+    },
+    {
+      "entityId": "02d6b61dde7a2e7b80c97250",
+      "canonicalName": "Price",
+      "entityType": "other",
+      "aliases": [],
+      "confidence": 0.65,
+      "evidenceIds": [
+        "af02296017a5efd79de43e47"
+      ]
+    },
+    {
+      "entityId": "386c36a36eeede37f4a038aa",
+      "canonicalName": "Product Details",
+      "entityType": "other",
+      "aliases": [],
+      "confidence": 0.65,
+      "evidenceIds": [
+        "7529c473ccc363ac1c198130"
+      ]
+    },
+    {
+      "entityId": "cd07cd662bb8cf8f1e8034dd",
+      "canonicalName": "Product Name",
+      "entityType": "other",
+      "aliases": [],
+      "confidence": 0.65,
+      "evidenceIds": [
+        "71816c503dbdd0912671fe8a"
+      ]
+    },
+    {
+      "entityId": "db02eec40d11e84cc0eb39ab",
+      "canonicalName": "Run Acme Analyzer",
+      "entityType": "other",
+      "aliases": [],
+      "confidence": 0.65,
+      "evidenceIds": [
+        "edca3ea830c2033c2081aafd"
+      ]
+    },
+    {
+      "entityId": "75991ee721bbe5d0502751c8",
+      "canonicalName": "SKU",
+      "entityType": "other",
+      "aliases": [],
+      "confidence": 0.65,
+      "evidenceIds": [
+        "4f21c8738fa2ff5890cd2eb4"
+      ]
+    },
+    {
+      "entityId": "918fc25d489d7f09d20a7c97",
+      "canonicalName": "Sources",
+      "entityType": "other",
+      "aliases": [],
+      "confidence": 0.65,
+      "evidenceIds": [
+        "fca1e0e3feda44d1113ccaab"
+      ]
+    },
+    {
+      "entityId": "13cf9feb757cdc1f6dd5d0d9",
+      "canonicalName": "Steps",
+      "entityType": "other",
+      "aliases": [],
+      "confidence": 0.65,
+      "evidenceIds": [
+        "9c1009ee3a2315c9e3b0be3a"
+      ]
+    },
+    {
+      "entityId": "f3c683be04004d27619c2771",
+      "canonicalName": "USD",
+      "entityType": "other",
+      "aliases": [],
+      "confidence": 0.65,
+      "evidenceIds": [
+        "d3f03bca377ed03cf9048ae2"
+      ]
+    },
+    {
+      "entityId": "0d6aa51f6f5b7273fc93fdbc",
+      "canonicalName": "Who",
+      "entityType": "other",
+      "aliases": [],
+      "confidence": 0.65,
+      "evidenceIds": [
+        "2b8f4a7b4aec23ab7b50f97e"
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "relationshipId": "9ac79d376420835c1a33b2f6",
+      "sourceEntityId": "2fdd6e88c8d1d7874e87292b",
+      "targetEntityId": "8f8a891448dfb9fa1e82b5da",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "cd3cd939f47a3c74257c0117"
+      ]
+    },
+    {
+      "relationshipId": "3ac6bc9f9daf8a7e62772427",
+      "sourceEntityId": "2fdd6e88c8d1d7874e87292b",
+      "targetEntityId": "d021d23274b3beda978bee9f",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "cd3cd939f47a3c74257c0117"
+      ]
+    },
+    {
+      "relationshipId": "7785cbaf0651639ac4b81605",
+      "sourceEntityId": "2fdd6e88c8d1d7874e87292b",
+      "targetEntityId": "d4a4b5921f4222eec1af3c8b",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "cd3cd939f47a3c74257c0117"
+      ]
+    },
+    {
+      "relationshipId": "55a9eec7bbbdd8cda8770d7d",
+      "sourceEntityId": "2fdd6e88c8d1d7874e87292b",
+      "targetEntityId": "02d6b61dde7a2e7b80c97250",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "cd3cd939f47a3c74257c0117"
+      ]
+    },
+    {
+      "relationshipId": "8a3c826e6ccb71b0444fbb6e",
+      "sourceEntityId": "2fdd6e88c8d1d7874e87292b",
+      "targetEntityId": "75991ee721bbe5d0502751c8",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "cd3cd939f47a3c74257c0117"
+      ]
+    },
+    {
+      "relationshipId": "b497eae69211ac48988eb8bd",
+      "sourceEntityId": "2fdd6e88c8d1d7874e87292b",
+      "targetEntityId": "918fc25d489d7f09d20a7c97",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "cd3cd939f47a3c74257c0117"
+      ]
+    },
+    {
+      "relationshipId": "428f674d59a16f25d555b5e7",
+      "sourceEntityId": "2fdd6e88c8d1d7874e87292b",
+      "targetEntityId": "f3c683be04004d27619c2771",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "cd3cd939f47a3c74257c0117"
+      ]
+    },
+    {
+      "relationshipId": "c0cc0bbecc1073aafad73b4b",
+      "sourceEntityId": "b0d70f4f94134c01f9c03e1e",
+      "targetEntityId": "8f8a891448dfb9fa1e82b5da",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "a1189cd5c9501c946e3ae740"
+      ]
+    },
+    {
+      "relationshipId": "6298e0cbfa91c2cbca17b9f6",
+      "sourceEntityId": "bbd5a94ca9041a116508abc0",
+      "targetEntityId": "8f8a891448dfb9fa1e82b5da",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "7700b622ec6cb9fe9ecbd1f6"
+      ]
+    },
+    {
+      "relationshipId": "a91a0790d9c500cac86ffde0",
+      "sourceEntityId": "bbd5a94ca9041a116508abc0",
+      "targetEntityId": "70dfb59d0d2f669cd856b8be",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "6d74febf1062c51217cf3792"
+      ]
+    },
+    {
+      "relationshipId": "1e43d1f794375ffeaeb55d76",
+      "sourceEntityId": "bbd5a94ca9041a116508abc0",
+      "targetEntityId": "ba4cf17f7b6acc518d7e1aae",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "54901093750f6472640e319b"
+      ]
+    },
+    {
+      "relationshipId": "c54e96f292dc244902d4b1d7",
+      "sourceEntityId": "bbd5a94ca9041a116508abc0",
+      "targetEntityId": "ade2b1c65c8cd80a2674e332",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "6d74febf1062c51217cf3792"
+      ]
+    },
+    {
+      "relationshipId": "53b516281480c762c7840b06",
+      "sourceEntityId": "bbd5a94ca9041a116508abc0",
+      "targetEntityId": "386c36a36eeede37f4a038aa",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "54901093750f6472640e319b"
+      ]
+    },
+    {
+      "relationshipId": "6e737f8a4f4fef1a3c756d4d",
+      "sourceEntityId": "bbd5a94ca9041a116508abc0",
+      "targetEntityId": "cd07cd662bb8cf8f1e8034dd",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "54901093750f6472640e319b"
+      ]
+    },
+    {
+      "relationshipId": "148802c5afb699599483b296",
+      "sourceEntityId": "bbd5a94ca9041a116508abc0",
+      "targetEntityId": "0d6aa51f6f5b7273fc93fdbc",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "f33de2810afd95e3587abee4"
+      ]
+    },
+    {
+      "relationshipId": "26466e7b9f54bf02fe47de25",
+      "sourceEntityId": "8f8a891448dfb9fa1e82b5da",
+      "targetEntityId": "d021d23274b3beda978bee9f",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "cd3cd939f47a3c74257c0117"
+      ]
+    },
+    {
+      "relationshipId": "1811b50872fd4fbb8cd594d7",
+      "sourceEntityId": "8f8a891448dfb9fa1e82b5da",
+      "targetEntityId": "d4a4b5921f4222eec1af3c8b",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "cd3cd939f47a3c74257c0117"
+      ]
+    },
+    {
+      "relationshipId": "19b20db6b2e4f94a59b185e9",
+      "sourceEntityId": "8f8a891448dfb9fa1e82b5da",
+      "targetEntityId": "02d6b61dde7a2e7b80c97250",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "cd3cd939f47a3c74257c0117"
+      ]
+    },
+    {
+      "relationshipId": "36bb2b1601febc8e73642734",
+      "sourceEntityId": "8f8a891448dfb9fa1e82b5da",
+      "targetEntityId": "75991ee721bbe5d0502751c8",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "cd3cd939f47a3c74257c0117"
+      ]
+    },
+    {
+      "relationshipId": "fcfe55bb06e294983bbf6fd1",
+      "sourceEntityId": "8f8a891448dfb9fa1e82b5da",
+      "targetEntityId": "918fc25d489d7f09d20a7c97",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "cd3cd939f47a3c74257c0117"
+      ]
+    },
+    {
+      "relationshipId": "8538f1e18cb215225e18205f",
+      "sourceEntityId": "8f8a891448dfb9fa1e82b5da",
+      "targetEntityId": "f3c683be04004d27619c2771",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "cd3cd939f47a3c74257c0117"
+      ]
+    },
+    {
+      "relationshipId": "b1eddb987cf066c37da43647",
+      "sourceEntityId": "70dfb59d0d2f669cd856b8be",
+      "targetEntityId": "ade2b1c65c8cd80a2674e332",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "6d74febf1062c51217cf3792"
+      ]
+    },
+    {
+      "relationshipId": "d8cecd2c6e6d98d23f65f2c8",
+      "sourceEntityId": "d021d23274b3beda978bee9f",
+      "targetEntityId": "d4a4b5921f4222eec1af3c8b",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "cd3cd939f47a3c74257c0117"
+      ]
+    },
+    {
+      "relationshipId": "55f0204baf217e719cd0c426",
+      "sourceEntityId": "d021d23274b3beda978bee9f",
+      "targetEntityId": "02d6b61dde7a2e7b80c97250",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "cd3cd939f47a3c74257c0117"
+      ]
+    },
+    {
+      "relationshipId": "9e1bebf471bd3058acc14ffd",
+      "sourceEntityId": "d021d23274b3beda978bee9f",
+      "targetEntityId": "75991ee721bbe5d0502751c8",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "cd3cd939f47a3c74257c0117"
+      ]
+    },
+    {
+      "relationshipId": "67d52b03599f2b5a35ac112b",
+      "sourceEntityId": "d021d23274b3beda978bee9f",
+      "targetEntityId": "918fc25d489d7f09d20a7c97",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "cd3cd939f47a3c74257c0117"
+      ]
+    },
+    {
+      "relationshipId": "7aad1cf2b082f609f38bf076",
+      "sourceEntityId": "d021d23274b3beda978bee9f",
+      "targetEntityId": "f3c683be04004d27619c2771",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "cd3cd939f47a3c74257c0117"
+      ]
+    },
+    {
+      "relationshipId": "031505ffa75b3492f542fb0a",
+      "sourceEntityId": "d4a4b5921f4222eec1af3c8b",
+      "targetEntityId": "02d6b61dde7a2e7b80c97250",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "cd3cd939f47a3c74257c0117"
+      ]
+    },
+    {
+      "relationshipId": "49aa4eceea17b67f3b1d2dad",
+      "sourceEntityId": "d4a4b5921f4222eec1af3c8b",
+      "targetEntityId": "75991ee721bbe5d0502751c8",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "cd3cd939f47a3c74257c0117"
+      ]
+    },
+    {
+      "relationshipId": "e3b9fa061487764e16b1e353",
+      "sourceEntityId": "d4a4b5921f4222eec1af3c8b",
+      "targetEntityId": "918fc25d489d7f09d20a7c97",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "cd3cd939f47a3c74257c0117"
+      ]
+    },
+    {
+      "relationshipId": "7d7f6684e057d5ec217e6f7f",
+      "sourceEntityId": "d4a4b5921f4222eec1af3c8b",
+      "targetEntityId": "f3c683be04004d27619c2771",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "cd3cd939f47a3c74257c0117"
+      ]
+    },
+    {
+      "relationshipId": "2c11df90ce0d829f411b64c3",
+      "sourceEntityId": "ba4cf17f7b6acc518d7e1aae",
+      "targetEntityId": "386c36a36eeede37f4a038aa",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "54901093750f6472640e319b"
+      ]
+    },
+    {
+      "relationshipId": "eb9699592155ba53abb9d0e5",
+      "sourceEntityId": "ba4cf17f7b6acc518d7e1aae",
+      "targetEntityId": "cd07cd662bb8cf8f1e8034dd",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "54901093750f6472640e319b"
+      ]
+    },
+    {
+      "relationshipId": "39693dc619daafa7e742cf14",
+      "sourceEntityId": "02d6b61dde7a2e7b80c97250",
+      "targetEntityId": "75991ee721bbe5d0502751c8",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "cd3cd939f47a3c74257c0117"
+      ]
+    },
+    {
+      "relationshipId": "b5be9c08e0630165a58e7fe2",
+      "sourceEntityId": "02d6b61dde7a2e7b80c97250",
+      "targetEntityId": "918fc25d489d7f09d20a7c97",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "cd3cd939f47a3c74257c0117"
+      ]
+    },
+    {
+      "relationshipId": "b937589733b121b9911d4e2b",
+      "sourceEntityId": "02d6b61dde7a2e7b80c97250",
+      "targetEntityId": "f3c683be04004d27619c2771",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "cd3cd939f47a3c74257c0117"
+      ]
+    },
+    {
+      "relationshipId": "3964981d500f3fabbc929bd2",
+      "sourceEntityId": "386c36a36eeede37f4a038aa",
+      "targetEntityId": "cd07cd662bb8cf8f1e8034dd",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "54901093750f6472640e319b"
+      ]
+    },
+    {
+      "relationshipId": "8fa795014ebe04cda7126f3a",
+      "sourceEntityId": "75991ee721bbe5d0502751c8",
+      "targetEntityId": "918fc25d489d7f09d20a7c97",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "cd3cd939f47a3c74257c0117"
+      ]
+    },
+    {
+      "relationshipId": "496beae40bf36fb299c242b1",
+      "sourceEntityId": "75991ee721bbe5d0502751c8",
+      "targetEntityId": "f3c683be04004d27619c2771",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "cd3cd939f47a3c74257c0117"
+      ]
+    },
+    {
+      "relationshipId": "45c445971168706a260ad8a8",
+      "sourceEntityId": "918fc25d489d7f09d20a7c97",
+      "targetEntityId": "f3c683be04004d27619c2771",
+      "relation": "coOccursWith",
+      "confidence": 0.65,
+      "evidenceIds": [
+        "cd3cd939f47a3c74257c0117"
+      ]
+    }
+  ],
+  "coverageComparisons": [],
+  "recommendations": [],
+  "warnings": [
+    "Scores and classifications are deterministic heuristics, not measured search-engine or AI-citation outcomes."
+  ],
+  "provenance": {
+    "engineVersion": "deterministic-diagnostics.v1",
+    "source": {
+      "sourceId": "page-1",
+      "url": "https://example.com/acme-analyzer",
+      "title": "Acme Analyzer",
+      "retrievedAtUtc": null,
+      "sourceDigest": null,
+      "parserId": null,
+      "parserVersion": null
+    },
+    "queries": [
+      {
+        "query": "what is acme analyzer",
+        "origin": "observed",
+        "sourceId": "gsc-export-1",
+        "sourceReference": null,
+        "observedAtUtc": null
+      }
+    ],
+    "evidenceIds": [
+      "2f4b72464c9bb06ddeb2a688",
+      "88b40cc52ba141e9ebf374ca",
+      "951c72f2347fc0ca3ef9d1fa",
+      "342f9b117e3193c4913924b0",
+      "63fd4cae7ccc82cb81ab158f",
+      "f7c86f610c38a68c3367ac38",
+      "96684d880fd3fad99a2738fc",
+      "d3fb1d14ca0c1e24a1ec0abd",
+      "6fb388e97374e83eb7e8015d",
+      "1af11c4a6a289b33cd147961",
+      "c73324f1cd96e06cad5856c0",
+      "e2a23c9db03fddfff25abfd8",
+      "367fa9565e16a56751119c3b",
+      "18d7d6c4e9697a0254d13958",
+      "726da187ac0f8e742347e8b3",
+      "96e994134ab6e279789ba296",
+      "9f3b5aff3ea99415c2289c44",
+      "4a1353459d429bd22809c1a0",
+      "a9f796b81ebbee3931855521",
+      "e96ca6e935a3eea0ca380f1d",
+      "56d3764052c4c55c6c5d43fd",
+      "af02296017a5efd79de43e47",
+      "7529c473ccc363ac1c198130",
+      "71816c503dbdd0912671fe8a",
+      "edca3ea830c2033c2081aafd",
+      "4f21c8738fa2ff5890cd2eb4",
+      "fca1e0e3feda44d1113ccaab",
+      "9c1009ee3a2315c9e3b0be3a",
+      "d3f03bca377ed03cf9048ae2",
+      "2b8f4a7b4aec23ab7b50f97e",
+      "cd3cd939f47a3c74257c0117",
+      "a1189cd5c9501c946e3ae740",
+      "7700b622ec6cb9fe9ecbd1f6",
+      "6d74febf1062c51217cf3792",
+      "54901093750f6472640e319b",
+      "f33de2810afd95e3587abee4"
+    ],
+    "evidence": [
+      {
+        "evidenceId": "2f4b72464c9bb06ddeb2a688",
+        "sourceId": "page-1",
+        "quote": "ch\nSKU: AA-1",
+        "startChar": 515,
+        "endChar": 527
+      },
+      {
+        "evidenceId": "88b40cc52ba141e9ebf374ca",
+        "sourceId": "page-1",
+        "quote": "6. According",
+        "startChar": 46,
+        "endChar": 58
+      },
+      {
+        "evidenceId": "951c72f2347fc0ca3ef9d1fa",
+        "sourceId": "page-1",
+        "quote": "Acme Analyzer",
+        "startChar": 2,
+        "endChar": 15
+      },
+      {
+        "evidenceId": "342f9b117e3193c4913924b0",
+        "sourceId": "page-1",
+        "quote": "Acme Analyzer",
+        "startChar": 17,
+        "endChar": 30
+      },
+      {
+        "evidenceId": "63fd4cae7ccc82cb81ab158f",
+        "sourceId": "page-1",
+        "quote": "Acme Analyzer",
+        "startChar": 135,
+        "endChar": 148
+      },
+      {
+        "evidenceId": "f7c86f610c38a68c3367ac38",
+        "sourceId": "page-1",
+        "quote": "Acme Analyzer",
+        "startChar": 151,
+        "endChar": 164
+      },
+      {
+        "evidenceId": "96684d880fd3fad99a2738fc",
+        "sourceId": "page-1",
+        "quote": "Acme Analyzer",
+        "startChar": 209,
+        "endChar": 222
+      },
+      {
+        "evidenceId": "d3fb1d14ca0c1e24a1ec0abd",
+        "sourceId": "page-1",
+        "quote": "Acme Analyzer",
+        "startChar": 279,
+        "endChar": 292
+      },
+      {
+        "evidenceId": "6fb388e97374e83eb7e8015d",
+        "sourceId": "page-1",
+        "quote": "Acme Analyzer",
+        "startChar": 319,
+        "endChar": 332
+      },
+      {
+        "evidenceId": "1af11c4a6a289b33cd147961",
+        "sourceId": "page-1",
+        "quote": "Acme Analyzer",
+        "startChar": 428,
+        "endChar": 441
+      },
+      {
+        "evidenceId": "c73324f1cd96e06cad5856c0",
+        "sourceId": "page-1",
+        "quote": "Acme Analyzer",
+        "startChar": 455,
+        "endChar": 468
+      },
+      {
+        "evidenceId": "e2a23c9db03fddfff25abfd8",
+        "sourceId": "page-1",
+        "quote": "Acme Research",
+        "startChar": 62,
+        "endChar": 75
+      },
+      {
+        "evidenceId": "367fa9565e16a56751119c3b",
+        "sourceId": "page-1",
+        "quote": "Acme Research",
+        "startChar": 295,
+        "endChar": 308
+      },
+      {
+        "evidenceId": "18d7d6c4e9697a0254d13958",
+        "sourceId": "page-1",
+        "quote": "Acme Research",
+        "startChar": 504,
+        "endChar": 517
+      },
+      {
+        "evidenceId": "726da187ac0f8e742347e8b3",
+        "sourceId": "page-1",
+        "quote": "Acme Research",
+        "startChar": 565,
+        "endChar": 578
+      },
+      {
+        "evidenceId": "96e994134ab6e279789ba296",
+        "sourceId": "page-1",
+        "quote": "nts.\n\nAuthor",
+        "startChar": 100,
+        "endChar": 112
+      },
+      {
+        "evidenceId": "9f3b5aff3ea99415c2289c44",
+        "sourceId": "page-1",
+        "quote": "ments.\nBrand",
+        "startChar": 490,
+        "endChar": 502
+      },
+      {
+        "evidenceId": "4a1353459d429bd22809c1a0",
+        "sourceId": "page-1",
+        "quote": " 20\nCurrency",
+        "startChar": 534,
+        "endChar": 546
+      },
+      {
+        "evidenceId": "a9f796b81ebbee3931855521",
+        "sourceId": "page-1",
+        "quote": "\nDescription",
+        "startChar": 441,
+        "endChar": 453
+      },
+      {
+        "evidenceId": "e96ca6e935a3eea0ca380f1d",
+        "sourceId": "page-1",
+        "quote": "Install Acme Analyzer",
+        "startChar": 348,
+        "endChar": 369
+      },
+      {
+        "evidenceId": "56d3764052c4c55c6c5d43fd",
+        "sourceId": "page-1",
+        "quote": "or: Jane Doe",
+        "startChar": 110,
+        "endChar": 122
+      },
+      {
+        "evidenceId": "af02296017a5efd79de43e47",
+        "sourceId": "page-1",
+        "quote": ": AA-1\nPrice",
+        "startChar": 521,
+        "endChar": 533
+      },
+      {
+        "evidenceId": "7529c473ccc363ac1c198130",
+        "sourceId": "page-1",
+        "quote": "Product Details",
+        "startChar": 397,
+        "endChar": 412
+      },
+      {
+        "evidenceId": "71816c503dbdd0912671fe8a",
+        "sourceId": "page-1",
+        "quote": "Product Name",
+        "startChar": 414,
+        "endChar": 426
+      },
+      {
+        "evidenceId": "edca3ea830c2033c2081aafd",
+        "sourceId": "page-1",
+        "quote": "Run Acme Analyzer",
+        "startChar": 374,
+        "endChar": 391
+      },
+      {
+        "evidenceId": "4f21c8738fa2ff5890cd2eb4",
+        "sourceId": "page-1",
+        "quote": "Research\nSKU",
+        "startChar": 509,
+        "endChar": 521
+      },
+      {
+        "evidenceId": "fca1e0e3feda44d1113ccaab",
+        "sourceId": "page-1",
+        "quote": "\n\n## Sources",
+        "startChar": 551,
+        "endChar": 563
+      },
+      {
+        "evidenceId": "9c1009ee3a2315c9e3b0be3a",
+        "sourceId": "page-1",
+        "quote": "r.\n\n## Steps",
+        "startChar": 331,
+        "endChar": 343
+      },
+      {
+        "evidenceId": "d3f03bca377ed03cf9048ae2",
+        "sourceId": "page-1",
+        "quote": "urrency: USD",
+        "startChar": 539,
+        "endChar": 551
+      },
+      {
+        "evidenceId": "2b8f4a7b4aec23ab7b50f97e",
+        "sourceId": "page-1",
+        "quote": "run.\n\n## Who",
+        "startChar": 256,
+        "endChar": 268
+      },
+      {
+        "evidenceId": "cd3cd939f47a3c74257c0117",
+        "sourceId": "page-1",
+        "quote": "Brand: Acme Research\nSKU: AA-1\nPrice: 20\nCurrency: USD\n\n## Sources\n\nAcme Research product documentation.",
+        "startChar": 497,
+        "endChar": 601
+      },
+      {
+        "evidenceId": "a1189cd5c9501c946e3ae740",
+        "sourceId": "page-1",
+        "quote": "According to Acme Research, it processes 100 documents.",
+        "startChar": 49,
+        "endChar": 104
+      },
+      {
+        "evidenceId": "7700b622ec6cb9fe9ecbd1f6",
+        "sourceId": "page-1",
+        "quote": "Acme Research publishes Acme Analyzer.",
+        "startChar": 295,
+        "endChar": 333
+      },
+      {
+        "evidenceId": "6d74febf1062c51217cf3792",
+        "sourceId": "page-1",
+        "quote": "Author: Jane Doe\n\n## What is Acme Analyzer?",
+        "startChar": 106,
+        "endChar": 149
+      },
+      {
+        "evidenceId": "54901093750f6472640e319b",
+        "sourceId": "page-1",
+        "quote": "## Product Details\n\nProduct Name: Acme Analyzer\nDescription: Acme Analyzer reviews supplied documents.",
+        "startChar": 394,
+        "endChar": 496
+      },
+      {
+        "evidenceId": "f33de2810afd95e3587abee4",
+        "sourceId": "page-1",
+        "quote": "## Who publishes Acme Analyzer?",
+        "startChar": 262,
+        "endChar": 293
+      }
+    ]
+  }
+}

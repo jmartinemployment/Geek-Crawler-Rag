@@ -1,0 +1,205 @@
+{
+  "artifactType": "factDensityReport.v1",
+  "methodology": "heuristic",
+  "reportVersion": "fact-density-heuristic.v1",
+  "overallScore": 54.6,
+  "sections": [
+    {
+      "sectionId": "section-1",
+      "heading": "Acme Analyzer",
+      "sentenceCount": 3,
+      "specificFactCount": 3,
+      "supportedFactCount": 1,
+      "score": 66.7
+    },
+    {
+      "sectionId": "section-2",
+      "heading": "What is Acme Analyzer?",
+      "sentenceCount": 1,
+      "specificFactCount": 1,
+      "supportedFactCount": 0,
+      "score": 50.0
+    },
+    {
+      "sectionId": "section-3",
+      "heading": "How fast is Acme Analyzer?",
+      "sentenceCount": 1,
+      "specificFactCount": 1,
+      "supportedFactCount": 0,
+      "score": 50.0
+    },
+    {
+      "sectionId": "section-4",
+      "heading": "Who publishes Acme Analyzer?",
+      "sentenceCount": 1,
+      "specificFactCount": 1,
+      "supportedFactCount": 0,
+      "score": 50.0
+    },
+    {
+      "sectionId": "section-5",
+      "heading": "Steps",
+      "sentenceCount": 2,
+      "specificFactCount": 2,
+      "supportedFactCount": 0,
+      "score": 50.0
+    },
+    {
+      "sectionId": "section-6",
+      "heading": "Product Details",
+      "sentenceCount": 2,
+      "specificFactCount": 2,
+      "supportedFactCount": 0,
+      "score": 50.0
+    },
+    {
+      "sectionId": "section-7",
+      "heading": "Sources",
+      "sentenceCount": 1,
+      "specificFactCount": 1,
+      "supportedFactCount": 0,
+      "score": 50.0
+    }
+  ],
+  "claims": [
+    {
+      "claimId": "section-1-claim-1",
+      "sectionId": "section-1",
+      "text": "Acme Analyzer launched in 2026.",
+      "classification": "specificFact",
+      "verificationStatus": "unsupported",
+      "evidenceIds": []
+    },
+    {
+      "claimId": "section-1-claim-2",
+      "sectionId": "section-1",
+      "text": "According to Acme Research, it processes 100 documents.",
+      "classification": "specificFact",
+      "verificationStatus": "supported",
+      "evidenceIds": [
+        "ev-1"
+      ]
+    },
+    {
+      "claimId": "section-1-claim-3",
+      "sectionId": "section-1",
+      "text": "Author: Jane Doe",
+      "classification": "specificFact",
+      "verificationStatus": "unsupported",
+      "evidenceIds": []
+    },
+    {
+      "claimId": "section-2-claim-1",
+      "sectionId": "section-2",
+      "text": "Acme Analyzer reviews supplied documents.",
+      "classification": "specificFact",
+      "verificationStatus": "unsupported",
+      "evidenceIds": []
+    },
+    {
+      "claimId": "section-3-claim-1",
+      "sectionId": "section-3",
+      "text": "It processes 100 documents per run.",
+      "classification": "specificFact",
+      "verificationStatus": "unsupported",
+      "evidenceIds": []
+    },
+    {
+      "claimId": "section-4-claim-1",
+      "sectionId": "section-4",
+      "text": "Acme Research publishes Acme Analyzer.",
+      "classification": "specificFact",
+      "verificationStatus": "unsupported",
+      "evidenceIds": []
+    },
+    {
+      "claimId": "section-5-claim-1",
+      "sectionId": "section-5",
+      "text": "Install Acme Analyzer.",
+      "classification": "specificFact",
+      "verificationStatus": "unsupported",
+      "evidenceIds": []
+    },
+    {
+      "claimId": "section-5-claim-2",
+      "sectionId": "section-5",
+      "text": "Run Acme Analyzer.",
+      "classification": "specificFact",
+      "verificationStatus": "unsupported",
+      "evidenceIds": []
+    },
+    {
+      "claimId": "section-6-claim-1",
+      "sectionId": "section-6",
+      "text": "Product Name: Acme Analyzer\nDescription: Acme Analyzer reviews supplied documents.",
+      "classification": "specificFact",
+      "verificationStatus": "unsupported",
+      "evidenceIds": []
+    },
+    {
+      "claimId": "section-6-claim-2",
+      "sectionId": "section-6",
+      "text": "Brand: Acme Research\nSKU: AA-1\nPrice: 20\nCurrency: USD",
+      "classification": "specificFact",
+      "verificationStatus": "unsupported",
+      "evidenceIds": []
+    },
+    {
+      "claimId": "section-7-claim-1",
+      "sectionId": "section-7",
+      "text": "Acme Research product documentation.",
+      "classification": "specificFact",
+      "verificationStatus": "unsupported",
+      "evidenceIds": []
+    }
+  ],
+  "unsupportedClaimIds": [
+    "section-1-claim-1",
+    "section-1-claim-3",
+    "section-2-claim-1",
+    "section-3-claim-1",
+    "section-4-claim-1",
+    "section-5-claim-1",
+    "section-5-claim-2",
+    "section-6-claim-1",
+    "section-6-claim-2",
+    "section-7-claim-1"
+  ],
+  "warnings": [
+    "Scores and classifications are deterministic heuristics, not measured search-engine or AI-citation outcomes.",
+    "Specific claims without verified supplied evidence are marked unsupported; no replacement facts were generated."
+  ],
+  "provenance": {
+    "engineVersion": "deterministic-diagnostics.v1",
+    "source": {
+      "sourceId": "page-1",
+      "url": "https://example.com/acme-analyzer",
+      "title": "Acme Analyzer",
+      "retrievedAtUtc": null,
+      "sourceDigest": null,
+      "parserId": null,
+      "parserVersion": null
+    },
+    "queries": [
+      {
+        "query": "what is acme analyzer",
+        "origin": "observed",
+        "sourceId": "gsc-export-1",
+        "sourceReference": null,
+        "observedAtUtc": null
+      }
+    ],
+    "evidenceIds": [
+      "ev-1"
+    ],
+    "evidence": [
+      {
+        "evidenceId": "ev-1",
+        "sourceId": "page-1",
+        "quote": "According to Acme Research, it processes 100 documents.",
+        "startChar": null,
+        "endChar": null
+      }
+    ]
+  }
+}

@@ -1,0 +1,694 @@
+{
+  "artifactType": "competitorPositioning.v1",
+  "analyzerVersion": "competitor-positioning-heuristic.v1",
+  "methodology": "Map explicit brand and competitor attributes from supplied page content and optional AI-answer observations. Preserve observation model/engine, query, raw response, and observation date. Generated messaging and queries are labeled generatedHypothesis and are never presented as measured market perception.",
+  "attributeMap": [
+    {
+      "attributeId": "0096bccec2f49f0da660d89d",
+      "attribute": "Capabilities",
+      "party": "brand",
+      "competitorId": null,
+      "competitorName": null,
+      "signals": [
+        "Capabilities"
+      ],
+      "evidenceIds": [
+        "efc8115cd7eb931731f3caba"
+      ],
+      "sourceIds": [
+        "brand-page-1"
+      ]
+    },
+    {
+      "attributeId": "c7ccd25711596afc79eea1d3",
+      "attribute": "## Capabilities",
+      "party": "brand",
+      "competitorId": null,
+      "competitorName": null,
+      "signals": [
+        "## Capabilities"
+      ],
+      "evidenceIds": [
+        "770430a42c9e3e4290f3c907"
+      ],
+      "sourceIds": [
+        "brand-page-1"
+      ]
+    },
+    {
+      "attributeId": "3a1d7f987468935b1bbbbe58",
+      "attribute": "It supports Markdown analysis.",
+      "party": "brand",
+      "competitorId": null,
+      "competitorName": null,
+      "signals": [
+        "It supports Markdown analysis."
+      ],
+      "evidenceIds": [
+        "12e678257e823ae6833ee812"
+      ],
+      "sourceIds": [
+        "brand-page-1"
+      ]
+    },
+    {
+      "attributeId": "c8ebe3e6eee4c45863be0f0a",
+      "attribute": "How it works",
+      "party": "competitor",
+      "competitorId": "competitor-1",
+      "competitorName": "Competitor Inc.",
+      "signals": [
+        "How it works"
+      ],
+      "evidenceIds": [
+        "1d41d4d893cd56c277635a1c"
+      ],
+      "sourceIds": [
+        "competitor-page-1"
+      ]
+    },
+    {
+      "attributeId": "df509faf6f1c7b8da798c935",
+      "attribute": "Pricing",
+      "party": "competitor",
+      "competitorId": "competitor-1",
+      "competitorName": "Competitor Inc.",
+      "signals": [
+        "Pricing"
+      ],
+      "evidenceIds": [
+        "fe66970ee602c6a7cc5db38a"
+      ],
+      "sourceIds": [
+        "competitor-page-1"
+      ]
+    },
+    {
+      "attributeId": "2d4fa2e2876efbc3833563db",
+      "attribute": "Can I try it?",
+      "party": "competitor",
+      "competitorId": "competitor-1",
+      "competitorName": "Competitor Inc.",
+      "signals": [
+        "Can I try it?"
+      ],
+      "evidenceIds": [
+        "eab90251e1d48d23b7f7ecae"
+      ],
+      "sourceIds": [
+        "competitor-page-1"
+      ]
+    },
+    {
+      "attributeId": "3960fdd8af273f62fd4156f9",
+      "attribute": "Can I try it?",
+      "party": "competitor",
+      "competitorId": "competitor-1",
+      "competitorName": "Competitor Inc.",
+      "signals": [
+        "Can I try it?"
+      ],
+      "evidenceIds": [
+        "eab90251e1d48d23b7f7ecae"
+      ],
+      "sourceIds": [
+        "competitor-page-1"
+      ]
+    },
+    {
+      "attributeId": "b31d3f0a732cf0f6693a79c8",
+      "attribute": "## Can I try it?",
+      "party": "competitor",
+      "competitorId": "competitor-1",
+      "competitorName": "Competitor Inc.",
+      "signals": [
+        "## Can I try it?"
+      ],
+      "evidenceIds": [
+        "8fb92df2058b9a2431e1f49b"
+      ],
+      "sourceIds": [
+        "competitor-page-1"
+      ]
+    },
+    {
+      "attributeId": "f1b19a539c68732c52ff3c65",
+      "attribute": "Trusted by 500 customer teams.",
+      "party": "competitor",
+      "competitorId": "competitor-1",
+      "competitorName": "Competitor Inc.",
+      "signals": [
+        "Trusted by 500 customer teams."
+      ],
+      "evidenceIds": [
+        "28372c492741aadd66066960"
+      ],
+      "sourceIds": [
+        "competitor-page-1"
+      ]
+    },
+    {
+      "attributeId": "32c3c875998590877aa89233",
+      "attribute": "## Pricing",
+      "party": "competitor",
+      "competitorId": "competitor-1",
+      "competitorName": "Competitor Inc.",
+      "signals": [
+        "## Pricing"
+      ],
+      "evidenceIds": [
+        "954a72815cda33b0115378b5"
+      ],
+      "sourceIds": [
+        "competitor-page-1"
+      ]
+    },
+    {
+      "attributeId": "d117e9e004620fea1095ea66",
+      "attribute": "Plans start at $20 per month.",
+      "party": "competitor",
+      "competitorId": "competitor-1",
+      "competitorName": "Competitor Inc.",
+      "signals": [
+        "Plans start at $20 per month."
+      ],
+      "evidenceIds": [
+        "dd0642565034c50bb334ff1d"
+      ],
+      "sourceIds": [
+        "competitor-page-1"
+      ]
+    },
+    {
+      "attributeId": "a74d1182649ba627de683d68",
+      "attribute": "## How it works",
+      "party": "competitor",
+      "competitorId": "competitor-1",
+      "competitorName": "Competitor Inc.",
+      "signals": [
+        "## How it works"
+      ],
+      "evidenceIds": [
+        "9819ff4e63151bb14235f598"
+      ],
+      "sourceIds": [
+        "competitor-page-1"
+      ]
+    },
+    {
+      "attributeId": "b7fd9a928d0521afbea9ecde",
+      "attribute": "1. Upload a document.",
+      "party": "competitor",
+      "competitorId": "competitor-1",
+      "competitorName": "Competitor Inc.",
+      "signals": [
+        "1. Upload a document."
+      ],
+      "evidenceIds": [
+        "a7e39587f44fe6ba2a2e8aa7"
+      ],
+      "sourceIds": [
+        "competitor-page-1"
+      ]
+    },
+    {
+      "attributeId": "91a44c946158673222dc6197",
+      "attribute": "2. Review the findings.",
+      "party": "competitor",
+      "competitorId": "competitor-1",
+      "competitorName": "Competitor Inc.",
+      "signals": [
+        "2. Review the findings."
+      ],
+      "evidenceIds": [
+        "54d55ada5cef8faed9ab26a7"
+      ],
+      "sourceIds": [
+        "competitor-page-1"
+      ]
+    },
+    {
+      "attributeId": "82d6d4b9a0dda86f7bf55bb1",
+      "attribute": "Yes. Start a free trial.",
+      "party": "competitor",
+      "competitorId": "competitor-1",
+      "competitorName": "Competitor Inc.",
+      "signals": [
+        "Yes. Start a free trial."
+      ],
+      "evidenceIds": [
+        "1cdd43e8a3244740b8256305"
+      ],
+      "sourceIds": [
+        "competitor-page-1"
+      ]
+    },
+    {
+      "attributeId": "43242d02d65de99cf5566824",
+      "attribute": "Trusted by 200 teams.",
+      "party": "competitor",
+      "competitorId": "alt-co",
+      "competitorName": "Alt Co",
+      "signals": [
+        "Trusted by 200 teams."
+      ],
+      "evidenceIds": [
+        "db4de6a2cf42c9cc2167401f"
+      ],
+      "sourceIds": [
+        "competitor-alt"
+      ]
+    }
+  ],
+  "perceptionGaps": [
+    {
+      "gapId": "2a03926cd2685c2802a567e2",
+      "attribute": "1. Upload a document.",
+      "status": "supportedGap",
+      "summary": "Competitor pages explicitly signal \"1. Upload a document.\" while brand pages do not in the supplied content.",
+      "evidenceIds": [
+        "a7e39587f44fe6ba2a2e8aa7"
+      ],
+      "observationIds": [],
+      "competitorIds": [
+        "competitor-1"
+      ]
+    },
+    {
+      "gapId": "ef7ea59a0882db3cf880d051",
+      "attribute": "2. Review the findings.",
+      "status": "supportedGap",
+      "summary": "Competitor pages explicitly signal \"2. Review the findings.\" while brand pages do not in the supplied content.",
+      "evidenceIds": [
+        "54d55ada5cef8faed9ab26a7"
+      ],
+      "observationIds": [],
+      "competitorIds": [
+        "competitor-1"
+      ]
+    },
+    {
+      "gapId": "b1009df35d187079a0ff1b8f",
+      "attribute": "Can I try it?",
+      "status": "supportedGap",
+      "summary": "Competitor pages explicitly signal \"Can I try it?\" while brand pages do not in the supplied content.",
+      "evidenceIds": [
+        "eab90251e1d48d23b7f7ecae",
+        "8fb92df2058b9a2431e1f49b"
+      ],
+      "observationIds": [],
+      "competitorIds": [
+        "competitor-1"
+      ]
+    },
+    {
+      "gapId": "e9407e2ae91b071a0e008a7d",
+      "attribute": "How it works",
+      "status": "supportedGap",
+      "summary": "Competitor pages explicitly signal \"How it works\" while brand pages do not in the supplied content.",
+      "evidenceIds": [
+        "1d41d4d893cd56c277635a1c",
+        "9819ff4e63151bb14235f598"
+      ],
+      "observationIds": [],
+      "competitorIds": [
+        "competitor-1"
+      ]
+    },
+    {
+      "gapId": "103f2f4581ef2baf2cf760f6",
+      "attribute": "Plans start at $20 per month.",
+      "status": "supportedGap",
+      "summary": "Competitor pages explicitly signal \"Plans start at $20 per month.\" while brand pages do not in the supplied content.",
+      "evidenceIds": [
+        "dd0642565034c50bb334ff1d"
+      ],
+      "observationIds": [],
+      "competitorIds": [
+        "competitor-1"
+      ]
+    },
+    {
+      "gapId": "6c8dad25efd06272323f653f",
+      "attribute": "Pricing",
+      "status": "supportedGap",
+      "summary": "Competitor pages explicitly signal \"Pricing\" while brand pages do not in the supplied content.",
+      "evidenceIds": [
+        "fe66970ee602c6a7cc5db38a",
+        "954a72815cda33b0115378b5"
+      ],
+      "observationIds": [],
+      "competitorIds": [
+        "competitor-1"
+      ]
+    },
+    {
+      "gapId": "e197cf0b01b93887987a270b",
+      "attribute": "Trusted by 200 teams.",
+      "status": "supportedGap",
+      "summary": "Competitor pages explicitly signal \"Trusted by 200 teams.\" while brand pages do not in the supplied content.",
+      "evidenceIds": [
+        "db4de6a2cf42c9cc2167401f"
+      ],
+      "observationIds": [],
+      "competitorIds": [
+        "alt-co"
+      ]
+    },
+    {
+      "gapId": "51800fd4746bc5f55d57f452",
+      "attribute": "Trusted by 500 customer teams.",
+      "status": "supportedGap",
+      "summary": "Competitor pages explicitly signal \"Trusted by 500 customer teams.\" while brand pages do not in the supplied content.",
+      "evidenceIds": [
+        "28372c492741aadd66066960"
+      ],
+      "observationIds": [],
+      "competitorIds": [
+        "competitor-1"
+      ]
+    },
+    {
+      "gapId": "18d92ac13406a57fd547e3e8",
+      "attribute": "Yes. Start a free trial.",
+      "status": "supportedGap",
+      "summary": "Competitor pages explicitly signal \"Yes. Start a free trial.\" while brand pages do not in the supplied content.",
+      "evidenceIds": [
+        "1cdd43e8a3244740b8256305"
+      ],
+      "observationIds": [],
+      "competitorIds": [
+        "competitor-1"
+      ]
+    },
+    {
+      "gapId": "71cb75af4764cb0701d11f5e",
+      "attribute": "AI-answer mention for query: best document analyzer",
+      "status": "observationOnly",
+      "summary": "Supplied AI-answer observation mentions competitor(s) competitor-1 without confirmed subject mention. This is an observation record, not measured market perception.",
+      "evidenceIds": [],
+      "observationIds": [
+        "obs-1"
+      ],
+      "competitorIds": [
+        "competitor-1"
+      ]
+    }
+  ],
+  "messagingHypotheses": [
+    {
+      "hypothesisId": "31d705afd6dd968731e8c877",
+      "origin": "generatedHypothesis",
+      "message": "Consider stating a supportable brand claim covering \"1. Upload a document.\" when evidence exists in governed sources.",
+      "targetQuery": "1. Upload a document. for brand",
+      "relatedAttribute": "1. Upload a document.",
+      "evidenceIds": [
+        "a7e39587f44fe6ba2a2e8aa7"
+      ],
+      "disclaimer": "generatedHypothesis only; not measured market perception, demand, or ranking."
+    },
+    {
+      "hypothesisId": "f18b46ec902b4b83600ebf9b",
+      "origin": "generatedHypothesis",
+      "message": "Consider stating a supportable brand claim covering \"2. Review the findings.\" when evidence exists in governed sources.",
+      "targetQuery": "2. Review the findings. for brand",
+      "relatedAttribute": "2. Review the findings.",
+      "evidenceIds": [
+        "54d55ada5cef8faed9ab26a7"
+      ],
+      "disclaimer": "generatedHypothesis only; not measured market perception, demand, or ranking."
+    },
+    {
+      "hypothesisId": "3e61c5901ad0734dbeaf4fa1",
+      "origin": "generatedHypothesis",
+      "message": "Consider stating a supportable brand claim covering \"Can I try it?\" when evidence exists in governed sources.",
+      "targetQuery": "Can I try it? for brand",
+      "relatedAttribute": "Can I try it?",
+      "evidenceIds": [
+        "eab90251e1d48d23b7f7ecae",
+        "8fb92df2058b9a2431e1f49b"
+      ],
+      "disclaimer": "generatedHypothesis only; not measured market perception, demand, or ranking."
+    },
+    {
+      "hypothesisId": "406b96f20df063676acc49f3",
+      "origin": "generatedHypothesis",
+      "message": "Consider stating a supportable brand claim covering \"How it works\" when evidence exists in governed sources.",
+      "targetQuery": "How it works for brand",
+      "relatedAttribute": "How it works",
+      "evidenceIds": [
+        "1d41d4d893cd56c277635a1c",
+        "9819ff4e63151bb14235f598"
+      ],
+      "disclaimer": "generatedHypothesis only; not measured market perception, demand, or ranking."
+    },
+    {
+      "hypothesisId": "9291f51937cc18bd6a6804eb",
+      "origin": "generatedHypothesis",
+      "message": "Consider stating a supportable brand claim covering \"Plans start at $20 per month.\" when evidence exists in governed sources.",
+      "targetQuery": "Plans start at $20 per month. for brand",
+      "relatedAttribute": "Plans start at $20 per month.",
+      "evidenceIds": [
+        "dd0642565034c50bb334ff1d"
+      ],
+      "disclaimer": "generatedHypothesis only; not measured market perception, demand, or ranking."
+    },
+    {
+      "hypothesisId": "5c141af2a304d0d11cfef69b",
+      "origin": "generatedHypothesis",
+      "message": "Consider stating a supportable brand claim covering \"Pricing\" when evidence exists in governed sources.",
+      "targetQuery": "Pricing for brand",
+      "relatedAttribute": "Pricing",
+      "evidenceIds": [
+        "fe66970ee602c6a7cc5db38a",
+        "954a72815cda33b0115378b5"
+      ],
+      "disclaimer": "generatedHypothesis only; not measured market perception, demand, or ranking."
+    },
+    {
+      "hypothesisId": "cc04224293ca6730367a4626",
+      "origin": "generatedHypothesis",
+      "message": "Consider stating a supportable brand claim covering \"Trusted by 200 teams.\" when evidence exists in governed sources.",
+      "targetQuery": "Trusted by 200 teams. for brand",
+      "relatedAttribute": "Trusted by 200 teams.",
+      "evidenceIds": [
+        "db4de6a2cf42c9cc2167401f"
+      ],
+      "disclaimer": "generatedHypothesis only; not measured market perception, demand, or ranking."
+    },
+    {
+      "hypothesisId": "d12f87765c3d6d9b137d558d",
+      "origin": "generatedHypothesis",
+      "message": "Consider stating a supportable brand claim covering \"Trusted by 500 customer teams.\" when evidence exists in governed sources.",
+      "targetQuery": "Trusted by 500 customer teams. for brand",
+      "relatedAttribute": "Trusted by 500 customer teams.",
+      "evidenceIds": [
+        "28372c492741aadd66066960"
+      ],
+      "disclaimer": "generatedHypothesis only; not measured market perception, demand, or ranking."
+    },
+    {
+      "hypothesisId": "768b35131b28f406a4f02085",
+      "origin": "generatedHypothesis",
+      "message": "Consider stating a supportable brand claim covering \"Yes. Start a free trial.\" when evidence exists in governed sources.",
+      "targetQuery": "Yes. Start a free trial. for brand",
+      "relatedAttribute": "Yes. Start a free trial.",
+      "evidenceIds": [
+        "1cdd43e8a3244740b8256305"
+      ],
+      "disclaimer": "generatedHypothesis only; not measured market perception, demand, or ranking."
+    },
+    {
+      "hypothesisId": "e41efe1560faca100595c41d",
+      "origin": "generatedHypothesis",
+      "message": "Test explicit differentiation against observed competitor mention for \"AI-answer mention for query: best document analyzer\".",
+      "targetQuery": "why choose brand instead of competitor-1",
+      "relatedAttribute": "AI-answer mention for query: best document analyzer",
+      "evidenceIds": [],
+      "disclaimer": "generatedHypothesis only; not measured market perception, demand, or ranking."
+    }
+  ],
+  "observations": [
+    {
+      "observationId": "obs-1",
+      "modelOrEngine": "example-engine/v1",
+      "query": "best document analyzer",
+      "rawResponse": "Competitor Inc. is frequently recommended for document analysis.",
+      "observedAtUtc": "2026-09-01T12:00:00Z",
+      "subjectMentioned": false,
+      "competitorIdsMentioned": [
+        "competitor-1"
+      ]
+    }
+  ],
+  "warnings": [
+    "Positioning output mixes supplied page evidence with optional AI-answer observations. Generated messaging and queries are labeled generatedHypothesis and must never be treated as measured market perception, share of voice, or demand.",
+    "Analysis uses supplied documents only. It does not infer traffic, search volume, audience demand, rankings, or competitor performance.",
+    "Positioning map considers 2 competitor pages.",
+    "AI-answer observations preserve model/engine, query, raw response, and observation date exactly as supplied; the service does not validate or fetch those answers."
+  ],
+  "provenance": {
+    "engineVersion": "deterministic-competitor-intelligence.v1",
+    "sources": [
+      {
+        "sourceId": "brand-page-1",
+        "url": "https://brand.example/analyzer",
+        "title": "Brand Analyzer",
+        "retrievedAtUtc": null,
+        "sourceDigest": null,
+        "parserId": null,
+        "parserVersion": null
+      },
+      {
+        "sourceId": "competitor-page-1",
+        "url": "https://competitor.example/analyzer",
+        "title": "Competitor Analyzer",
+        "retrievedAtUtc": null,
+        "sourceDigest": null,
+        "parserId": null,
+        "parserVersion": null
+      },
+      {
+        "sourceId": "competitor-alt",
+        "url": "https://competitor.example/analyzer",
+        "title": "Alt Co page",
+        "retrievedAtUtc": null,
+        "sourceDigest": null,
+        "parserId": null,
+        "parserVersion": null
+      }
+    ],
+    "evidenceIds": [
+      "supplied-price-evidence",
+      "efc8115cd7eb931731f3caba",
+      "770430a42c9e3e4290f3c907",
+      "12e678257e823ae6833ee812",
+      "1d41d4d893cd56c277635a1c",
+      "fe66970ee602c6a7cc5db38a",
+      "eab90251e1d48d23b7f7ecae",
+      "8fb92df2058b9a2431e1f49b",
+      "28372c492741aadd66066960",
+      "954a72815cda33b0115378b5",
+      "dd0642565034c50bb334ff1d",
+      "9819ff4e63151bb14235f598",
+      "a7e39587f44fe6ba2a2e8aa7",
+      "54d55ada5cef8faed9ab26a7",
+      "1cdd43e8a3244740b8256305",
+      "db4de6a2cf42c9cc2167401f"
+    ],
+    "evidence": [
+      {
+        "evidenceId": "supplied-price-evidence",
+        "sourceId": "competitor-page-1",
+        "quote": "Plans start at $20 per month.",
+        "startChar": null,
+        "endChar": null
+      },
+      {
+        "evidenceId": "efc8115cd7eb931731f3caba",
+        "sourceId": "brand-page-1",
+        "quote": "Capabilities",
+        "startChar": 65,
+        "endChar": 77
+      },
+      {
+        "evidenceId": "770430a42c9e3e4290f3c907",
+        "sourceId": "brand-page-1",
+        "quote": "## Capabilities",
+        "startChar": 62,
+        "endChar": 77
+      },
+      {
+        "evidenceId": "12e678257e823ae6833ee812",
+        "sourceId": "brand-page-1",
+        "quote": "It supports Markdown analysis.",
+        "startChar": 79,
+        "endChar": 109
+      },
+      {
+        "evidenceId": "1d41d4d893cd56c277635a1c",
+        "sourceId": "competitor-page-1",
+        "quote": "How it works",
+        "startChar": 58,
+        "endChar": 70
+      },
+      {
+        "evidenceId": "fe66970ee602c6a7cc5db38a",
+        "sourceId": "competitor-page-1",
+        "quote": ".\n\n## Pricing\n\nPlan",
+        "startChar": 116,
+        "endChar": 135
+      },
+      {
+        "evidenceId": "eab90251e1d48d23b7f7ecae",
+        "sourceId": "competitor-page-1",
+        "quote": "Can I try it?",
+        "startChar": 165,
+        "endChar": 178
+      },
+      {
+        "evidenceId": "8fb92df2058b9a2431e1f49b",
+        "sourceId": "competitor-page-1",
+        "quote": "## Can I try it?",
+        "startChar": 162,
+        "endChar": 178
+      },
+      {
+        "evidenceId": "28372c492741aadd66066960",
+        "sourceId": "competitor-page-1",
+        "quote": "Trusted by 500 customer teams.",
+        "startChar": 23,
+        "endChar": 53
+      },
+      {
+        "evidenceId": "954a72815cda33b0115378b5",
+        "sourceId": "competitor-page-1",
+        "quote": "ngs.\n\n## Pricing\n\nPlan",
+        "startChar": 113,
+        "endChar": 135
+      },
+      {
+        "evidenceId": "dd0642565034c50bb334ff1d",
+        "sourceId": "competitor-page-1",
+        "quote": "Plans start at $20 per month.",
+        "startChar": 131,
+        "endChar": 160
+      },
+      {
+        "evidenceId": "9819ff4e63151bb14235f598",
+        "sourceId": "competitor-page-1",
+        "quote": "## How it works",
+        "startChar": 55,
+        "endChar": 70
+      },
+      {
+        "evidenceId": "a7e39587f44fe6ba2a2e8aa7",
+        "sourceId": "competitor-page-1",
+        "quote": "1. Upload a document.",
+        "startChar": 72,
+        "endChar": 93
+      },
+      {
+        "evidenceId": "54d55ada5cef8faed9ab26a7",
+        "sourceId": "competitor-page-1",
+        "quote": "2. Review the findings.",
+        "startChar": 94,
+        "endChar": 117
+      },
+      {
+        "evidenceId": "1cdd43e8a3244740b8256305",
+        "sourceId": "competitor-page-1",
+        "quote": "Yes. Start a free trial.",
+        "startChar": 180,
+        "endChar": 204
+      },
+      {
+        "evidenceId": "db4de6a2cf42c9cc2167401f",
+        "sourceId": "competitor-alt",
+        "quote": "Trusted by 200 teams.",
+        "startChar": 7,
+        "endChar": 28
+      }
+    ]
+  }
+}

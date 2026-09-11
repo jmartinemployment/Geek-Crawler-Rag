@@ -28,6 +28,9 @@ QUERY_FIXTURE = FIXTURES / "query-planner-golden.v1.json"
 COMPETITOR_FIXTURE = FIXTURES / "competitor-intelligence-golden.v1.json"
 READINESS_FIXTURE = FIXTURES / "readiness-comparison-golden.v1.json"
 POSITIONING_FIXTURE = FIXTURES / "competitor-positioning-golden.v1.json"
+POSITIONING_MULTI_INPUT = FIXTURES / "competitor-positioning-multi.input.json"
+CONTENT_GAP_PARTIAL_INPUT = FIXTURES / "content-gap-partial.input.json"
+PAGE_PARTIAL_INPUT = FIXTURES / "competitor-page-partial.input.json"
 
 
 def _query_request() -> QueryPlannerRequest:
@@ -299,19 +302,10 @@ def test_competitor_positioning_preserves_observations_and_labels_hypotheses() -
 
 
 def test_competitor_positioning_multi_competitor_cohort_warning() -> None:
-    payload = json.loads(POSITIONING_FIXTURE.read_text())
-    primary = payload["competitorPages"][0]
-    second = json.loads(json.dumps(primary))
-    second["competitorId"] = "alt-co"
-    second["competitorName"] = "Alt Co"
-    second["source"]["sourceId"] = "competitor-alt"
-    second["source"]["title"] = "Alt Co page"
-    second["visibleContent"] = "# Alt\n\nTrusted by 200 teams."
-    second["evidence"] = []
-    payload["competitorPages"] = [primary, second]
-    artifact = IntelligenceService().competitor_positioning(
-        CompetitorPositioningRequest.model_validate(payload)
+    request = CompetitorPositioningRequest.model_validate(
+        json.loads(POSITIONING_MULTI_INPUT.read_text())
     )
+    artifact = IntelligenceService().competitor_positioning(request)
     assert any(
         "Positioning map considers 2 competitor pages." in warning
         for warning in artifact.warnings
@@ -334,6 +328,59 @@ def test_partial_brand_positioning_never_asserts_absence() -> None:
     assert content_gaps
     assert all(gap.status == "coverageUnknown" for gap in content_gaps)
     assert any("coverageUnknown" in warning for warning in artifact.warnings)
+
+
+def test_multi_competitor_and_partial_crawl_goldens_match_live_service() -> None:
+    """Committed multi/partial fixtures shared with GeekBackend contract tests."""
+    service = IntelligenceService()
+    cases = [
+        (
+            "competitorPositioning.multi.v1",
+            CompetitorPositioningArtifact,
+            service.competitor_positioning(
+                CompetitorPositioningRequest.model_validate(
+                    json.loads(POSITIONING_MULTI_INPUT.read_text())
+                )
+            ),
+        ),
+        (
+            "contentGapAnalysis.partial.v1",
+            ContentGapArtifact,
+            service.content_gap(
+                ContentGapRequest.model_validate(
+                    json.loads(CONTENT_GAP_PARTIAL_INPUT.read_text())
+                )
+            ),
+        ),
+        (
+            "competitorPageAnalysis.partial.v1",
+            CompetitorPageAnalysisArtifact,
+            service.competitor_page_analysis(
+                CompetitorPageAnalysisRequest.model_validate(
+                    json.loads(PAGE_PARTIAL_INPUT.read_text())
+                )
+            ),
+        ),
+    ]
+    for artifact_type, contract, live in cases:
+        path = FIXTURES / f"{artifact_type}.golden.json"
+        golden = json.loads(path.read_text())
+        assert golden["artifactType"] == artifact_type.replace(".multi", "").replace(
+            ".partial", ""
+        )
+        assert contract.model_validate(golden) == live
+        assert golden == json.loads(live.model_dump_json(by_alias=True))
+        if "multi" in artifact_type:
+            assert any(
+                "Positioning map considers 2 competitor pages." in warning
+                for warning in live.warnings
+            )
+        if "partial" in artifact_type and artifact_type.startswith("contentGap"):
+            assert live.gaps
+            assert all(gap.status == "coverageUnknown" for gap in live.gaps)
+        if artifact_type.startswith("competitorPageAnalysis.partial"):
+            assert all(item.present is None for item in live.dimensions)
+            assert live.opportunities == []
 
 
 def test_intelligence_contracts_round_trip_forbid_extras_and_pin_versions() -> None:
@@ -371,6 +418,37 @@ def test_intelligence_contracts_round_trip_forbid_extras_and_pin_versions() -> N
     readiness_payload["contractVersion"] = "readinessComparisonInput.v2"
     with pytest.raises(ValidationError):
         ReadinessComparisonRequest.model_validate(readiness_payload)
+
+
+def test_intelligence_artifact_goldens_match_live_service_output() -> None:
+    """Shared camelCase goldens consumed by GeekBackend intelligence contract tests."""
+    service = IntelligenceService()
+    expected = {
+        "queryPlan.v1": (QueryPlanArtifact, service.query_plan(_query_request())),
+        "competitorPageAnalysis.v1": (
+            CompetitorPageAnalysisArtifact,
+            service.competitor_page_analysis(_page_request()),
+        ),
+        "contentGapAnalysis.v1": (ContentGapArtifact, service.content_gap(_gap_request())),
+        "readinessComparison.v1": (
+            ReadinessComparisonArtifact,
+            service.readiness_comparison(_readiness_request()),
+        ),
+        "competitorAudit.v1": (
+            CompetitorAuditArtifact,
+            service.competitor_audit(_audit_request()),
+        ),
+        "competitorPositioning.v1": (
+            CompetitorPositioningArtifact,
+            service.competitor_positioning(_positioning_request()),
+        ),
+    }
+    for artifact_type, (contract, live) in expected.items():
+        path = FIXTURES / f"{artifact_type}.golden.json"
+        golden = json.loads(path.read_text())
+        assert golden["artifactType"] == artifact_type
+        assert contract.model_validate(golden) == live
+        assert golden == json.loads(live.model_dump_json(by_alias=True))
 
 
 def test_intelligence_routes_are_versioned_and_api_key_protected() -> None:

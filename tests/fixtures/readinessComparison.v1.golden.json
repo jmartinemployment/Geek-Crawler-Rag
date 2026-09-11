@@ -1,0 +1,288 @@
+{
+  "artifactType": "readinessComparison.v1",
+  "analyzerVersion": "ai-readiness-comparison-heuristic.v1",
+  "methodology": "heuristic",
+  "rubricVersion": "ai-readiness-heuristic.v1",
+  "subject": {
+    "role": "subject",
+    "sourceId": "subject-page-1",
+    "competitorId": null,
+    "competitorName": null,
+    "overallScore": 76.4,
+    "dimensions": [
+      {
+        "dimension": "headingHierarchy",
+        "score": 100.0,
+        "explanation": "Found 7 heading(s), 0 skipped level transition(s).",
+        "evidenceIds": []
+      },
+      {
+        "dimension": "answerFirst",
+        "score": 100.0,
+        "explanation": "Opening sentence contains 5 words; delayed-introduction marker=False.",
+        "evidenceIds": []
+      },
+      {
+        "dimension": "faq",
+        "score": 100.0,
+        "explanation": "Found 3 visible question-and-answer pair(s).",
+        "evidenceIds": []
+      },
+      {
+        "dimension": "schema",
+        "score": 0.0,
+        "explanation": "Supplied JSON-LD contains 0 node(s); basic shape valid=False.",
+        "evidenceIds": []
+      },
+      {
+        "dimension": "factDensity",
+        "score": 54.6,
+        "explanation": "Heuristic ratio of specific factual sentences, weighted by caller-supplied evidence support.",
+        "evidenceIds": [
+          "subject-ev-1"
+        ]
+      },
+      {
+        "dimension": "eeat",
+        "score": 80.0,
+        "explanation": "Found 4 of 5 explicit authorship, sourcing, and experience indicators.",
+        "evidenceIds": []
+      },
+      {
+        "dimension": "technicalCrawlabilityPerformance",
+        "score": 100.0,
+        "explanation": "crawlable=True, status=200, loadTimeMs=1200.",
+        "evidenceIds": []
+      }
+    ],
+    "prioritizedFixes": [
+      "Add applicable JSON-LD that exactly matches visible content.",
+      "Replace vague prose with verified specifics and attach exact evidence."
+    ],
+    "warnings": [
+      "Scores and classifications are deterministic heuristics, not measured search-engine or AI-citation outcomes."
+    ],
+    "evidenceIds": [
+      "subject-ev-1"
+    ]
+  },
+  "competitors": [
+    {
+      "role": "competitor",
+      "sourceId": "competitor-page-1",
+      "competitorId": "competitor-1",
+      "competitorName": "Competitor Inc.",
+      "overallScore": 56.4,
+      "dimensions": [
+        {
+          "dimension": "headingHierarchy",
+          "score": 100.0,
+          "explanation": "Found 4 heading(s), 0 skipped level transition(s).",
+          "evidenceIds": []
+        },
+        {
+          "dimension": "answerFirst",
+          "score": 100.0,
+          "explanation": "Opening sentence contains 5 words; delayed-introduction marker=False.",
+          "evidenceIds": []
+        },
+        {
+          "dimension": "faq",
+          "score": 70.0,
+          "explanation": "Found 1 visible question-and-answer pair(s).",
+          "evidenceIds": []
+        },
+        {
+          "dimension": "schema",
+          "score": 0.0,
+          "explanation": "Supplied JSON-LD contains 0 node(s); basic shape valid=False.",
+          "evidenceIds": []
+        },
+        {
+          "dimension": "factDensity",
+          "score": 25.0,
+          "explanation": "Heuristic ratio of specific factual sentences, weighted by caller-supplied evidence support.",
+          "evidenceIds": [
+            "supplied-price-evidence"
+          ]
+        },
+        {
+          "dimension": "eeat",
+          "score": 0.0,
+          "explanation": "Found 0 of 5 explicit authorship, sourcing, and experience indicators.",
+          "evidenceIds": []
+        },
+        {
+          "dimension": "technicalCrawlabilityPerformance",
+          "score": 100.0,
+          "explanation": "crawlable=True, status=200, loadTimeMs=1800.",
+          "evidenceIds": []
+        }
+      ],
+      "prioritizedFixes": [
+        "Add explicit authorship, source attribution, and first-hand evidence.",
+        "Add applicable JSON-LD that exactly matches visible content.",
+        "Replace vague prose with verified specifics and attach exact evidence.",
+        "Add visible, content-supported question-and-answer pairs where useful."
+      ],
+      "warnings": [
+        "Scores and classifications are deterministic heuristics, not measured search-engine or AI-citation outcomes."
+      ],
+      "evidenceIds": [
+        "supplied-price-evidence"
+      ]
+    }
+  ],
+  "dimensionDeltas": [
+    {
+      "dimension": "headingHierarchy",
+      "subjectScore": 100.0,
+      "competitorScores": [
+        {
+          "sourceId": "competitor-page-1",
+          "competitorId": "competitor-1",
+          "score": 100.0
+        }
+      ],
+      "bestCompetitorScore": 100.0,
+      "deltaVsBestCompetitor": 0.0,
+      "summary": "Subject headingHierarchy score 100.0 is tied with best competitor score 100.0 (delta 0.0)."
+    },
+    {
+      "dimension": "answerFirst",
+      "subjectScore": 100.0,
+      "competitorScores": [
+        {
+          "sourceId": "competitor-page-1",
+          "competitorId": "competitor-1",
+          "score": 100.0
+        }
+      ],
+      "bestCompetitorScore": 100.0,
+      "deltaVsBestCompetitor": 0.0,
+      "summary": "Subject answerFirst score 100.0 is tied with best competitor score 100.0 (delta 0.0)."
+    },
+    {
+      "dimension": "faq",
+      "subjectScore": 100.0,
+      "competitorScores": [
+        {
+          "sourceId": "competitor-page-1",
+          "competitorId": "competitor-1",
+          "score": 70.0
+        }
+      ],
+      "bestCompetitorScore": 70.0,
+      "deltaVsBestCompetitor": 30.0,
+      "summary": "Subject faq score 100.0 is ahead of best competitor score 70.0 (delta 30.0)."
+    },
+    {
+      "dimension": "schema",
+      "subjectScore": 0.0,
+      "competitorScores": [
+        {
+          "sourceId": "competitor-page-1",
+          "competitorId": "competitor-1",
+          "score": 0.0
+        }
+      ],
+      "bestCompetitorScore": 0.0,
+      "deltaVsBestCompetitor": 0.0,
+      "summary": "Subject schema score 0.0 is tied with best competitor score 0.0 (delta 0.0)."
+    },
+    {
+      "dimension": "factDensity",
+      "subjectScore": 54.6,
+      "competitorScores": [
+        {
+          "sourceId": "competitor-page-1",
+          "competitorId": "competitor-1",
+          "score": 25.0
+        }
+      ],
+      "bestCompetitorScore": 25.0,
+      "deltaVsBestCompetitor": 29.6,
+      "summary": "Subject factDensity score 54.6 is ahead of best competitor score 25.0 (delta 29.6)."
+    },
+    {
+      "dimension": "eeat",
+      "subjectScore": 80.0,
+      "competitorScores": [
+        {
+          "sourceId": "competitor-page-1",
+          "competitorId": "competitor-1",
+          "score": 0.0
+        }
+      ],
+      "bestCompetitorScore": 0.0,
+      "deltaVsBestCompetitor": 80.0,
+      "summary": "Subject eeat score 80.0 is ahead of best competitor score 0.0 (delta 80.0)."
+    },
+    {
+      "dimension": "technicalCrawlabilityPerformance",
+      "subjectScore": 100.0,
+      "competitorScores": [
+        {
+          "sourceId": "competitor-page-1",
+          "competitorId": "competitor-1",
+          "score": 100.0
+        }
+      ],
+      "bestCompetitorScore": 100.0,
+      "deltaVsBestCompetitor": 0.0,
+      "summary": "Subject technicalCrawlabilityPerformance score 100.0 is tied with best competitor score 100.0 (delta 0.0)."
+    }
+  ],
+  "prioritizedFixes": [
+    "Add applicable JSON-LD that exactly matches visible content.",
+    "Replace vague prose with verified specifics and attach exact evidence."
+  ],
+  "warnings": [
+    "Readiness comparison scores are deterministic heuristics under ai-readiness-heuristic.v1; they are not traffic, demand, ranking, or market-perception measurements.",
+    "Analysis uses supplied documents only. It does not infer traffic, search volume, audience demand, rankings, or competitor performance.",
+    "Scores and classifications are deterministic heuristics, not measured search-engine or AI-citation outcomes."
+  ],
+  "provenance": {
+    "engineVersion": "deterministic-competitor-intelligence.v1",
+    "sources": [
+      {
+        "sourceId": "subject-page-1",
+        "url": "https://subject.example/analyzer",
+        "title": "Subject Analyzer",
+        "retrievedAtUtc": null,
+        "sourceDigest": null,
+        "parserId": null,
+        "parserVersion": null
+      },
+      {
+        "sourceId": "competitor-page-1",
+        "url": "https://competitor.example/analyzer",
+        "title": "Competitor Analyzer",
+        "retrievedAtUtc": null,
+        "sourceDigest": null,
+        "parserId": null,
+        "parserVersion": null
+      }
+    ],
+    "evidenceIds": [
+      "subject-ev-1",
+      "supplied-price-evidence"
+    ],
+    "evidence": [
+      {
+        "evidenceId": "subject-ev-1",
+        "sourceId": "subject-page-1",
+        "quote": "According to Subject Research, it processes 100 documents.",
+        "startChar": null,
+        "endChar": null
+      },
+      {
+        "evidenceId": "supplied-price-evidence",
+        "sourceId": "competitor-page-1",
+        "quote": "Plans start at $20 per month.",
+        "startChar": null,
+        "endChar": null
+      }
+    ]
+  }
+}

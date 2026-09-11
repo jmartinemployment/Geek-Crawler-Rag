@@ -1,0 +1,98 @@
+{
+  "artifactType": "claimLedger.v1",
+  "generatorVersion": "citable-claims-heuristic.v1",
+  "methodology": "Extract already-specific attributable statements from supplied visible content and rewrite vague target statements only when exact supporting quotes exist. Never invent statistics or unsupported specifics.",
+  "claims": [
+    {
+      "claimId": "dce50f789e723cbc814b8647",
+      "claimText": "# Claims Source\n\nAccording to Acme Research, teams cut review time by 37% in 2024.",
+      "claimType": "quantifiableFact",
+      "attribution": "Acme Research",
+      "evidenceIds": [
+        "94c6a188e049da8203e7fb9b"
+      ],
+      "verificationStatus": "supported",
+      "confidence": "high",
+      "contradictionState": "none",
+      "insertionLocation": "Proof section",
+      "sourceStatement": null
+    },
+    {
+      "claimId": "4cbe76966e5d7a1a5eff19eb",
+      "claimText": "Trusted by Contoso Analytics for document workflows.",
+      "claimType": "attributableStatement",
+      "attribution": null,
+      "evidenceIds": [
+        "a844cb65fb5ba54ec6095f52"
+      ],
+      "verificationStatus": "supported",
+      "confidence": "high",
+      "contradictionState": "none",
+      "insertionLocation": "Proof section",
+      "sourceStatement": null
+    },
+    {
+      "claimId": "b9eb59c108150afda8b43c46",
+      "claimText": "Many customers see better outcomes overall.",
+      "claimType": "rewrittenSpecific",
+      "attribution": null,
+      "evidenceIds": [],
+      "verificationStatus": "unsupported",
+      "confidence": "low",
+      "contradictionState": "unknown",
+      "insertionLocation": "Proof section",
+      "sourceStatement": "Many customers see better outcomes overall."
+    },
+    {
+      "claimId": "353dda2155af574c77c4958a",
+      "claimText": "Adoption grew by a huge amount last year.",
+      "claimType": "rewrittenSpecific",
+      "attribution": null,
+      "evidenceIds": [],
+      "verificationStatus": "unsupported",
+      "confidence": "low",
+      "contradictionState": "unknown",
+      "insertionLocation": "Proof section",
+      "sourceStatement": "Adoption grew by a huge amount last year."
+    }
+  ],
+  "contradictionPairs": [],
+  "warnings": [
+    "Claims are extracted or rewritten from supplied visible content only; no statistics were invented to increase claim density.",
+    "A target statement matched only non-specific prose; no invented numbers were added.",
+    "A target statement lacked exact supporting quotes; it was marked unsupported without inventing replacement statistics."
+  ],
+  "provenance": {
+    "engineVersion": "deterministic-content.v1",
+    "source": {
+      "sourceId": "claims-source-1",
+      "url": "https://subject.example/claims",
+      "title": "Claims Source",
+      "retrievedAtUtc": null,
+      "sourceDigest": null,
+      "parserId": null,
+      "parserVersion": null
+    },
+    "queries": [],
+    "evidenceIds": [
+      "94c6a188e049da8203e7fb9b",
+      "a844cb65fb5ba54ec6095f52"
+    ],
+    "evidence": [
+      {
+        "evidenceId": "94c6a188e049da8203e7fb9b",
+        "sourceId": "claims-source-1",
+        "quote": "# Claims Source\n\nAccording to Acme Research, teams cut review time by 37% in 2024.",
+        "startChar": 0,
+        "endChar": 82
+      },
+      {
+        "evidenceId": "a844cb65fb5ba54ec6095f52",
+        "sourceId": "claims-source-1",
+        "quote": "Trusted by Contoso Analytics for document workflows.",
+        "startChar": 129,
+        "endChar": 181
+      }
+    ]
+  }
+}

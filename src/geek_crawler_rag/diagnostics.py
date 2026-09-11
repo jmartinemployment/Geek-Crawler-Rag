@@ -220,14 +220,14 @@ class DiagnosticService:
 
     def entity_map(self, request: EntityMapRequest) -> EntityMapArtifact:
         document = request.document
-        entities, relationships, generated_evidence = _extract_entity_graph(
-            document, request.seeds
+        entities, relationships, generated_evidence, alias_warnings = (
+            _extract_entity_graph(document, request.seeds)
         )
         coverage_comparisons: list[EntityCoverageComparison] = []
         recommendations: list[EntityCoverageRecommendation] = []
-        warnings = _base_warnings(document)
+        warnings = [*_base_warnings(document), *alias_warnings]
         if request.competitor_document is not None:
-            competitor_entities, _, competitor_evidence = _extract_entity_graph(
+            competitor_entities, _, competitor_evidence, _ = _extract_entity_graph(
                 request.competitor_document, request.seeds
             )
             generated_evidence.extend(competitor_evidence)
@@ -374,13 +374,27 @@ class DiagnosticService:
 def _extract_entity_graph(
     document: DiagnosticDocument,
     seeds: list[EntitySeed],
-) -> tuple[list[CanonicalEntity], list[EntityRelationship], list[EvidenceReference]]:
+) -> tuple[
+    list[CanonicalEntity],
+    list[EntityRelationship],
+    list[EvidenceReference],
+    list[str],
+]:
     text = _visible_text(document)
     aliases: dict[str, tuple[str, str, set[str]]] = {}
+    warnings: list[str] = []
     for seed in seeds:
         names = {seed.canonical_name, *seed.aliases}
         for name in names:
-            aliases[name.casefold()] = (
+            key = name.casefold()
+            previous = aliases.get(key)
+            if previous is not None and previous[0].casefold() != seed.canonical_name.casefold():
+                warnings.append(
+                    f"Ambiguous entity alias '{name}' claimed by "
+                    f"'{previous[0]}' and '{seed.canonical_name}'; "
+                    f"using '{seed.canonical_name}'."
+                )
+            aliases[key] = (
                 seed.canonical_name,
                 seed.entity_type,
                 names - {seed.canonical_name},
@@ -456,7 +470,7 @@ def _extract_entity_graph(
                         evidenceIds=_unique(shared_evidence),
                     )
                 )
-    return entities, relationships, generated_evidence
+    return entities, relationships, generated_evidence, _unique(warnings)
 
 
 def _visible_text(document: DiagnosticDocument) -> str:

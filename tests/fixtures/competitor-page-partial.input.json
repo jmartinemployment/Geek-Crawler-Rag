@@ -1,0 +1,16 @@
+{
+  "contractVersion": "competitorPageAnalysisInput.v1",
+  "page": {
+    "source": {
+      "sourceId": "competitor-page-1",
+      "url": "https://competitor.example/analyzer",
+      "title": "Competitor Analyzer"
+    },
+    "competitorId": "competitor-1",
+    "competitorName": "Competitor Inc.",
+    "visibleContent": "A supplied fragment without full-page context.",
+    "mediaType": "text/markdown",
+    "contentCompleteness": "partial",
+    "evidence": []
+  }
+}

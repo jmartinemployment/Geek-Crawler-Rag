@@ -1,0 +1,159 @@
+{
+  "artifactType": "queryPlan.v1",
+  "plannerVersion": "deterministic-query-planner.v1",
+  "methodology": {
+    "methodologyId": "query-priority-heuristic.v1",
+    "formula": "provenanceScore + intentScore + specificityScore + stageScore",
+    "provenanceWeights": {
+      "observed": 40,
+      "imported": 25,
+      "generatedHypothesis": 5
+    },
+    "intentWeights": {
+      "informational": 10,
+      "commercial": 20,
+      "transactional": 25,
+      "navigational": 15
+    },
+    "specificity_rule": "20 for queries with at least five tokens, 10 for three or four, otherwise 5",
+    "stageWeights": {
+      "awareness": 5,
+      "consideration": 10,
+      "decision": 15,
+      "retention": 10
+    },
+    "tier_thresholds": "high >= 70; medium >= 45; low < 45",
+    "demandDisclaimer": "Scores are deterministic planning heuristics, not traffic, volume, ranking, or demand measurements."
+  },
+  "queries": [
+    {
+      "queryId": "afdf33b0b58c0c85311b82e1",
+      "query": "acme analyzer pricing",
+      "provenance": {
+        "query": "acme analyzer pricing",
+        "origin": "observed",
+        "sourceId": "gsc-export-2026-09",
+        "sourceReference": null,
+        "observedAtUtc": null
+      },
+      "classification": {
+        "intent": "transactional",
+        "stage": "decision",
+        "rationale": "Purchase or conversion marker matched."
+      },
+      "clusterId": "ecae973c8d2683207bab5fb3",
+      "clusterLabel": "acme analyzer",
+      "priorityScore": 90,
+      "priorityTier": "high",
+      "prioritySignals": {
+        "provenanceScore": 40,
+        "intentScore": 25,
+        "specificityScore": 10,
+        "stageScore": 15
+      }
+    },
+    {
+      "queryId": "2ffae2b85e4b81f4d6498c77",
+      "query": "best document analyzer alternatives",
+      "provenance": {
+        "query": "best document analyzer alternatives",
+        "origin": "imported",
+        "sourceId": "research-export-1",
+        "sourceReference": null,
+        "observedAtUtc": null
+      },
+      "classification": {
+        "intent": "commercial",
+        "stage": "consideration",
+        "rationale": "Comparison or evaluation marker matched."
+      },
+      "clusterId": "09151cba9caa3d646eb2583f",
+      "clusterLabel": "document analyzer",
+      "priorityScore": 65,
+      "priorityTier": "medium",
+      "prioritySignals": {
+        "provenanceScore": 25,
+        "intentScore": 20,
+        "specificityScore": 10,
+        "stageScore": 10
+      }
+    },
+    {
+      "queryId": "3cf84461c53d03936ed40808",
+      "query": "Acme Analyzer alternatives",
+      "provenance": {
+        "query": "Acme Analyzer alternatives",
+        "origin": "generatedHypothesis",
+        "sourceId": null,
+        "sourceReference": "deterministic-template:query-hypotheses.v1",
+        "observedAtUtc": null
+      },
+      "classification": {
+        "intent": "informational",
+        "stage": "awareness",
+        "rationale": "No navigation, conversion, or comparison marker matched."
+      },
+      "clusterId": "ecae973c8d2683207bab5fb3",
+      "clusterLabel": "acme analyzer",
+      "priorityScore": 30,
+      "priorityTier": "low",
+      "prioritySignals": {
+        "provenanceScore": 5,
+        "intentScore": 10,
+        "specificityScore": 10,
+        "stageScore": 5
+      }
+    },
+    {
+      "queryId": "20a4a7e9ad9b0fb81bd586f7",
+      "query": "what is Acme Analyzer",
+      "provenance": {
+        "query": "what is Acme Analyzer",
+        "origin": "generatedHypothesis",
+        "sourceId": null,
+        "sourceReference": "deterministic-template:query-hypotheses.v1",
+        "observedAtUtc": null
+      },
+      "classification": {
+        "intent": "informational",
+        "stage": "awareness",
+        "rationale": "No navigation, conversion, or comparison marker matched."
+      },
+      "clusterId": "ecae973c8d2683207bab5fb3",
+      "clusterLabel": "acme analyzer",
+      "priorityScore": 30,
+      "priorityTier": "low",
+      "prioritySignals": {
+        "provenanceScore": 5,
+        "intentScore": 10,
+        "specificityScore": 10,
+        "stageScore": 5
+      }
+    }
+  ],
+  "clusterCount": 2,
+  "warnings": [
+    "Priority scores are explicit deterministic heuristics; no search volume, traffic, ranking, or demand was inferred.",
+    "Generated 2 query hypothesis(es). They are labeled generatedHypothesis and are not observed demand."
+  ],
+  "sources": [
+    {
+      "sourceId": "gsc-export-2026-09",
+      "url": null,
+      "title": "First-party query export",
+      "retrievedAtUtc": null,
+      "sourceDigest": null,
+      "parserId": null,
+      "parserVersion": null
+    },
+    {
+      "sourceId": "research-export-1",
+      "url": null,
+      "title": "Imported research list",
+      "retrievedAtUtc": null,
+      "sourceDigest": null,
+      "parserId": null,
+      "parserVersion": null
+    }
+  ]
+}

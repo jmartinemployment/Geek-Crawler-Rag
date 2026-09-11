@@ -1,0 +1,123 @@
+{
+  "artifactType": "faqSet.v1",
+  "generatorVersion": "faq-generator-heuristic.v1",
+  "methodology": "Build answer-first FAQ pairs from supplied queries and visible source content only. Answers must include exact evidence spans when a source document is provided; otherwise pairs are labeled unverifiable.",
+  "topic": "AI content readiness",
+  "pairs": [
+    {
+      "pairId": "eb257e965804e90fe925ad9e",
+      "question": "What is AI content readiness?",
+      "answer": "AI content readiness means pages provide answer-first structure, evidence, and schema that systems can cite.",
+      "queryProvenance": {
+        "query": "What is AI content readiness?",
+        "origin": "imported",
+        "sourceId": "faq-source-1",
+        "sourceReference": "supplied-document-faq",
+        "observedAtUtc": null
+      },
+      "citations": [
+        {
+          "evidenceId": "d515eb49722eadc2a91f561d",
+          "sourceId": "faq-source-1",
+          "quote": "AI content readiness means pages provide answer-first structure, evidence, and schema that systems can cite.",
+          "url": "https://subject.example/readiness"
+        }
+      ],
+      "verificationStatus": "supported"
+    },
+    {
+      "pairId": "db69bc66ba41284456095253",
+      "question": "Can I measure readiness?",
+      "answer": "Yes. Use a seven-dimension rubric with explicit evidence.",
+      "queryProvenance": {
+        "query": "Can I measure readiness?",
+        "origin": "imported",
+        "sourceId": "faq-source-1",
+        "sourceReference": "supplied-document-faq",
+        "observedAtUtc": null
+      },
+      "citations": [
+        {
+          "evidenceId": "692268f20fe545250d9bb74c",
+          "sourceId": "faq-source-1",
+          "quote": "Yes. Use a seven-dimension rubric with explicit evidence.",
+          "url": "https://subject.example/readiness"
+        }
+      ],
+      "verificationStatus": "supported"
+    },
+    {
+      "pairId": "5d879201db7773c80af3cf95",
+      "question": "How does AI content readiness work?",
+      "answer": "AI content readiness means pages provide answer-first structure, evidence, and schema that systems can cite.",
+      "queryProvenance": {
+        "query": "How does AI content readiness work?",
+        "origin": "generatedHypothesis",
+        "sourceId": null,
+        "sourceReference": "deterministic-template:faq-hypotheses.v1",
+        "observedAtUtc": null
+      },
+      "citations": [
+        {
+          "evidenceId": "d515eb49722eadc2a91f561d",
+          "sourceId": "faq-source-1",
+          "quote": "AI content readiness means pages provide answer-first structure, evidence, and schema that systems can cite.",
+          "url": "https://subject.example/readiness"
+        }
+      ],
+      "verificationStatus": "supported"
+    }
+  ],
+  "warnings": [
+    "FAQ answers are generated from supplied content and queries only; they are not verified against live search or citation outcomes.",
+    "Generated 1 FAQ question hypothesis(es). They are labeled generatedHypothesis and are not observed demand."
+  ],
+  "provenance": {
+    "engineVersion": "deterministic-content.v1",
+    "source": {
+      "sourceId": "faq-source-1",
+      "url": "https://subject.example/readiness",
+      "title": "AI Content Readiness Guide",
+      "retrievedAtUtc": null,
+      "sourceDigest": null,
+      "parserId": null,
+      "parserVersion": null
+    },
+    "queries": [
+      {
+        "query": "What is AI content readiness?",
+        "origin": "imported",
+        "sourceId": null,
+        "sourceReference": "manual-import",
+        "observedAtUtc": null
+      },
+      {
+        "query": "How does AI content readiness work?",
+        "origin": "generatedHypothesis",
+        "sourceId": null,
+        "sourceReference": "deterministic-template:faq-hypotheses.v1",
+        "observedAtUtc": null
+      }
+    ],
+    "evidenceIds": [
+      "d515eb49722eadc2a91f561d",
+      "692268f20fe545250d9bb74c"
+    ],
+    "evidence": [
+      {
+        "evidenceId": "d515eb49722eadc2a91f561d",
+        "sourceId": "faq-source-1",
+        "quote": "AI content readiness means pages provide answer-first structure, evidence, and schema that systems can cite.",
+        "startChar": 64,
+        "endChar": 172
+      },
+      {
+        "evidenceId": "692268f20fe545250d9bb74c",
+        "sourceId": "faq-source-1",
+        "quote": "Yes. Use a seven-dimension rubric with explicit evidence.",
+        "startChar": 203,
+        "endChar": 260
+      }
+    ]
+  }
+}

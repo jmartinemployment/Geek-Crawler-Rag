@@ -1,0 +1,186 @@
+{
+  "artifactType": "schemaMarkup.v1",
+  "generatorVersion": "visible-content-jsonld.v1",
+  "jsonLd": [
+    {
+      "@context": "https://schema.org",
+      "@type": "Article",
+      "headline": "Acme Analyzer",
+      "articleBody": "# Acme Analyzer\n\nAcme Analyzer launched in 2026. According to Acme Research, it processes 100 documents.\n\nAuthor: Jane Doe\n\n## What is Acme Analyzer?\n\nAcme Analyzer reviews supplied documents.\n\n## How fast is Acme Analyzer?\n\nIt processes 100 documents per run.\n\n## Who publishes Acme Analyzer?\n\nAcme Research publishes Acme Analyzer.\n\n## Steps\n\n1. Install Acme Analyzer.\n2. Run Acme Analyzer.\n\n## Product Details\n\nProduct Name: Acme Analyzer\nDescription: Acme Analyzer reviews supplied documents.\nBrand: Acme Research\nSKU: AA-1\nPrice: 20\nCurrency: USD\n\n## Sources\n\nAcme Research product documentation.",
+      "url": "https://example.com/acme-analyzer"
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "What is Acme Analyzer?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Acme Analyzer reviews supplied documents."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How fast is Acme Analyzer?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "It processes 100 documents per run."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Who publishes Acme Analyzer?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Acme Research publishes Acme Analyzer."
+          }
+        }
+      ]
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "HowTo",
+      "name": "Acme Analyzer",
+      "step": [
+        {
+          "@type": "HowToStep",
+          "position": 1,
+          "text": "Install Acme Analyzer."
+        },
+        {
+          "@type": "HowToStep",
+          "position": 2,
+          "text": "Run Acme Analyzer."
+        }
+      ]
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "name": "Acme Analyzer",
+      "description": "Acme Analyzer reviews supplied documents.",
+      "brand": {
+        "@type": "Brand",
+        "name": "Acme Research"
+      },
+      "sku": "AA-1",
+      "offers": {
+        "@type": "Offer",
+        "price": "20",
+        "priceCurrency": "USD"
+      }
+    }
+  ],
+  "validation": [
+    {
+      "code": "jsonSyntax",
+      "schemaType": "Article",
+      "valid": true,
+      "detail": "Node is JSON serializable."
+    },
+    {
+      "code": "schemaShape",
+      "schemaType": "Article",
+      "valid": true,
+      "detail": "Required deterministic shape is present."
+    },
+    {
+      "code": "visibleContent",
+      "schemaType": "Article",
+      "valid": true,
+      "detail": "All generated content values occur in supplied visible content."
+    },
+    {
+      "code": "jsonSyntax",
+      "schemaType": "FAQPage",
+      "valid": true,
+      "detail": "Node is JSON serializable."
+    },
+    {
+      "code": "schemaShape",
+      "schemaType": "FAQPage",
+      "valid": true,
+      "detail": "Required deterministic shape is present."
+    },
+    {
+      "code": "visibleContent",
+      "schemaType": "FAQPage",
+      "valid": true,
+      "detail": "All generated content values occur in supplied visible content."
+    },
+    {
+      "code": "jsonSyntax",
+      "schemaType": "HowTo",
+      "valid": true,
+      "detail": "Node is JSON serializable."
+    },
+    {
+      "code": "schemaShape",
+      "schemaType": "HowTo",
+      "valid": true,
+      "detail": "Required deterministic shape is present."
+    },
+    {
+      "code": "visibleContent",
+      "schemaType": "HowTo",
+      "valid": true,
+      "detail": "All generated content values occur in supplied visible content."
+    },
+    {
+      "code": "jsonSyntax",
+      "schemaType": "Product",
+      "valid": true,
+      "detail": "Node is JSON serializable."
+    },
+    {
+      "code": "schemaShape",
+      "schemaType": "Product",
+      "valid": true,
+      "detail": "Required deterministic shape is present."
+    },
+    {
+      "code": "visibleContent",
+      "schemaType": "Product",
+      "valid": true,
+      "detail": "All generated content values occur in supplied visible content."
+    }
+  ],
+  "warnings": [
+    "Scores and classifications are deterministic heuristics, not measured search-engine or AI-citation outcomes."
+  ],
+  "provenance": {
+    "engineVersion": "deterministic-diagnostics.v1",
+    "source": {
+      "sourceId": "page-1",
+      "url": "https://example.com/acme-analyzer",
+      "title": "Acme Analyzer",
+      "retrievedAtUtc": null,
+      "sourceDigest": null,
+      "parserId": null,
+      "parserVersion": null
+    },
+    "queries": [
+      {
+        "query": "what is acme analyzer",
+        "origin": "observed",
+        "sourceId": "gsc-export-1",
+        "sourceReference": null,
+        "observedAtUtc": null
+      }
+    ],
+    "evidenceIds": [
+      "ev-1"
+    ],
+    "evidence": [
+      {
+        "evidenceId": "ev-1",
+        "sourceId": "page-1",
+        "quote": "According to Acme Research, it processes 100 documents.",
+        "startChar": null,
+        "endChar": null
+      }
+    ]
+  }
+}

@@ -1,0 +1,168 @@
+{
+  "artifactType": "pillarOutline.v1",
+  "generatorVersion": "pillar-outline-heuristic.v1",
+  "methodology": "Build a topic-cluster outline from the topic, optional sourced queries, and optional visible source headings/spans. Supporting content plans are labeled generatedHypothesis; this is not a full article draft.",
+  "topic": "AI content readiness",
+  "sections": [
+    {
+      "sectionId": "c22944c7ec67d3185a8a845a",
+      "heading": "What is AI content readiness?",
+      "objective": "Define AI content readiness with an answer-first opening.",
+      "answerFirstPrompt": "In one or two sentences, state what AI content readiness is and why it matters.",
+      "relatedQueries": [
+        "What is AI content readiness?"
+      ],
+      "evidenceIds": []
+    },
+    {
+      "sectionId": "fe6c54c16a8df3f3fa9244a4",
+      "heading": "AI Content Readiness Guide",
+      "objective": "Cover 'AI Content Readiness Guide' with specific, citable detail.",
+      "answerFirstPrompt": "Open the 'AI Content Readiness Guide' section with a direct answer before expanding.",
+      "relatedQueries": [
+        "What is AI content readiness?",
+        "How do I measure readiness?"
+      ],
+      "evidenceIds": []
+    },
+    {
+      "sectionId": "a6e62910f971356f52189f72",
+      "heading": "What is AI content readiness?",
+      "objective": "Cover 'What is AI content readiness?' with specific, citable detail.",
+      "answerFirstPrompt": "Open the 'What is AI content readiness?' section with a direct answer before expanding.",
+      "relatedQueries": [
+        "What is AI content readiness?",
+        "How do I measure readiness?"
+      ],
+      "evidenceIds": [
+        "f0345be6ae266f14113ca4f1"
+      ]
+    },
+    {
+      "sectionId": "999769ca4f24b93fe03e2ca6",
+      "heading": "Measuring readiness",
+      "objective": "Cover 'Measuring readiness' with specific, citable detail.",
+      "answerFirstPrompt": "Open the 'Measuring readiness' section with a direct answer before expanding.",
+      "relatedQueries": [
+        "What is AI content readiness?",
+        "How do I measure readiness?"
+      ],
+      "evidenceIds": [
+        "41130c174326556a2dd3073f"
+      ]
+    },
+    {
+      "sectionId": "1ca4a81e61653cda2b7b5afd",
+      "heading": "How AI content readiness works",
+      "objective": "Extend cluster coverage for How AI content readiness works.",
+      "answerFirstPrompt": "Lead with the key takeaway for 'How AI content readiness works', then expand.",
+      "relatedQueries": [],
+      "evidenceIds": []
+    },
+    {
+      "sectionId": "42170c2ec775ba3c0574daad",
+      "heading": "AI content readiness best practices",
+      "objective": "Extend cluster coverage for AI content readiness best practices.",
+      "answerFirstPrompt": "Lead with the key takeaway for 'AI content readiness best practices', then expand.",
+      "relatedQueries": [],
+      "evidenceIds": []
+    },
+    {
+      "sectionId": "eb3c82ae3992485701cb9514",
+      "heading": "AI content readiness compared to alternatives",
+      "objective": "Extend cluster coverage for AI content readiness compared to alternatives.",
+      "answerFirstPrompt": "Lead with the key takeaway for 'AI content readiness compared to alternatives', then expand.",
+      "relatedQueries": [],
+      "evidenceIds": []
+    }
+  ],
+  "supportingContentPlan": [
+    {
+      "contentType": "faq",
+      "title": "AI content readiness FAQ",
+      "rationale": "Capture sourced and hypothesized questions as answer-first pairs.",
+      "origin": "generatedHypothesis",
+      "disclaimer": "generatedHypothesis only; not measured demand or cluster coverage."
+    },
+    {
+      "contentType": "comparison",
+      "title": "AI content readiness comparison brief",
+      "rationale": "Support evaluation queries with a structured X vs Y brief.",
+      "origin": "generatedHypothesis",
+      "disclaimer": "generatedHypothesis only; not measured demand or cluster coverage."
+    },
+    {
+      "contentType": "explainer",
+      "title": "How AI content readiness works",
+      "rationale": "Provide a shorter explainer that links back to the pillar.",
+      "origin": "generatedHypothesis",
+      "disclaimer": "generatedHypothesis only; not measured demand or cluster coverage."
+    },
+    {
+      "contentType": "faq",
+      "title": "AI content readiness FAQ",
+      "rationale": "Caller-supplied supporting content hint.",
+      "origin": "generatedHypothesis",
+      "disclaimer": "generatedHypothesis only; not measured demand or cluster coverage."
+    },
+    {
+      "contentType": "comparison",
+      "title": "Readiness vs competitors",
+      "rationale": "Caller-supplied supporting content hint.",
+      "origin": "generatedHypothesis",
+      "disclaimer": "generatedHypothesis only; not measured demand or cluster coverage."
+    }
+  ],
+  "warnings": [
+    "Pillar outline is a topic-cluster scaffold, not a full article draft.",
+    "Supporting content plan items are labeled generatedHypothesis."
+  ],
+  "provenance": {
+    "engineVersion": "deterministic-content.v1",
+    "source": {
+      "sourceId": "pillar-source-1",
+      "url": "https://subject.example/readiness",
+      "title": "AI Content Readiness Guide",
+      "retrievedAtUtc": null,
+      "sourceDigest": null,
+      "parserId": null,
+      "parserVersion": null
+    },
+    "queries": [
+      {
+        "query": "What is AI content readiness?",
+        "origin": "imported",
+        "sourceId": null,
+        "sourceReference": "manual-import",
+        "observedAtUtc": null
+      },
+      {
+        "query": "How do I measure readiness?",
+        "origin": "observed",
+        "sourceId": null,
+        "sourceReference": "search-console",
+        "observedAtUtc": null
+      }
+    ],
+    "evidenceIds": [
+      "f0345be6ae266f14113ca4f1",
+      "41130c174326556a2dd3073f"
+    ],
+    "evidence": [
+      {
+        "evidenceId": "f0345be6ae266f14113ca4f1",
+        "sourceId": "pillar-source-1",
+        "quote": "AI content readiness means pages provide answer-first structure, evidence, and schema that systems can cite.",
+        "startChar": 64,
+        "endChar": 172
+      },
+      {
+        "evidenceId": "41130c174326556a2dd3073f",
+        "sourceId": "pillar-source-1",
+        "quote": "Use a seven-dimension rubric with explicit evidence.",
+        "startChar": 281,
+        "endChar": 333
+      }
+    ]
+  }
+}

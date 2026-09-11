@@ -17,7 +17,7 @@ from geek_crawler_rag.diagnostic_models import (
     SchemaMarkupArtifact,
     SchemaMarkupRequest,
 )
-from geek_crawler_rag.diagnostics import DiagnosticService
+from geek_crawler_rag.diagnostics import DiagnosticService, _validate_schema_nodes
 
 FIXTURE = Path(__file__).parent / "fixtures" / "diagnostic-golden.v1.json"
 
@@ -46,6 +46,36 @@ def test_readiness_golden_is_deterministic_and_seven_dimensional() -> None:
         "eeat",
         "technicalCrawlabilityPerformance",
     ]
+
+
+def test_diagnostic_artifact_goldens_match_live_service_output() -> None:
+    """Shared camelCase goldens consumed by GeekBackend contract tests."""
+    document = _readiness_request().document
+    service = DiagnosticService()
+    expected = {
+        "readinessScore.v1": (
+            ReadinessScoreArtifact,
+            service.readiness_score(ReadinessScoreRequest(document=document)),
+        ),
+        "factDensityReport.v1": (
+            FactDensityArtifact,
+            service.fact_density(FactDensityRequest(document=document)),
+        ),
+        "entityMap.v1": (
+            EntityMapArtifact,
+            service.entity_map(EntityMapRequest(document=document)),
+        ),
+        "schemaMarkup.v1": (
+            SchemaMarkupArtifact,
+            service.schema_markup(SchemaMarkupRequest(document=document)),
+        ),
+    }
+    for artifact_type, (contract, live) in expected.items():
+        path = Path(__file__).parent / "fixtures" / f"{artifact_type}.golden.json"
+        golden = json.loads(path.read_text())
+        assert golden["artifactType"] == artifact_type
+        assert contract.model_validate(golden) == live
+        assert golden == json.loads(live.model_dump_json(by_alias=True))
 
 
 def test_partial_readiness_omits_unknown_scores_instead_of_fabricating() -> None:
@@ -122,6 +152,114 @@ def test_entity_map_is_canonical_typed_and_evidence_linked() -> None:
     }
 
 
+def test_entity_map_resolves_alias_only_mentions_and_relation_evidence() -> None:
+    """Alias surface forms alone must map to the seeded canonical entity."""
+    base = _readiness_request().document
+    document = base.model_copy(
+        update={
+            "visible_content": (
+                "# Overview\n\n"
+                "Customers choose Analyzer with Trust Layer during diagnostics."
+            ),
+            "evidence": [],
+        }
+    )
+    artifact = DiagnosticService().entity_map(
+        EntityMapRequest(
+            document=document,
+            seeds=[
+                {
+                    "canonicalName": "Acme Analyzer",
+                    "entityType": "product",
+                    "aliases": ["Analyzer"],
+                },
+                {
+                    "canonicalName": "Trust Layer",
+                    "entityType": "product",
+                    "aliases": [],
+                },
+            ],
+        )
+    )
+
+    by_name = {entity.canonical_name: entity for entity in artifact.entities}
+    assert "Acme Analyzer" in by_name
+    assert "Trust Layer" in by_name
+    assert "Acme Analyzer" not in document.visible_content
+    analyzer = by_name["Acme Analyzer"]
+    assert analyzer.entity_type == "product"
+    assert "Analyzer" in analyzer.aliases
+    assert analyzer.evidence_ids
+
+    evidence_by_id = {
+        item.evidence_id: item for item in artifact.provenance.evidence
+    }
+    for evidence_id in analyzer.evidence_ids:
+        span = evidence_by_id[evidence_id]
+        assert span.quote
+        assert span.start_char is not None and span.end_char is not None
+        assert document.visible_content[span.start_char : span.end_char] == span.quote
+        assert "Analyzer" in span.quote
+
+    seeded_ids = {
+        by_name["Acme Analyzer"].entity_id,
+        by_name["Trust Layer"].entity_id,
+    }
+    related = [
+        relationship
+        for relationship in artifact.relationships
+        if {relationship.source_entity_id, relationship.target_entity_id} == seeded_ids
+    ]
+    assert related
+    for relationship in related:
+        assert relationship.relation == "coOccursWith"
+        assert relationship.evidence_ids
+        for evidence_id in relationship.evidence_ids:
+            span = evidence_by_id[evidence_id]
+            assert "Analyzer" in span.quote and "Trust Layer" in span.quote
+            assert document.visible_content[span.start_char : span.end_char] == span.quote
+
+
+def test_entity_map_warns_on_ambiguous_alias_and_uses_last_seed() -> None:
+    base = _readiness_request().document
+    document = base.model_copy(
+        update={
+            "visible_content": (
+                "# Ambiguous alias\n\n"
+                "Analyzer appears without a fully qualified product name."
+            ),
+            "evidence": [],
+        }
+    )
+    artifact = DiagnosticService().entity_map(
+        EntityMapRequest(
+            document=document,
+            seeds=[
+                {
+                    "canonicalName": "Acme Analyzer",
+                    "entityType": "product",
+                    "aliases": ["Analyzer"],
+                },
+                {
+                    "canonicalName": "Rival Analyzer",
+                    "entityType": "product",
+                    "aliases": ["Analyzer"],
+                },
+            ],
+        )
+    )
+
+    by_name = {entity.canonical_name: entity for entity in artifact.entities}
+    assert "Rival Analyzer" in by_name
+    assert "Acme Analyzer" not in by_name
+    assert "Analyzer" in by_name["Rival Analyzer"].aliases
+    assert any(
+        "Ambiguous entity alias 'Analyzer'" in warning
+        and "using 'Rival Analyzer'" in warning
+        for warning in artifact.warnings
+    )
+
+
 def test_entity_map_competitor_coverage_delta() -> None:
     subject = _readiness_request().document
     competitor = subject.model_copy(
@@ -180,9 +318,44 @@ def test_schema_markup_generates_only_visible_applicable_shapes() -> None:
         "Product",
     ]
     assert all(finding.valid for finding in artifact.validation)
+    assert {finding.code for finding in artifact.validation} >= {
+        "jsonSyntax",
+        "schemaShape",
+        "visibleContent",
+    }
     encoded = json.dumps(artifact.json_ld)
     assert "ratingValue" not in encoded
     assert '"review":' not in encoded
+
+
+def test_schema_validation_rejects_invented_and_incomplete_nodes() -> None:
+    visible = "# Acme Analyzer\n\nAcme Analyzer reviews supplied documents."
+    invented = {
+        "@context": "https://schema.org",
+        "@type": "Article",
+        "headline": "Acme Analyzer",
+        "articleBody": "Acme Analyzer reviews supplied documents.",
+        "description": "Invented claim that never appears on the page.",
+    }
+    incomplete = {
+        "@context": "https://schema.org",
+        "@type": "Product",
+        "name": "Acme Analyzer",
+    }
+
+    findings = _validate_schema_nodes([invented, incomplete], visible)
+    by_key = {(item.code, item.schema_type): item for item in findings}
+
+    assert by_key[("jsonSyntax", "Article")].valid is True
+    assert by_key[("schemaShape", "Article")].valid is True
+    assert by_key[("visibleContent", "Article")].valid is False
+    assert "not visible" in by_key[("visibleContent", "Article")].detail
+
+    assert by_key[("jsonSyntax", "Product")].valid is True
+    assert by_key[("schemaShape", "Product")].valid is False
+    assert "missing" in by_key[("schemaShape", "Product")].detail.lower()
+    # Product name is visible, so missing description does not invent content.
+    assert by_key[("visibleContent", "Product")].valid is True
 
 
 def test_cross_contract_round_trip_and_strict_versions() -> None:

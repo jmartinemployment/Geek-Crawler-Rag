@@ -1,0 +1,92 @@
+{
+  "artifactType": "readinessScore.v1",
+  "methodology": "heuristic",
+  "rubricVersion": "ai-readiness-heuristic.v1",
+  "overallScore": 76.4,
+  "dimensions": [
+    {
+      "dimension": "headingHierarchy",
+      "score": 100.0,
+      "explanation": "Found 7 heading(s), 0 skipped level transition(s).",
+      "evidenceIds": []
+    },
+    {
+      "dimension": "answerFirst",
+      "score": 100.0,
+      "explanation": "Opening sentence contains 5 words; delayed-introduction marker=False.",
+      "evidenceIds": []
+    },
+    {
+      "dimension": "faq",
+      "score": 100.0,
+      "explanation": "Found 3 visible question-and-answer pair(s).",
+      "evidenceIds": []
+    },
+    {
+      "dimension": "schema",
+      "score": 0.0,
+      "explanation": "Supplied JSON-LD contains 0 node(s); basic shape valid=False.",
+      "evidenceIds": []
+    },
+    {
+      "dimension": "factDensity",
+      "score": 54.6,
+      "explanation": "Heuristic ratio of specific factual sentences, weighted by caller-supplied evidence support.",
+      "evidenceIds": [
+        "ev-1"
+      ]
+    },
+    {
+      "dimension": "eeat",
+      "score": 80.0,
+      "explanation": "Found 4 of 5 explicit authorship, sourcing, and experience indicators.",
+      "evidenceIds": []
+    },
+    {
+      "dimension": "technicalCrawlabilityPerformance",
+      "score": 100.0,
+      "explanation": "crawlable=True, status=200, loadTimeMs=1200.",
+      "evidenceIds": []
+    }
+  ],
+  "prioritizedFixes": [
+    "Add applicable JSON-LD that exactly matches visible content.",
+    "Replace vague prose with verified specifics and attach exact evidence."
+  ],
+  "warnings": [
+    "Scores and classifications are deterministic heuristics, not measured search-engine or AI-citation outcomes."
+  ],
+  "provenance": {
+    "engineVersion": "deterministic-diagnostics.v1",
+    "source": {
+      "sourceId": "page-1",
+      "url": "https://example.com/acme-analyzer",
+      "title": "Acme Analyzer",
+      "retrievedAtUtc": null,
+      "sourceDigest": null,
+      "parserId": null,
+      "parserVersion": null
+    },
+    "queries": [
+      {
+        "query": "what is acme analyzer",
+        "origin": "observed",
+        "sourceId": "gsc-export-1",
+        "sourceReference": null,
+        "observedAtUtc": null
+      }
+    ],
+    "evidenceIds": [
+      "ev-1"
+    ],
+    "evidence": [
+      {
+        "evidenceId": "ev-1",
+        "sourceId": "page-1",
+        "quote": "According to Acme Research, it processes 100 documents.",
+        "startChar": null,
+        "endChar": null
+      }
+    ]
+  }
+}
