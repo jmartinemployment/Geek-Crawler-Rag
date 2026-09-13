@@ -1,0 +1,21 @@
+# TLS terminator in front of geek-crawler-rag (loopback :8080).
+# See deploy/README-caddy.md for cutover order.
+
+services:
+  caddy:
+    image: caddy:2.9-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    mem_limit: 256m
+    cpus: "0.25"
+
+volumes:
+  caddy_data:
+  caddy_config:

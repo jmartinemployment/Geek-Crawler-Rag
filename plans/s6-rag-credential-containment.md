@@ -52,7 +52,11 @@ Verify from outside the VPS that `:8080` is no longer reachable; on-box loopback
 
 ## 3. Put TLS + hostname in front
 
-Point GeekAPI `GEEK_CRAWLER_RAG_URL` at `https://rag.<your-domain>` (cert validated). Localhost HTTP remains allowed only for local GeekAPI→RAG.
+DNS: `rag.geekatyourspot.com` → VPS IP. Caddy assets: [`deploy/Caddyfile`](../deploy/Caddyfile) + [`deploy/caddy-compose.yml`](../deploy/caddy-compose.yml) — see [`deploy/README-caddy.md`](../deploy/README-caddy.md).
+
+Point GeekAPI `GEEK_CRAWLER_RAG_URL` at `https://rag.geekatyourspot.com` and **clear** `GEEK_CRAWLER_RAG_ALLOW_INSECURE_HTTP_HOSTS`. Localhost HTTP remains allowed only for local GeekAPI→RAG.
+
+**This machine has no SSH key to the VPS** (`Permission denied (publickey)`). Caddy install + compose bind + key rotate must be done from a shell that can reach `root@2.24.101.90` (or Hostinger panel terminal).
 
 ## 4. Production signal
 
