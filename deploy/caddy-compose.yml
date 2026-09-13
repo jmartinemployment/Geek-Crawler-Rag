@@ -1,5 +1,5 @@
-# TLS terminator in front of geek-crawler-rag (loopback :8080).
-# See deploy/README-caddy.md for cutover order.
+# TLS terminator in front of geek-crawler-rag.
+# Joins the existing geek-crawler-rag_default network and proxies to service `api`.
 
 services:
   caddy:
@@ -9,6 +9,9 @@ services:
       - "80:80"
       - "443:443"
       - "443:443/udp"
+    networks:
+      - default
+      - geek-crawler-rag_default
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -19,3 +22,7 @@ services:
 volumes:
   caddy_data:
   caddy_config:
+
+networks:
+  geek-crawler-rag_default:
+    external: true

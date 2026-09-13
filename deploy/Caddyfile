@@ -2,9 +2,10 @@
 	email jeffm@geekatyourspot.com
 }
 
-rag.geekatyourspot.com {
+# Temporary hostname until rag.geekatyourspot.com DNS is live at the registrar.
+2.24.101.90.sslip.io {
 	encode gzip
-	reverse_proxy 127.0.0.1:8080
+	reverse_proxy api:8080
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		-Server
