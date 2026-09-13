@@ -48,6 +48,26 @@ Fail any change that:
 
 ---
 
+## 3a. Correctness — fail closed
+
+**No Retries. No Fallbacks. No Crappy Code.**
+
+Applies to Geek-Crawler-Rag and sibling Geek-Crawler-v2 work. See also [`no-retries-no-fallbacks.md`](./no-retries-no-fallbacks.md).
+
+- **No Retries** — Do not add or retain application-level retry loops, exponential backoff, or “try again later” wrappers around failures, including HTTP 5xx responses, timeouts, Mongo failures, OpenAI failures, and GeekAPI `pages/batch` or `links/batch` ingest failures. Fail the operation on its first failure, return the real diagnostic error, and fix the root cause.
+- **No Fallbacks** — Do not turn a required-operation failure into apparent success by dropping fields, skipping persistence, swallowing exceptions, or continuing on a best-effort basis. Intentional product processing paths, such as selecting Playwright when static HTML is not viable, are permitted only when explicit, logged, and contract-preserving. They must never hide API or storage failure.
+- **No Crappy Code** — Delete incorrect behavior instead of concealing it. Empty error responses, diagnostic truncation, silent catches, and fatal failures without actionable server-side detail are defects. Fix the behavior and preserve enough safe diagnostic context to identify the cause.
+
+**Checklist (agents — pass/fail):**
+
+- [ ] No application-level retry, backoff, or retry wrapper added or retained.
+- [ ] Required persistence or ingest failure fails the operation.
+- [ ] Failure responses retain actionable diagnostic detail.
+- [ ] No exception is swallowed or converted to success.
+- [ ] Designed alternate processing paths are explicit and logged.
+
+---
+
 ## 4. Index and language
 
 | Rule | Detail |
@@ -109,3 +129,4 @@ test -f /Users/jeffmartin/development/Geek-Crawler-Rag/plans/geek-crawler-rag.md
 [x] gcc-v2 / GeekAPI are consumers only  
 [x] No Creator crawl of tools/competitors from this project  
 [x] Index status is push (webhook → SignalR); UI does not poll  
+[x] No Retries / No Fallbacks / No Crappy Code (§3a) documented and Cursor-enforced  

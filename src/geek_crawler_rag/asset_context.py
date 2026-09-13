@@ -25,6 +25,7 @@ from geek_crawler_rag.context_models import (
     TrustedAssetIndexRequest,
     verify_manifest,
     verify_persisted_manifest,
+    verify_trusted_asset_request,
 )
 from geek_crawler_rag.qdrant_store import QdrantStore
 
@@ -197,7 +198,10 @@ class AssetContextService:
     async def index_trusted(
         self, request: TrustedAssetIndexRequest
     ) -> AssetIndexResponse:
-        """Index one GeekAPI-authoritative revision after service authentication."""
+        """Index one GeekAPI-authoritative revision after signed caller verification."""
+        verify_trusted_asset_request(
+            request, self._settings.context_manifest_signing_keys
+        )
         parsed = parse_asset(request.content, request.media_type)
         chunks = chunk_asset(
             parsed.text,
@@ -244,6 +248,9 @@ class AssetContextService:
         )
 
     async def delete_trusted(self, request: TrustedAssetDeleteRequest) -> None:
+        verify_trusted_asset_request(
+            request, self._settings.context_manifest_signing_keys
+        )
         await self._store.delete_trusted_asset_revision(
             owner_id=request.owner_user_id,
             asset_version_id=request.asset_version_id,

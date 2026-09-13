@@ -139,15 +139,19 @@ At index start the service logs **`mongoPageCount`**. Runs with `mongoPageCount`
 Production schedules one eligible run every **300 seconds** (`INDEX_SCHEDULER_INTERVAL_SECONDS`). The
 scheduler persists its next due time in Mongo, takes an atomic lease, and chooses
 the smallest completed run whose crawl-level `MarkdownReadyAt` confirms every
-persisted page has Markdown and which is not already indexed. Index jobs also use
-Mongo leases, heartbeats, stale-job recovery, bounded retries, and a maximum
-attempt count.
+persisted page has Markdown and which is not already indexed. Index jobs use
+Mongo leases, heartbeats, and stale-job recovery. Failed jobs are **not**
+auto-retried in-process — they fail closed; an operator (or a new enqueue)
+starts a fresh attempt. See [`plans/rules.md`](./plans/rules.md) §3a
+(**No Retries. No Fallbacks. No Crappy Code.**).
 
 All corpus, query, and ad-template embeddings pass through one rolling
 token-per-minute limiter, sequentially partitioned by item and token count.
-Embedding calls are **fail-closed with no in-process retries**: the first HTTP
-500 or empty-input 400 quarantines the batch and fails the job with already
-upserted points preserved (see [`docs/embedding-circuit-recovery.md`](./docs/embedding-circuit-recovery.md)).
+Embedding calls are **fail-closed with no in-process retries**
+(`OPENAI_EMBEDDING_MAX_RETRIES=0`): the first HTTP 500 or empty-input 400
+quarantines the batch and fails the job with already upserted points preserved
+(see [`docs/embedding-circuit-recovery.md`](./docs/embedding-circuit-recovery.md)
+and [`plans/rules.md`](./plans/rules.md) §3a).
 
 **Keep the throttle well under the account ceiling.** Your OpenAI TPM limit is
 returned in `x-ratelimit-limit-tokens` on any embeddings response. Setting the
@@ -158,7 +162,7 @@ HTTP 500 `server_error` instead of clean 429s — a 1,000,000 setting against a
 - `OPENAI_EMBEDDING_TOKENS_PER_MINUTE=400000` (40% of a 1,000,000 ceiling)
 - `OPENAI_EMBEDDING_MAX_BATCH_TOKENS=50000`
 - `EMBED_BATCH_SIZE=32`
-- `OPENAI_EMBEDDING_MAX_RETRIES=0` (fail-closed by design; do not raise)
+- `OPENAI_EMBEDDING_MAX_RETRIES=0` (fail-closed by law; do not raise — [`plans/rules.md`](./plans/rules.md) §3a)
 - `QDRANT_UPSERT_DELAY_SECONDS=0.5`
 - `INDEX_SCHEDULER_INTERVAL_SECONDS=300`
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import json
@@ -26,9 +27,39 @@ from geek_crawler_rag.context_models import (
     SourceCoordinates,
     TrustedAssetIndexRequest,
     canonical_manifest_bytes,
+    trusted_asset_binding,
     verify_manifest,
     verify_persisted_manifest,
 )
+
+
+def _sign_trusted_index(**fields: object) -> TrustedAssetIndexRequest:
+    key = base64.b64encode(b"x" * 32).decode()
+    nonce = "nonce-12345678"
+    expires = datetime.now(UTC) + timedelta(minutes=5)
+    binding = trusted_asset_binding(
+        caller_identity="geekapi",
+        nonce=nonce,
+        expires_at_utc=expires,
+        owner_user_id=str(fields["ownerUserId"]),
+        asset_version_id=str(fields["assetVersionId"]),
+        resource_id=str(fields["resourceId"]),
+        content_binding=str(fields["derivedSha256"]),
+    )
+    digest = hashlib.sha256(binding).hexdigest()
+    signature = hmac.new(
+        base64.b64decode(key), digest.encode("ascii"), hashlib.sha256
+    ).hexdigest()
+    return TrustedAssetIndexRequest.model_validate(
+        {
+            **fields,
+            "callerIdentity": "geekapi",
+            "nonce": nonce,
+            "expiresAtUtc": expires,
+            "signingKeyId": "test-key",
+            "signature": signature,
+        }
+    )
 
 
 def _signed_manifest(*, owner: str = "owner-1") -> SignedRunContextManifest:
@@ -199,7 +230,7 @@ async def test_trusted_index_contract_is_digest_bound_and_owner_scoped() -> None
         async def embed_texts(self, texts):
             return [[0.1] for _ in texts]
 
-    request = TrustedAssetIndexRequest(
+    request = _sign_trusted_index(
         ownerUserId="owner-1",
         assetId="asset-1",
         assetVersionId="version-1",
@@ -216,7 +247,12 @@ async def test_trusted_index_contract_is_digest_bound_and_owner_scoped() -> None
     service = AssetContextService(
         Store(),  # type: ignore[arg-type]
         Embedder(),  # type: ignore[arg-type]
-        Settings(openai_api_key="test"),
+        Settings(
+            openai_api_key="test",
+            context_manifest_signing_keys={
+                "test-key": base64.b64encode(b"x" * 32).decode()
+            },
+        ),
     )
 
     result = await service.index_trusted(request)
@@ -228,6 +264,10 @@ async def test_trusted_index_contract_is_digest_bound_and_owner_scoped() -> None
         TrustedAssetIndexRequest.model_validate(
             {**request.model_dump(by_alias=True), "derivedSha256": "b" * 64}
         )
+    forged = request.model_dump(by_alias=True)
+    forged["ownerUserId"] = "other-owner"
+    with pytest.raises(ValueError, match="signature"):
+        await service.index_trusted(TrustedAssetIndexRequest.model_validate(forged))
 
 
 def _persisted_manifest() -> tuple[PersistedManifestEnvelope, str]:

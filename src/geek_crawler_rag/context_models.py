@@ -240,7 +240,7 @@ class AssetIndexResponse(StrictModel):
 
 
 class TrustedAssetIndexRequest(StrictModel):
-    """Service-authenticated immutable revision supplied by authoritative GeekAPI."""
+    """GeekAPI-authoritative revision bound to a signed caller envelope."""
 
     owner_user_id: str = Field(..., alias="ownerUserId", min_length=1, max_length=120)
     context_kind: Literal["knowledge", "run_attachment"] = Field(
@@ -266,6 +266,13 @@ class TrustedAssetIndexRequest(StrictModel):
     language: str = Field("en", min_length=2, max_length=35)
     lifecycle: AssetLifecycle = AssetLifecycle.DRAFT
     visibility: AssetVisibility = AssetVisibility.OWNER
+    caller_identity: str = Field(
+        ..., alias="callerIdentity", min_length=1, max_length=120
+    )
+    nonce: str = Field(..., min_length=8, max_length=120)
+    expires_at_utc: datetime = Field(..., alias="expiresAtUtc")
+    signing_key_id: str = Field(..., alias="signingKeyId", min_length=1, max_length=120)
+    signature: str = Field(..., pattern=r"^[0-9a-f]{64}$")
 
     @model_validator(mode="after")
     def content_digest_matches(self) -> TrustedAssetIndexRequest:
@@ -283,6 +290,88 @@ class TrustedAssetDeleteRequest(StrictModel):
         ..., alias="assetVersionId", min_length=1, max_length=120
     )
     resource_id: str = Field(..., alias="resourceId", min_length=1, max_length=120)
+    caller_identity: str = Field(
+        ..., alias="callerIdentity", min_length=1, max_length=120
+    )
+    nonce: str = Field(..., min_length=8, max_length=120)
+    expires_at_utc: datetime = Field(..., alias="expiresAtUtc")
+    signing_key_id: str = Field(..., alias="signingKeyId", min_length=1, max_length=120)
+    signature: str = Field(..., pattern=r"^[0-9a-f]{64}$")
+
+
+def trusted_asset_binding(
+    *,
+    caller_identity: str,
+    nonce: str,
+    expires_at_utc: datetime,
+    owner_user_id: str,
+    asset_version_id: str,
+    resource_id: str,
+    content_binding: str,
+) -> bytes:
+    expires = expires_at_utc
+    if expires.tzinfo is None:
+        expires = expires.replace(tzinfo=UTC)
+    expires_unix = str(int(expires.timestamp()))
+    # Fixed field order — must match GeekAPI GccV2TrustedAssetSigner.
+    line = "|".join(
+        [
+            caller_identity,
+            nonce,
+            expires_unix,
+            owner_user_id,
+            asset_version_id,
+            resource_id,
+            content_binding,
+        ]
+    )
+    return line.encode("utf-8")
+
+
+def verify_trusted_asset_request(
+    request: TrustedAssetIndexRequest | TrustedAssetDeleteRequest,
+    signing_keys: dict[str, str],
+    *,
+    allowed_callers: set[str] | None = None,
+    now: datetime | None = None,
+) -> None:
+    """Bind owner + revision identity to a signed GeekAPI caller envelope."""
+    current = now or datetime.now(UTC)
+    expires = request.expires_at_utc
+    if expires.tzinfo is None:
+        expires = expires.replace(tzinfo=UTC)
+    if expires < current:
+        raise ValueError("Trusted asset request has expired.")
+    callers = allowed_callers or {"geekapi"}
+    if request.caller_identity not in callers:
+        raise ValueError("Trusted asset caller identity is not allowed.")
+    encoded_key = signing_keys.get(request.signing_key_id)
+    if not encoded_key:
+        raise ValueError("Unknown trusted asset signature key.")
+    try:
+        key = base64.b64decode(encoded_key, validate=True)
+    except (binascii.Error, ValueError) as error:
+        raise ValueError("Trusted asset signature key is not valid base64.") from error
+    if len(key) < 32:
+        raise ValueError("Trusted asset signature key must contain at least 256 bits.")
+    content_binding = (
+        request.derived_sha256
+        if isinstance(request, TrustedAssetIndexRequest)
+        else "delete"
+    )
+    canonical = trusted_asset_binding(
+        caller_identity=request.caller_identity,
+        nonce=request.nonce,
+        expires_at_utc=expires,
+        owner_user_id=request.owner_user_id,
+        asset_version_id=request.asset_version_id,
+        resource_id=request.resource_id,
+        content_binding=content_binding,
+    )
+    digest = hashlib.sha256(canonical).hexdigest()
+    expected = hmac.new(key, digest.encode("ascii"), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, request.signature):
+        raise ValueError("Trusted asset signature verification failed.")
 
 
 class AssetDeleteRequest(StrictModel):
