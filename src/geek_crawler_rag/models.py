@@ -230,9 +230,11 @@ class PageMarkdownResponse(BaseModel):
 
 class GenerateCitation(BaseModel):
     page_id: str | None = Field(None, alias="pageId")
+    run_id: str | None = Field(None, alias="runId")
     url: str
     title: str | None = None
     section_title: str | None = Field(None, alias="sectionTitle")
+    section_key: str | None = Field(None, alias="sectionKey")
     quote: str
     crawl_type: str | None = Field(None, alias="crawlType")
     source_digest: str | None = Field(

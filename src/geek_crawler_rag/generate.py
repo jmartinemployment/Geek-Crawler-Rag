@@ -496,6 +496,7 @@ class CiteableGenerateWorkflow(Workflow):
             pages.append(
                 {
                     "pageId": page.id or source.page_id,
+                    "runId": page.run_id,
                     "url": page.final_url or page.url or source.url,
                     "title": page.title or source.title,
                     "sectionTitle": None,
@@ -550,6 +551,7 @@ class CiteableGenerateWorkflow(Workflow):
             pages.append(
                 {
                     "pageId": page_id,
+                    "runId": hit.run_id,
                     "url": url,
                     "title": title,
                     "sectionTitle": hit.section_title,
