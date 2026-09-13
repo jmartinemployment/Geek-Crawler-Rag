@@ -4,7 +4,7 @@ Proxies `https://rag.geekatyourspot.com` → `http://127.0.0.1:8080`.
 
 ## Prerequisites
 
-1. DNS: `rag.geekatyourspot.com` A → VPS public IP (`2.24.101.90`)
+1. DNS at the **authoritative** nameservers for `geekatyourspot.com` (currently `dns1.registrar-servers.com` / Namecheap-style — **not** the Hostinger DNS API zone unless NS are pointed there): `rag.geekatyourspot.com` A → VPS public IP (`2.24.101.90`)
 2. Firewall: allow TCP 80 + 443 (keep 22); remove public 8080 after cutover
 3. RAG compose binds `127.0.0.1:8080:8080` (see `hostinger-compose.yml`)
 4. On the VPS, place this file next to a compose override or run as its own project
