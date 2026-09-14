@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from geek_crawler_rag.config import Settings
 from geek_crawler_rag.generate import (
+    DraftedEvent,
     CiteableGenerateWorkflow,
     _brief_retrieval_context,
     _build_prompts,
@@ -888,3 +889,48 @@ def test_product_output_blocks_missing_disclaimers_and_unsupported_claims():
         ),
     )
     assert _governed_output_violations(ok, ok_result) == []
+
+
+async def test_research_planning_verify_provenance_uses_research_planning_specialist():
+    """researchPlanning is deterministic and is not in SPECIALIST_TYPES."""
+    from geek_crawler_rag.specialists import ResearchPlanningSpecialist
+
+    workflow = object.__new__(CiteableGenerateWorkflow)
+    request = GenerateRequest(
+        writingIntent="blog",
+        topic="smoke",
+        generationStage="researchPlanning",
+        partnerRunId="11111111-1111-1111-1111-111111111111",
+    )
+    event = DraftedEvent(
+        content=None,
+        variations=None,
+        battlecard=None,
+        outline=None,
+        research_plan=[{"runId": "11111111-1111-1111-1111-111111111111", "crawlType": "partner", "need": "x"}],
+        citations=[],
+        sources=[],
+        themes=[],
+        retrieval="hybrid",
+        warnings=[],
+        model_used="o3",
+        validation=None,
+        agent_execution=None,
+        specialist_contribution=None,
+        specialist_review=None,
+        specialist_artifact_digest=None,
+    )
+
+    class Store:
+        async def get(self, key, default=None):
+            if key == "request":
+                return request
+            if key == "pages":
+                return []
+            return default
+
+    workflow_ctx = SimpleNamespace(store=Store())
+    stop = await CiteableGenerateWorkflow.verify(workflow, workflow_ctx, event)
+    result = stop.result
+    assert result.research_plan
+    assert result.provenance.specialist_executor == ResearchPlanningSpecialist.__name__

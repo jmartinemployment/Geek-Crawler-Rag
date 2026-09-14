@@ -858,7 +858,11 @@ class CiteableGenerateWorkflow(Workflow):
                     specialist_executor=(
                         ev.agent_execution.agent
                         if ev.agent_execution
-                        else SPECIALIST_TYPES[_stage(req)].__name__
+                        else (
+                            ResearchPlanningSpecialist.__name__
+                            if _stage(req) == "researchPlanning"
+                            else SPECIALIST_TYPES[_stage(req)].__name__
+                        )
                     ),
                     specialist_executor_version=(
                         ev.agent_execution.executor_version
