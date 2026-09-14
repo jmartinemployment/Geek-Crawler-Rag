@@ -1,4 +1,4 @@
-"""Offline tests for the opt-in staging citation smoke."""
+"""Offline tests for the opt-in staging library citation smoke."""
 
 from __future__ import annotations
 
@@ -22,8 +22,8 @@ run_smoke = _SMOKE.run_smoke
 
 
 class FakeClient:
-    def __init__(self, citation_quote: str = "Acme supports SSO for enterprise teams."):
-        self.citation_quote = citation_quote
+    def __init__(self, chunk_text: str = "Acme supports SSO for enterprise teams."):
+        self.chunk_text = chunk_text
         self.calls: list[tuple[str, str, dict[str, Any] | None]] = []
 
     def request(
@@ -37,39 +37,13 @@ class FakeClient:
                 "chunks": [
                     {
                         "pageId": "page/one",
-                        "text": "Acme supports SSO for enterprise teams.",
+                        "text": self.chunk_text,
                     }
                 ]
             }
-        if path == "/v1/pages/page%2Fone":
+        if path == "/v1/pages/page%2Fone?runId=run-123":
             return {
                 "pageId": "page/one",
-                "markdown": "# Identity\n\nAcme supports SSO for enterprise teams.",
-            }
-        if path == "/v1/generate":
-            return {
-                "content": "Draft",
-                "modelUsed": "o3",
-                "provenance": {
-                    "generationStage": "complete",
-                    "modelUsed": "o3",
-                    "modelPolicyPreset": "best-quality",
-                    "modelPolicyVersion": "content-model-policy.v1",
-                    "promptVersion": "citeable-generate.v2",
-                    "retrieval": "hybrid",
-                    "evidenceIds": ["citation-page"],
-                },
-                "citations": [
-                    {
-                        "pageId": "citation-page",
-                        "url": "https://example.test/identity",
-                        "quote": self.citation_quote,
-                    }
-                ],
-            }
-        if path == "/v1/pages/citation-page":
-            return {
-                "pageId": "citation-page",
                 "markdown": "# Identity\n\nAcme supports SSO for enterprise teams.",
             }
         raise AssertionError(f"unexpected request: {method} {path}")
@@ -81,57 +55,31 @@ def config() -> SmokeConfig:
         api_key="test-key",
         run_id="run-123",
         query="What identity capabilities are documented?",
-        topic="Documented identity capabilities",
-        writing_intent="Technical Article",
     )
 
 
-def test_smoke_is_read_only_and_verifies_exact_quote():
+def test_smoke_is_read_only_and_verifies_chunk_in_markdown():
     client = FakeClient()
 
     result = run_smoke(config(), client)  # type: ignore[arg-type]
 
-    assert result == {"queryChunks": 1, "citationsVerified": 1}
+    assert result == {"queryChunks": 1, "chunksVerified": 1}
     assert [(method, path) for method, path, _ in client.calls] == [
         ("GET", "/health"),
         ("POST", "/v1/query"),
-        ("GET", "/v1/pages/page%2Fone"),
-        ("POST", "/v1/generate"),
-        ("GET", "/v1/pages/citation-page"),
+        ("GET", "/v1/pages/page%2Fone?runId=run-123"),
     ]
     assert all(
-        method == "GET" or path in {"/v1/query", "/v1/generate"}
+        method == "GET" or path == "/v1/query"
         for method, path, _ in client.calls
     )
-    generate_body = next(
-        body for method, path, body in client.calls
-        if method == "POST" and path == "/v1/generate"
-    )
-    assert generate_body is not None
-    assert generate_body["modelPolicyPreset"] == "best-quality"
-    assert generate_body["modelPolicyVersion"] == "content-model-policy.v1"
-    assert generate_body["canonicalBrief"]["contentType"] == "tech-article"
 
 
-def test_smoke_rejects_quote_that_is_not_exact_substring():
+def test_smoke_rejects_chunk_that_is_not_exact_substring():
     client = FakeClient("Acme supports SSO\nfor enterprise teams.")
 
     with pytest.raises(SmokeFailure, match="not an exact substring"):
         run_smoke(config(), client)  # type: ignore[arg-type]
-
-
-def test_smoke_rejects_missing_model_provenance():
-    class MissingProvenanceClient(FakeClient):
-        def request(
-            self, method: str, path: str, body: dict[str, Any] | None = None
-        ) -> dict[str, Any]:
-            response = super().request(method, path, body)
-            if path == "/v1/generate":
-                response.pop("provenance")
-            return response
-
-    with pytest.raises(SmokeFailure, match="no provenance"):
-        run_smoke(config(), MissingProvenanceClient())  # type: ignore[arg-type]
 
 
 def test_config_rejects_unsafe_url_and_out_of_bounds(monkeypatch: pytest.MonkeyPatch):

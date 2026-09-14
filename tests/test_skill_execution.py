@@ -6,13 +6,6 @@ from datetime import datetime, timezone
 import pytest
 from pydantic import ValidationError
 
-from geek_crawler_rag.generate import (
-    _build_prompts,
-    _request_for_specialist,
-    _skill_provenance,
-    select_generation_model,
-)
-from geek_crawler_rag.quality_eval import evaluate_quality_contract
 from geek_crawler_rag.config import Settings
 from geek_crawler_rag.models import (
     CURRENT_EXECUTION_VERSION,
@@ -110,50 +103,13 @@ def _request(**overrides):
     return GenerateRequest(**payload)
 
 
-def test_capabilities_advertise_strict_execution_contract():
+def test_capabilities_do_not_advertise_removed_generate_endpoint():
     wire = ProducerCapabilities().model_dump(by_alias=True)
-    assert CURRENT_EXECUTION_VERSION in wire["executionVersions"]
-    assert "rag-generate.v3" in wire["executionVersions"]
-    assert CURRENT_SKILL_ENVELOPE_VERSION in wire["skillEnvelopeVersions"]
-    assert "gcc-skill-envelope.v2" in wire["skillEnvelopeVersions"]
-    assert "researchPlanning" in wire["generationStages"]
-    assert "repair" in wire["generationStages"]
-    assert "complete" in wire["generationStages"]
-    assert "complete" not in wire["agentGenerationStages"]
-    assert "outline" in wire["agentGenerationStages"]
-    assert wire["specialistExecutorVersion"] == "bounded-specialists.v1"
-    assert set(wire["specialistExecutors"]) >= {
-        "researchPlanning",
-        "outline",
-        "section",
-        "finalSynthesis",
-        "validation",
-        "repair",
-    }
-    assert wire["toolsAllowed"] is False
-    assert wire["stageScopedToolsAllowed"] is True
-    assert wire["agentExecutorVersions"] == ["function-agents.v1"]
-    assert wire["agentTraceVersions"] == ["agent-trace.v1"]
-    assert wire["agentToolVersions"] == ["agent-tools.v1"]
-
-
-def test_repair_keeps_true_stage_prompt_model_and_skill_provenance():
-    request = _request()
-    system, user = _build_prompts(
-        request,
-        "long",
-        [{"pageId": "page", "url": "https://example.test", "markdown": "Evidence."}],
-    )
-    provenance = _skill_provenance(request)
-
-    assert request.generation_stage == "repair"
-    assert select_generation_model(request, Settings()) == "o3"
-    assert "Generation stage: REPAIR" in user
-    assert "SKILL citation-discipline@1.0.0" in system
-    assert "cannot change the selected model" in system
-    assert provenance.stage == "repair"
-    assert provenance.skill_versions == ["citation-discipline@1.0.0"]
-
+    assert wire["executionVersions"] == []
+    assert wire["skillEnvelopeVersions"] == []
+    assert wire["generationStages"] == []
+    assert wire["agentGenerationStages"] == []
+    assert wire["specialistExecutors"] == []
 
 @pytest.mark.parametrize(
     "mutation, message",
@@ -229,62 +185,3 @@ def test_research_planning_is_bounded_typed_and_uses_only_reviewed_hints():
         ],
         "retrievalMode": None,
     }
-
-
-def test_specialist_request_view_contains_only_stage_applicable_skills():
-    request = _request()
-    research_view = _request_for_specialist(request, "researchPlanning")
-    repair_view = _request_for_specialist(request, "repair")
-
-    assert research_view.skill_execution.skills == []
-    assert [skill.id for skill in repair_view.skill_execution.skills] == [
-        "citation-discipline"
-    ]
-
-
-def test_quality_evaluation_requires_complete_strict_skill_provenance():
-    request = _request()
-    system, user = _build_prompts(request, "long", [])
-    provenance = {
-        "generationStage": "repair",
-        "modelUsed": "o3",
-        "modelPolicyPreset": "best-quality",
-        "modelPolicyVersion": "content-model-policy.v1",
-        "promptVersion": "citeable-repair.v1",
-        "retrieval": "hybrid",
-        "evidenceIds": ["page-1"],
-        "specialistExecutor": "RepairSpecialist",
-        "specialistExecutorVersion": "bounded-specialists.v1",
-        "executionVersion": CURRENT_EXECUTION_VERSION,
-        "attemptId": "9cf1b2f1-9797-4104-aeaa-eb09a9c89831",
-        "skills": {
-            "envelopeVersion": CURRENT_SKILL_ENVELOPE_VERSION,
-            "catalogVersion": CURRENT_SKILL_CATALOG_VERSION,
-            "snapshotHash": request.skill_execution.snapshot_hash,
-            "stage": "repair",
-            "skillVersions": [],
-        },
-    }
-
-    incomplete = evaluate_quality_contract(
-        request=request,
-        system_prompt=system,
-        user_prompt=user,
-        citations=[],
-        sources=[],
-        pages=[],
-        provenance=provenance,
-    )
-    assert incomplete["signals"]["provenanceCompleteness"] < 1.0
-
-    provenance["skills"]["skillVersions"] = ["citation-discipline@1.0.0"]
-    complete = evaluate_quality_contract(
-        request=request,
-        system_prompt=system,
-        user_prompt=user,
-        citations=[],
-        sources=[],
-        pages=[],
-        provenance=provenance,
-    )
-    assert complete["signals"]["provenanceCompleteness"] == 1.0

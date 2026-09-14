@@ -59,7 +59,6 @@ from geek_crawler_rag.content_models import (
     PillarOutlineRequest,
 )
 from geek_crawler_rag.diagnostics import DiagnosticService
-from geek_crawler_rag.generate import GenerateService
 from geek_crawler_rag.indexer import IndexService
 from geek_crawler_rag.intelligence import IntelligenceService
 from geek_crawler_rag.intelligence_models import (
@@ -82,8 +81,6 @@ from geek_crawler_rag.models import (
     AdTemplateIndexResponse,
     AdTemplateQueryRequest,
     AdTemplateQueryResponse,
-    GenerateRequest,
-    GenerateResponse,
     IndexRunRequest,
     IndexSchedulerStatus,
     IndexStatusResponse,
@@ -112,7 +109,6 @@ class AppState:
     query: QueryService
     templates: AdTemplateIndexService
     webhook: IndexStatusWebhook
-    generate: GenerateService
     scheduler: IndexScheduler
     assets: AssetContextService
     diagnostics: DiagnosticService
@@ -170,9 +166,6 @@ async def lifespan(_app: FastAPI):
     )
     state.templates = AdTemplateIndexService(settings, state.llama)
     state.assets = AssetContextService(state.store, state.llama, settings)
-    state.generate = GenerateService(
-        state.mongo, state.query, settings, assets=state.assets
-    )
     state.diagnostics = DiagnosticService()
     state.intelligence = IntelligenceService(state.diagnostics)
     state.content = ContentService()
@@ -189,12 +182,11 @@ async def lifespan(_app: FastAPI):
     await state.indexer.start()
     await state.scheduler.start()
     logger.info(
-        "Geek-Crawler-Rag listening (collection=%s templates=%s engine=LlamaIndex webhook=%s rerank=%s generate=%s)",
+        "Geek-Crawler-Rag listening (collection=%s templates=%s engine=LlamaIndex webhook=%s rerank=%s)",
         settings.qdrant_collection,
         settings.qdrant_ad_templates_collection,
         "on" if state.webhook.enabled else "off",
         "on" if reranker.enabled else "off",
-        "on" if settings.generate_enabled else "off",
     )
     yield
     await state.scheduler.stop()
@@ -278,7 +270,7 @@ async def health() -> JSONResponse:
         "mongo": mongo_ok,
         "qdrant": qdrant_ok,
         "engine": "llamaindex",
-        "features": ["hybrid", "graph", "ad-templates", "pages", "generate"],
+        "features": ["hybrid", "graph", "ad-templates", "pages"],
         "embeddingThrottle": state.llama.embedding_stats(),
         "scheduler": scheduler_status,
         "errors": errors or None,
@@ -293,7 +285,7 @@ async def health() -> JSONResponse:
     dependencies=[Depends(require_api_key)],
 )
 async def capabilities() -> ProducerCapabilities:
-    """Declare strict generation and skill-envelope versions supported by this producer."""
+    """Declare retrieval library capabilities (index, query, pages)."""
     return ProducerCapabilities()
 
 
@@ -426,17 +418,6 @@ async def get_page_markdown_by_url(run_id: str, url: str) -> PageMarkdownRespons
         markdown=page.markdown,
         excerpt=None,
     )
-
-
-@app.post(
-    "/v1/generate",
-    response_model=GenerateResponse,
-    response_model_by_alias=True,
-    dependencies=[Depends(require_api_key)],
-)
-async def generate(body: GenerateRequest) -> GenerateResponse:
-    """Citeable multi-step generate: retrieve → read Markdown → draft → verify."""
-    return await state.generate.generate(body)
 
 
 @app.post(

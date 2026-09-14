@@ -240,6 +240,11 @@ class GenerateCitation(BaseModel):
     source_digest: str | None = Field(
         None, alias="sourceDigest", pattern=r"^[0-9a-f]{64}$"
     )
+    source_rights: str | None = Field(
+        None,
+        alias="sourceRights",
+        pattern=r"^(consented|licensed|unknown|prohibited)$",
+    )
     coordinates: dict[str, Any] | None = None
 
     model_config = {"populate_by_name": True, "ser_json_by_alias": True}
@@ -502,33 +507,23 @@ class SkillProvenance(BaseModel):
 
 class ProducerCapabilities(BaseModel):
     execution_versions: list[str] = Field(
-        default_factory=lambda: [CURRENT_EXECUTION_VERSION, AGENT_EXECUTION_VERSION],
+        default_factory=list,
         alias="executionVersions",
     )
     skill_envelope_versions: list[str] = Field(
-        default_factory=lambda: [
-            CURRENT_SKILL_ENVELOPE_VERSION,
-            SIGNED_SKILL_ENVELOPE_VERSION,
-        ],
+        default_factory=list,
         alias="skillEnvelopeVersions",
     )
     generation_stages: list[str] = Field(
-        default_factory=lambda: sorted(SUPPORTED_GENERATION_STAGES),
+        default_factory=list,
         alias="generationStages",
     )
     agent_generation_stages: list[str] = Field(
-        default_factory=lambda: sorted(AGENT_GENERATION_STAGES),
+        default_factory=list,
         alias="agentGenerationStages",
     )
     specialist_executors: list[str] = Field(
-        default_factory=lambda: [
-            "researchPlanning",
-            "outline",
-            "section",
-            "finalSynthesis",
-            "validation",
-            "repair",
-        ],
+        default_factory=list,
         alias="specialistExecutors",
     )
     specialist_executor_version: str = Field(

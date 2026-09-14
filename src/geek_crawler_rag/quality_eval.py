@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from geek_crawler_rag.generate import verify_citations
+from geek_crawler_rag.citation_verify import verify_citations
 from geek_crawler_rag.models import (
     GenerateCitation,
     GenerateProvenance,

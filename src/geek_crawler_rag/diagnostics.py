@@ -34,7 +34,7 @@ from geek_crawler_rag.diagnostic_models import (
     SchemaValidationFinding,
     SectionFactDensity,
 )
-from geek_crawler_rag.generate import verify_citations
+from geek_crawler_rag.citation_verify import verify_citations
 from geek_crawler_rag.models import GenerateCitation, GenerateSource
 
 _HEADING = re.compile(r"(?m)^(#{1,6})\s+(.+?)\s*$")

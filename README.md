@@ -4,12 +4,12 @@ Standalone **Python** retrieval product for the Geek-Crawler Mongo corpus.
 **FastAPI** exposes `v1/*`; **LlamaIndex** owns ingest/embed/dense retrieval into Qdrant
 (parent/child chunks, hybrid BM25 RRF, optional Cohere rerank).
 
-See [`architecture.md`](./architecture.md), [`plans/geek-crawler-rag.md`](./plans/geek-crawler-rag.md),
-and [`plans/rag-content-writing-pipeline.md`](./plans/rag-content-writing-pipeline.md).
+See [`architecture.md`](./architecture.md) and [`plans/geek-crawler-rag.md`](./plans/geek-crawler-rag.md).
+Historical Phase U generate contract fixture (models only; no `/v1/generate` endpoint): [`contracts/phase-u/generate.section.v1.json`](./contracts/phase-u/generate.section.v1.json).
 
 ## Product overview
 
-Geek-Crawler-Rag turns partner and competitor website crawls into searchable evidence and citation-backed content. It combines semantic and keyword retrieval, hierarchical context, entity-aware filtering, and source verification for technical articles, case studies, ads, battlecards, and strategy presentations.
+Geek-Crawler-Rag turns partner and competitor website crawls into searchable evidence with verified Markdown reads. It combines semantic and keyword retrieval, hierarchical context, entity-aware filtering, and quote-level verification for downstream content systems.
 
 ### Capabilities
 
@@ -21,9 +21,8 @@ Geek-Crawler-Rag turns partner and competitor website crawls into searchable evi
 - Graph-style entity/category/co-occurrence themes
 - Few-shot advertising-template indexing and retrieval
 - Full-page Markdown reads for source verification
-- Editable outlines and section-by-section generation
-- Citation validation that rejects quotes not found in source Markdown
-- Corpus hygiene, historical Markdown backfill, and idempotent run-level reindexing
+- Quote verification helpers (chunk and citation text must appear in source Markdown)
+- Corpus hygiene (delete unusable / HTML-only pages; re-crawl for Markdown) and idempotent run-level reindexing
 
 ### Technology
 
@@ -37,7 +36,7 @@ Geek-Crawler-v2 → MongoDB → Geek-Crawler-Rag/Qdrant
                          GeekAPI → Content Creator v2
 ```
 
-**Geek-Crawler-v2** produces the clean crawl corpus. This service owns corpus hygiene, indexing, retrieval, themes, and citation-aware generation. **Content Creator v2** provides the operator-facing writing, editing, publishing, and export workflow.
+**Geek-Crawler-v2** produces the clean crawl corpus. This service owns corpus hygiene, indexing, hybrid/graph retrieval, themes, and run-scoped Markdown reads. **Content Creator v2** owns generation, operator writing workflows, and publishing.
 
 ## What this is / is not
 
@@ -61,7 +60,8 @@ Geek-Crawler-v2 → MongoDB → Geek-Crawler-Rag/Qdrant
 | `POST` | `/v1/templates/query` | Retrieve few-shot templates by need (+ channel/framework/tags) |
 | `GET` | `/v1/pages/{pageId}?runId=…` | Run-scoped Mongo Markdown for citation reads |
 | `GET` | `/v1/pages?runId=&url=` | Same lookup by run + URL |
-| `POST` | `/v1/generate` | Citeable multi-step draft (retrieve → Markdown → draft → verify) |
+
+RAG in this repository is **library-only**: index, query, and page Markdown. There is no `POST /v1/generate` endpoint.
 
 `POST /v1/query` body (camelCase; new fields optional / backward compatible):
 
@@ -265,6 +265,6 @@ Key points:
 
 ## Consumers
 
-- **gcc-v2 WRITE** (via GeekAPI): HTTP query client — resolve `runId`, call `/v1/query`, inject chunks; on miss **notify-and-skip** (do not block generate).
+- **gcc-v2 WRITE** (via GeekAPI): HTTP query client — resolve `runId`, call `/v1/query`, inject chunks; on miss **notify-and-skip**.
 - Thin trigger: `POST /v1/index` when a crawl reaches **`complete`**.
 - Progress: webhook → GeekAPI → SignalR (see above).

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only staging smoke for the citation-backed RAG workflow."""
+"""Read-only staging smoke for library retrieval and Markdown citation reads."""
 
 from __future__ import annotations
 
@@ -42,14 +42,9 @@ class SmokeConfig:
     api_key: str
     run_id: str
     query: str
-    topic: str
-    writing_intent: str
-    model_policy_version: str = "content-model-policy.v1"
-    model_policy_preset: str = "best-quality"
     top_k: int = 3
     timeout_seconds: int = 30
     max_response_bytes: int = 2_000_000
-    max_citations: int = 10
 
     @classmethod
     def from_env(cls) -> "SmokeConfig":
@@ -81,21 +76,6 @@ class SmokeConfig:
                 3,
                 500,
             ),
-            topic=_bounded_text(
-                "STAGING_RAG_TOPIC",
-                os.environ.get(
-                    "STAGING_RAG_TOPIC",
-                    "Summarize one explicitly documented product capability",
-                ),
-                3,
-                300,
-            ),
-            writing_intent=_bounded_text(
-                "STAGING_RAG_WRITING_INTENT",
-                os.environ.get("STAGING_RAG_WRITING_INTENT", "Technical Article"),
-                1,
-                100,
-            ),
             top_k=_bounded_int(
                 "STAGING_RAG_TOP_K",
                 os.environ.get("STAGING_RAG_TOP_K", "3"),
@@ -113,12 +93,6 @@ class SmokeConfig:
                 os.environ.get("STAGING_RAG_MAX_RESPONSE_BYTES", "2000000"),
                 1_024,
                 5_000_000,
-            ),
-            max_citations=_bounded_int(
-                "STAGING_RAG_MAX_CITATIONS",
-                os.environ.get("STAGING_RAG_MAX_CITATIONS", "10"),
-                1,
-                20,
             ),
         )
 
@@ -193,80 +167,18 @@ def run_smoke(config: SmokeConfig, client: JsonHttpClient) -> dict[str, int]:
     if not isinstance(first_chunk, dict):
         raise SmokeFailure("query chunk must be an object")
     query_page_id = _required_string(first_chunk.get("pageId"), "query pageId", 200)
+    chunk_text = _required_string(first_chunk.get("text"), "query chunk text", 50_000)
 
-    page = client.request("GET", f"/v1/pages/{quote(query_page_id, safe='')}")
+    page = client.request("GET", f"/v1/pages/{quote(query_page_id, safe='')}?runId={quote(config.run_id, safe='')}")
     if page.get("pageId") != query_page_id:
         raise SmokeFailure("page response pageId does not match query chunk")
-    _required_string(page.get("markdown"), "page markdown", config.max_response_bytes)
-
-    generated = client.request(
-        "POST",
-        "/v1/generate",
-        {
-            "writingIntent": config.writing_intent,
-            "topic": config.topic,
-            "partnerRunId": config.run_id,
-            "generationStage": "complete",
-            "canonicalBrief": {
-                "version": "gcc-v2-generation-brief.v1",
-                "title": config.topic,
-                "targetKeyword": config.query,
-                "contentType": "tech-article",
-                "primaryIntent": "inform",
-                "outputRequirements": {
-                    "purpose": "Verify the deployed unified content-generation contract"
-                },
-            },
-            "modelPolicyPreset": config.model_policy_preset,
-            "modelPolicyVersion": config.model_policy_version,
-        },
-    )
-    provenance = generated.get("provenance")
-    if not isinstance(provenance, dict):
-        raise SmokeFailure("generate returned no provenance object")
-    if provenance.get("generationStage") != "complete":
-        raise SmokeFailure("generate provenance did not confirm the complete stage")
-    if provenance.get("modelPolicyVersion") != config.model_policy_version:
-        raise SmokeFailure("generate provenance did not confirm the model policy version")
-    if provenance.get("modelPolicyPreset") != config.model_policy_preset:
-        raise SmokeFailure("generate provenance did not confirm the model policy preset")
-    model_used = _required_string(
-        provenance.get("modelUsed"), "generate provenance modelUsed", 100
-    )
-    if model_used != "o3":
+    markdown = _required_string(page.get("markdown"), "page markdown", config.max_response_bytes)
+    if chunk_text not in markdown:
         raise SmokeFailure(
-            f"best-quality complete generation must use o3, got {model_used!r}"
+            "query chunk text is not an exact substring of page Markdown"
         )
-    if generated.get("modelUsed") != model_used:
-        raise SmokeFailure("top-level modelUsed does not match provenance")
 
-    citations = generated.get("citations")
-    if not isinstance(citations, list) or not citations:
-        raise SmokeFailure("generate returned no citations")
-    if len(citations) > config.max_citations:
-        raise SmokeFailure("generate returned more citations than the configured bound")
-
-    for index, citation in enumerate(citations):
-        if not isinstance(citation, dict):
-            raise SmokeFailure(f"citation {index} must be an object")
-        page_id = _required_string(citation.get("pageId"), f"citation {index} pageId", 200)
-        cited_quote = _required_string(
-            citation.get("quote"), f"citation {index} quote", 2_000
-        )
-        if len(cited_quote) < 12:
-            raise SmokeFailure(f"citation {index} quote is too short")
-        source = client.request("GET", f"/v1/pages/{quote(page_id, safe='')}")
-        markdown = _required_string(
-            source.get("markdown"),
-            f"citation {index} page markdown",
-            config.max_response_bytes,
-        )
-        if cited_quote not in markdown:
-            raise SmokeFailure(
-                f"citation {index} quote is not an exact substring of page Markdown"
-            )
-
-    return {"queryChunks": len(chunks), "citationsVerified": len(citations)}
+    return {"queryChunks": len(chunks), "chunksVerified": 1}
 
 
 def main() -> int:
