@@ -68,6 +68,9 @@ class Settings(BaseSettings):
     local_test_mode: bool = False
     crawler_owner_id: str = "system:crawler"
     crawler_visibility: str = "service"
+    # Comma-separated hosts whose indexed pages default to sourceRights=consented
+    # (P1.5 smoke corpus: ApprovalMax / Plooto). All others default unknown.
+    source_rights_consented_hosts: str = "approvalmax.com,plooto.com"
 
     # GeekAPI-owned manifest signing keys. No manifest/catalog authority is stored here.
     context_manifest_signing_keys: dict[str, str] = {}
@@ -77,22 +80,6 @@ class Settings(BaseSettings):
     # Push index status to GeekAPI → SignalR (no UI polling).
     index_status_webhook_url: str | None = None
     index_status_webhook_key: str | None = None
-
-    # Citeable generate — Responses API for reasoning; Chat Completions for legacy models.
-    openai_longform_model: str = "o3"
-    openai_standard_model: str = "gpt-4o"
-    openai_reasoning_max_completion_tokens: int = 16_000
-    generate_min_quality: float = 0.35
-    generate_max_pages: int = 8
-    generate_markdown_chars: int = 12000
-    generate_enabled: bool = True
-    # JSON object of key-id -> HMAC secret. The singleton fields are a migration
-    # fallback for one configured key and must still match signatureKeyId.
-    skill_snapshot_signing_keys: dict[str, str] = {}
-    skill_snapshot_signing_key: str = ""
-    skill_snapshot_signing_key_id: str = "default"
-    agent_execution_replay_protection: bool = True
-    agent_execution_clock_skew_seconds: int = 60
 
     host: str = "0.0.0.0"
     port: int = 8080
