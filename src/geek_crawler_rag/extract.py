@@ -50,15 +50,18 @@ def page_text_and_title(
     *,
     markdown: str | None,
     title: str | None,
-    html: str | None,
+    html: str | None = None,
 ) -> tuple[str, str | None, bool]:
-    """Prefer ingest markdown/title when present; else HTML extract.
+    """Require crawler Markdown. Do not synthesize from HTML.
+
+    HTML-only pages are deleted (cleanup / index sweeper), not backfilled.
+    ``html`` is accepted for call-site compatibility and ignored.
 
     Returns (text, title, used_markdown).
     """
+    del html  # never fall back to HTML extract
     if markdown and markdown.strip():
         md = markdown.strip()
-        # First markdown heading as title fallback.
         md_title = title
         if not md_title:
             for line in md.splitlines():
@@ -68,5 +71,4 @@ def page_text_and_title(
                     break
         return md, md_title, True
 
-    text, html_title = extract_text_and_title(html)
-    return text, title or html_title, False
+    return "", title, False

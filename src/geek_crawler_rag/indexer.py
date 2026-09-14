@@ -348,24 +348,18 @@ class IndexService:
     async def _delete_unusable(
         self, page: CrawlPage, reason: str, status: IndexStatusResponse
     ) -> None:
+        await self._mongo.delete_page(page.id)
+        await self._delete_page_points(page.id)
         if reason == "locale":
             status.pages_deleted_locale += 1
         elif reason == "failure":
             status.pages_deleted_failure += 1
         elif reason == "non_english":
             status.pages_deleted_non_english += 1
+            status.pages_skipped_lang += 1
         else:
             status.pages_deleted_empty += 1
-        try:
-            await self._mongo.delete_page(page.id)
-        except Exception:
-            logger.exception(
-                "Failed deleting unusable Mongo page id=%s reason=%s", page.id, reason
-            )
-        try:
-            await self._delete_page_points(page.id)
-        except Exception:
-            logger.debug("Qdrant pageId delete skipped id=%s", page.id, exc_info=True)
+            status.pages_skipped_empty += 1
 
     async def _index_run(self, run_id: str) -> None:
         status = self._statuses.get(run_id) or IndexStatusResponse(
@@ -465,9 +459,12 @@ class IndexService:
                         final_url=page.final_url,
                         failure_reason=page.failure_reason,
                         robots_allowed=page.robots_allowed,
+                        markdown=page.markdown,
                     )
                     if reject:
-                        await self._delete_unusable(page, reject, status)
+                        # no_markdown counts with empty deletes (HTML-only junk).
+                        reason = "extract_empty" if reject == "no_markdown" else reject
+                        await self._delete_unusable(page, reason, status)
                         continue
 
                     host_key = host_from_origin_or_url(page.origin, page.url)

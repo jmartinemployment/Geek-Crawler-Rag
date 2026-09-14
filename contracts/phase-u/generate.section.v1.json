@@ -1,0 +1,133 @@
+{
+  "schemaVersion": "phase-u-generate-contract.v1",
+  "description": "Shared cross-repository POST /v1/generate section-stage example. Keep identical in Geek-Crawler-Rag, GeekBackend, and content-creator-v2.",
+  "request": {
+    "writingIntent": "blog",
+    "topic": "Verified partner API documentation",
+    "partnerRunId": "11111111-1111-4111-8111-111111111111",
+    "competitorRunId": null,
+    "targetEntities": ["Example Co"],
+    "adTemplates": null,
+    "graphEnabled": true,
+    "generationStage": "section",
+    "outline": [
+      {
+        "key": "section-1",
+        "heading": "Verified claims",
+        "brief": "Use partner evidence only.",
+        "evidenceIds": ["page-partner-1"]
+      }
+    ],
+    "sectionKey": "section-1",
+    "sectionHeading": "Verified claims",
+    "sectionBrief": "Use partner evidence only.",
+    "completedSectionSummaries": ["Introduction completed."],
+    "canonicalBrief": {
+      "version": "gcc-v2-generation-brief.v1",
+      "title": "Verified partner API documentation",
+      "targetKeyword": "partner API",
+      "contentType": "blog",
+      "primaryIntent": "educate",
+      "audience": { "persona": "technical buyer" },
+      "buyingStage": "consideration",
+      "toneOfVoice": ["clear", "expert"],
+      "brandKit": { "voice": "direct" },
+      "paaQuestions": ["How does the partner API authenticate?"],
+      "requiredTopics": ["authentication", "rate limits"],
+      "operatorInstructions": ["Prefer partner docs over competitor pages."],
+      "exclusions": ["pricing speculation"],
+      "hierarchy": { "h1": "Verified partner API documentation" },
+      "internalLinks": [{ "url": "https://partner.example/docs", "anchor": "API docs" }],
+      "outputRequirements": { "minWords": 400 },
+      "channelRequirements": { "channel": "blog" },
+      "ctaRequirements": { "primary": "Talk to sales" },
+      "conversionObjective": "demo_request",
+      "publishingDestination": "cms"
+    },
+    "modelPolicyPreset": "best-quality",
+    "modelPolicyVersion": "content-model-policy.v1",
+    "stageModelOverrides": null
+  },
+  "response": {
+    "intent": "blog",
+    "content": "## Verified claims\n\nPartner APIs authenticate with OAuth client credentials.",
+    "variations": null,
+    "battlecard": null,
+    "themes": null,
+    "outline": [
+      {
+        "key": "section-1",
+        "heading": "Verified claims",
+        "brief": "Use partner evidence only.",
+        "evidenceIds": ["page-partner-1"]
+      }
+    ],
+    "sources": [
+      {
+        "pageId": "page-partner-1",
+        "url": "https://partner.example/docs/auth",
+        "title": "Auth guide",
+        "entity": "Example Co",
+        "crawlType": "partner",
+        "kind": "page"
+      }
+    ],
+    "citations": [
+      {
+        "pageId": "page-partner-1",
+        "url": "https://partner.example/docs/auth",
+        "title": "Auth guide",
+        "sectionTitle": "OAuth",
+        "quote": "Partner APIs authenticate with OAuth client credentials.",
+        "crawlType": "partner"
+      }
+    ],
+    "warnings": [],
+    "evidenceWarnings": [],
+    "modelUsed": "o3",
+    "retrieval": "hybrid",
+    "provenance": {
+      "generationStage": "section",
+      "modelUsed": "o3",
+      "modelPolicyPreset": "best-quality",
+      "modelPolicyVersion": "content-model-policy.v1",
+      "promptVersion": "rag-generate.section.v1",
+      "retrieval": "hybrid",
+      "evidenceIds": ["page-partner-1"]
+    }
+  },
+  "requiredRequestFields": [
+    "writingIntent",
+    "topic",
+    "partnerRunId",
+    "competitorRunId",
+    "targetEntities",
+    "adTemplates",
+    "graphEnabled",
+    "generationStage",
+    "outline",
+    "sectionKey",
+    "sectionHeading",
+    "sectionBrief",
+    "completedSectionSummaries",
+    "canonicalBrief",
+    "modelPolicyPreset",
+    "modelPolicyVersion",
+    "stageModelOverrides"
+  ],
+  "requiredResponseFields": [
+    "intent",
+    "content",
+    "variations",
+    "battlecard",
+    "themes",
+    "outline",
+    "sources",
+    "citations",
+    "warnings",
+    "evidenceWarnings",
+    "modelUsed",
+    "retrieval",
+    "provenance"
+  ]
+}

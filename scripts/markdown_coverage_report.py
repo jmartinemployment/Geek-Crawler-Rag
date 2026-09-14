@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Report Markdown coverage and runs that need reindex after citeable-rag deploy.
+"""Report Markdown coverage and runs ready to reindex (no backfill).
 
-Dry read-only against Mongo. Use after backfill / before POST /v1/index.
+Dry read-only against Mongo. Pages missing Markdown should be **deleted**
+(cleanup / index sweeper) and **re-crawled** — never backfilled.
 
 Usage:
   uv run python scripts/markdown_coverage_report.py
@@ -45,8 +46,9 @@ def main() -> int:
         "FinishedAtUtc", -1
     ).limit(args.limit_runs if not args.run_id else 1)
 
-    print("runId\tcrawlType\tstatus\tpages\twithMarkdown\tmissingMarkdown\treindex?")
+    print("runId\tcrawlType\tstatus\tpages\twithMarkdown\tmissingMarkdown\taction")
     needs_reindex: list[str] = []
+    needs_delete: list[str] = []
     for run in cursor:
         rid = str(run.get("Id") or "")
         if not rid:
@@ -61,35 +63,34 @@ def main() -> int:
                 ],
             }
         )
-        # Approximate "has Html but no Markdown"
-        with_html = pages.count_documents(
-            {
-                "RunId": rid,
-                "$or": [
-                    {"Html": {"$type": "string", "$ne": ""}},
-                    {"html": {"$type": "string", "$ne": ""}},
-                ],
-            }
-        )
-        missing = max(0, with_html - with_md)
-        reindex = "yes" if with_md > 0 else "no-pages"
+        missing = max(0, total - with_md)
         if missing > 0:
-            reindex = "backfill-first"
+            action = "delete-missing-then-recrawl"
+            needs_delete.append(rid)
         elif with_md > 0:
+            action = "reindex"
             needs_reindex.append(rid)
-            reindex = "yes"
+        else:
+            action = "no-pages"
         print(
             f"{rid}\t{run.get('CrawlType')}\t{run.get('Status')}\t"
-            f"{total}\t{with_md}\t{missing}\t{reindex}"
+            f"{total}\t{with_md}\t{missing}\t{action}"
         )
 
     print()
+    if needs_delete:
+        print("Runs with pages missing Markdown (delete via cleanup, then re-crawl):")
+        for rid in needs_delete:
+            print(f"  {rid}")
     if needs_reindex:
-        print("Suggested reindex (Markdown present):")
+        print("Suggested reindex (Markdown present on all pages):")
         for rid in needs_reindex:
-            print(f'  curl -X POST "$RAG_URL/v1/index" -H "Content-Type: application/json" -d \'{{"runId":"{rid}"}}\'')
-    else:
-        print("No runs ready for reindex (backfill Markdown first if missingMarkdown > 0).")
+            print(
+                f'  curl -X POST "$RAG_URL/v1/index" -H "Content-Type: application/json" '
+                f"-d '{{\"runId\":\"{rid}\"}}'"
+            )
+    if not needs_reindex and not needs_delete:
+        print("No runs with pages to act on.")
 
     client.close()
     return 0

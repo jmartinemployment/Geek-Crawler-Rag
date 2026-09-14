@@ -18,6 +18,7 @@ from geek_crawler_rag.metadata import (
     infer_tags,
     is_evergreen,
     quality_score,
+    resolve_source_rights,
 )
 from geek_crawler_rag.mongo import CrawlPage
 from geek_crawler_rag.qdrant_store import point_id
@@ -87,6 +88,7 @@ def page_to_nodes(
                     owner_id=settings.crawler_owner_id,
                     visibility=settings.crawler_visibility,
                     embedding_model=settings.openai_embedding_model,
+                    source_rights_consented_hosts=settings.source_rights_consented_hosts,
                 )
             )
         nodes.append(
@@ -112,6 +114,7 @@ def page_to_nodes(
                 owner_id=settings.crawler_owner_id,
                 visibility=settings.crawler_visibility,
                 embedding_model=settings.openai_embedding_model,
+                source_rights_consented_hosts=settings.source_rights_consented_hosts,
             )
         )
     return nodes, ""
@@ -140,6 +143,7 @@ def _node(
     owner_id: str,
     visibility: str,
     embedding_model: str,
+    source_rights_consented_hosts: str = "",
 ) -> TextNode:
     metadata: dict[str, Any] = {
         "ownerId": owner_id,
@@ -170,7 +174,15 @@ def _node(
         "sourceDigest": hashlib.sha256(
             (page.markdown or page.html or "").encode("utf-8")
         ).hexdigest(),
-        "parserId": "crawler-markdown" if page.markdown else "beautifulsoup-lxml",
+        "sourceRights": resolve_source_rights(
+            host=host,
+            consented_hosts=tuple(
+                h.strip()
+                for h in (source_rights_consented_hosts or "").split(",")
+                if h.strip()
+            ),
+        ),
+        "parserId": "crawler-markdown",
         "parserVersion": "1.0.0",
         "chunkerId": "parent-child-token-window",
         "chunkerVersion": "1.0.0",

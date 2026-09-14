@@ -37,6 +37,97 @@ def _llama_mock() -> MagicMock:
 
 
 @pytest.mark.asyncio
+async def test_index_deletes_locale_and_failure_pages():
+    mongo = MagicMock()
+    mongo.get_run = AsyncMock(
+        return_value=CrawlRun(id="r-loc", crawl_type="partner", status="complete")
+    )
+    mongo.count_pages = AsyncMock(return_value=2)
+    mongo.delete_page = AsyncMock(return_value=1)
+    _entity_mock(mongo)
+
+    async def pages(_run_id, batch_size=25):
+        yield [
+            CrawlPage(
+                id="p-locale",
+                run_id="r-loc",
+                origin="https://speakai.co",
+                url="https://speakai.co/es/approaches/",
+                final_url="https://speakai.co/es/approaches/",
+                html="<html><body>ok</body></html>",
+            ),
+            CrawlPage(
+                id="p-fail",
+                run_id="r-loc",
+                origin="https://speakai.co",
+                url="https://speakai.co/blocked",
+                final_url="https://speakai.co/blocked",
+                html="<html><body>challenge</body></html>",
+                failure_reason="cloudflare_challenge",
+            ),
+        ]
+
+    mongo.iter_pages = pages
+    store = MagicMock()
+    store.delete_by_run_id = AsyncMock()
+    store.delete_by_page_id = AsyncMock()
+    store.ensure_collection = AsyncMock()
+    llama = _llama_mock()
+
+    svc = IndexService(mongo, store, Settings(openai_api_key="test"), llama=llama)
+    await svc._index_run("r-loc")
+
+    status = await svc.get_status("r-loc")
+    assert status is not None
+    assert status.state == IndexState.COMPLETE
+    assert status.pages_deleted_locale == 1
+    assert status.pages_deleted_failure == 1
+    assert mongo.delete_page.await_count == 2
+    llama.embed_and_upsert.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_index_fails_closed_when_unusable_delete_fails():
+    mongo = MagicMock()
+    mongo.get_run = AsyncMock(
+        return_value=CrawlRun(id="r-del", crawl_type="partner", status="complete")
+    )
+    mongo.count_pages = AsyncMock(return_value=1)
+    mongo.delete_page = AsyncMock(side_effect=RuntimeError("mongo delete failed"))
+    _entity_mock(mongo)
+
+    async def pages(_run_id, batch_size=25):
+        yield [
+            CrawlPage(
+                id="p-del",
+                run_id="r-del",
+                origin="https://speakai.co",
+                url="https://speakai.co/es/approaches/",
+                final_url="https://speakai.co/es/approaches/",
+                html="<html><body>ok</body></html>",
+            )
+        ]
+
+    mongo.iter_pages = pages
+    store = MagicMock()
+    store.delete_by_run_id = AsyncMock()
+    store.delete_by_page_id = AsyncMock()
+    store.ensure_collection = AsyncMock()
+
+    svc = IndexService(
+        mongo, store, Settings(openai_api_key="test"), llama=_llama_mock()
+    )
+    await svc._index_run("r-del")
+
+    status = await svc.get_status("r-del")
+    assert status is not None
+    assert status.state == IndexState.FAILED
+    assert status.error and "mongo delete failed" in status.error.lower()
+    assert status.pages_deleted_locale == 0
+    store.delete_by_page_id.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_index_run_not_found():
     mongo = MagicMock()
     mongo.get_run = AsyncMock(return_value=None)
@@ -63,7 +154,13 @@ async def test_index_skips_when_no_english():
         return_value=CrawlRun(id="r1", crawl_type="partner", status="complete")
     )
     mongo.count_pages = AsyncMock(return_value=1)
+    mongo.delete_page = AsyncMock(return_value=0)
     _entity_mock(mongo)
+
+    spanish_md = (
+        "# Página\n\n"
+        + ("Esta es una página en español con contenido suficiente. " * 20)
+    )
 
     async def empty_english_pages(_run_id, batch_size=25):
         yield [
@@ -73,15 +170,16 @@ async def test_index_skips_when_no_english():
                 origin="https://ejemplo.es",
                 url="https://ejemplo.es/",
                 final_url="https://ejemplo.es/",
-                html="<html><body>"
-                + ("Esta es una página en español con contenido suficiente. " * 20)
-                + "</body></html>",
+                html="<html><body>ignored</body></html>",
+                markdown=spanish_md,
+                title="Página",
             )
         ]
 
     mongo.iter_pages = empty_english_pages
     store = MagicMock()
     store.delete_by_run_id = AsyncMock()
+    store.delete_by_page_id = AsyncMock()
     store.ensure_collection = AsyncMock()
     llama = _llama_mock()
     settings = Settings(openai_api_key="test")
@@ -94,21 +192,67 @@ async def test_index_skips_when_no_english():
     assert status.state == IndexState.COMPLETE
     assert status.mongo_page_count == 1
     assert status.pages_deleted_non_english >= 1
+    assert status.pages_skipped_lang >= 1
+    mongo.delete_page.assert_awaited()
+    store.delete_by_page_id.assert_awaited()
     llama.embed_and_upsert.assert_not_called()
 
 
 @pytest.mark.asyncio
+async def test_index_deletes_html_only_pages():
+    mongo = MagicMock()
+    mongo.get_run = AsyncMock(
+        return_value=CrawlRun(id="r-html", crawl_type="partner", status="complete")
+    )
+    mongo.count_pages = AsyncMock(return_value=1)
+    mongo.delete_page = AsyncMock(return_value=0)
+    _entity_mock(mongo)
+
+    async def pages(_run_id, batch_size=25):
+        yield [
+            CrawlPage(
+                id="p-html",
+                run_id="r-html",
+                origin="https://partner.com",
+                url="https://partner.com/docs",
+                final_url="https://partner.com/docs",
+                html="<html><body>"
+                + ("This English documentation explains the partner API thoroughly. " * 40)
+                + "</body></html>",
+                markdown=None,
+            )
+        ]
+
+    mongo.iter_pages = pages
+    store = MagicMock()
+    store.delete_by_run_id = AsyncMock()
+    store.delete_by_page_id = AsyncMock()
+    store.ensure_collection = AsyncMock()
+
+    svc = IndexService(
+        mongo, store, Settings(openai_api_key="test"), llama=_llama_mock()
+    )
+    await svc._index_run("r-html")
+
+    status = await svc.get_status("r-html")
+    assert status is not None
+    assert status.state == IndexState.COMPLETE
+    assert status.pages_deleted_empty >= 1
+    mongo.delete_page.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_index_upserts_english_chunks():
-    html = (
-        "<html><head><title>Docs</title></head><body>"
+    md = (
+        "# Docs\n\n"
         + ("This English documentation explains the partner API thoroughly. " * 40)
-        + "</body></html>"
     )
     mongo = MagicMock()
     mongo.get_run = AsyncMock(
         return_value=CrawlRun(id="r2", crawl_type="competitors", status="complete")
     )
     mongo.count_pages = AsyncMock(return_value=1)
+    mongo.delete_page = AsyncMock(return_value=0)
     _entity_mock(mongo)
 
     async def pages(_run_id, batch_size=25):
@@ -119,13 +263,17 @@ async def test_index_upserts_english_chunks():
                 origin="https://rival.com",
                 url="https://rival.com/docs",
                 final_url="https://rival.com/docs",
-                html=html,
+                html="<html><body>ignored</body></html>",
+                markdown=md,
+                title="Docs",
             )
         ]
 
     mongo.iter_pages = pages
+    mongo.delete_page = AsyncMock(return_value=0)
     store = MagicMock()
     store.delete_by_run_id = AsyncMock()
+    store.delete_by_page_id = AsyncMock()
     store.ensure_collection = AsyncMock()
     llama = _llama_mock()
     settings = Settings(openai_api_key="test", embed_batch_size=10)
@@ -151,10 +299,9 @@ async def test_index_upserts_english_chunks():
 
 @pytest.mark.asyncio
 async def test_index_flush_failure_preserves_partial_points():
-    html = (
-        "<html><body>"
+    md = (
+        "# Docs\n\n"
         + ("This English documentation explains the partner API thoroughly. " * 40)
-        + "</body></html>"
     )
     mongo = MagicMock()
     mongo.get_run = AsyncMock(
@@ -171,13 +318,16 @@ async def test_index_flush_failure_preserves_partial_points():
                 origin="https://partner.com",
                 url="https://partner.com/docs",
                 final_url="https://partner.com/docs",
-                html=html,
+                html="<html><body>ignored</body></html>",
+                markdown=md,
             )
         ]
 
     mongo.iter_pages = pages
+    mongo.delete_page = AsyncMock(return_value=0)
     store = MagicMock()
     store.delete_by_run_id = AsyncMock()
+    store.delete_by_page_id = AsyncMock()
     store.ensure_collection = AsyncMock()
     llama = MagicMock()
     llama.embed_and_upsert = AsyncMock(side_effect=RuntimeError("qdrant down"))
@@ -279,10 +429,9 @@ async def test_start_does_not_auto_reclaim_stale_leases():
 
 @pytest.mark.asyncio
 async def test_shutdown_preserves_partial_qdrant_index():
-    html = (
-        "<html><body>"
+    md = (
+        "# Docs\n\n"
         + ("This English documentation explains the partner API thoroughly. " * 40)
-        + "</body></html>"
     )
     mongo = MagicMock()
     mongo.get_run = AsyncMock(
@@ -299,14 +448,17 @@ async def test_shutdown_preserves_partial_qdrant_index():
                 origin="https://partner.com",
                 url="https://partner.com/docs",
                 final_url="https://partner.com/docs",
-                html=html,
+                html="<html><body>ignored</body></html>",
+                markdown=md,
             )
         ]
 
     mongo.iter_pages = pages
+    mongo.delete_page = AsyncMock(return_value=0)
     store = MagicMock()
     store.ensure_collection = AsyncMock()
     store.delete_by_run_id = AsyncMock()
+    store.delete_by_page_id = AsyncMock()
     started = asyncio.Event()
     never = asyncio.Event()
     llama = MagicMock()

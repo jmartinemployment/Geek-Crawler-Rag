@@ -106,9 +106,9 @@ async def test_index_circuit_open_skips_cleanup(tmp_path: Path):
                 origin="https://example.com",
                 url="https://example.com/",
                 final_url="https://example.com/",
-                html="<html><body>"
-                + ("This is enough English content for indexing. " * 30)
-                + "</body></html>",
+                html="<html><body>ignored</body></html>",
+                markdown="# Home\n\n"
+                + ("This is enough English content for indexing. " * 30),
             )
         ]
 
@@ -240,9 +240,9 @@ async def test_index_empty_embed_400_quarantines_without_wipe(tmp_path: Path):
                 origin="https://example.com",
                 url="https://example.com/",
                 final_url="https://example.com/",
-                html="<html><body>"
-                + ("This is enough English content for indexing. " * 30)
-                + "</body></html>",
+                html="<html><body>ignored</body></html>",
+                markdown="# Home\n\n"
+                + ("This is enough English content for indexing. " * 30),
             )
         ]
 

@@ -99,11 +99,6 @@ class MongoCorpus:
             [("Status", 1), ("MarkdownReadyAt", 1), ("Id", 1)],
             name="ix_crawl_runs_markdown_ready",
         )
-        await self._db["crawl_pages"].create_index(
-            [("RunId", 1), ("MarkdownBackfilledAt", 1)],
-            name="ix_crawl_pages_run_markdown_ready",
-            partialFilterExpression={"MarkdownBackfilledAt": {"$type": "date"}},
-        )
         await self._db["rag_execution_replays"].create_index(
             [("stageExecutionId", 1)],
             name="ux_rag_execution_replays_stage",

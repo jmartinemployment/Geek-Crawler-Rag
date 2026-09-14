@@ -52,7 +52,7 @@ Fail any change that:
 
 **No Retries. No Fallbacks. No Crappy Code.**
 
-Applies to Geek-Crawler-Rag and sibling Geek-Crawler-v2 work. See also [`no-retries-no-fallbacks.md`](./no-retries-no-fallbacks.md).
+Applies to Geek-Crawler-Rag and sibling Geek-Crawler-v2 work.
 
 - **No Retries** — Do not add or retain application-level retry loops, exponential backoff, or “try again later” wrappers around failures, including HTTP 5xx responses, timeouts, Mongo failures, OpenAI failures, and GeekAPI `pages/batch` or `links/batch` ingest failures. Fail the operation on its first failure, return the real diagnostic error, and fix the root cause.
 - **No Fallbacks** — Do not turn a required-operation failure into apparent success by dropping fields, skipping persistence, swallowing exceptions, or continuing on a best-effort basis. Intentional product processing paths, such as selecting Playwright when static HTML is not viable, are permitted only when explicit, logged, and contract-preserving. They must never hide API or storage failure.

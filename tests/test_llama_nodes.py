@@ -7,10 +7,9 @@ from geek_crawler_rag.mongo import CrawlPage
 
 
 def test_page_to_nodes_parent_and_child():
-    html = (
-        "<html><head><title>Docs</title></head><body>"
+    md = (
+        "# Docs\n\n"
         + ("This English documentation explains the partner API thoroughly. " * 40)
-        + "</body></html>"
     )
     page = CrawlPage(
         id="p1",
@@ -18,7 +17,9 @@ def test_page_to_nodes_parent_and_child():
         origin="https://acme.com",
         url="https://acme.com/docs",
         final_url="https://acme.com/docs",
-        html=html,
+        html="<html><body>ignored</body></html>",
+        markdown=md,
+        title="Docs",
     )
     entity = EntityRef(None, "acme.com", "partner", ("acme.com",))
     nodes, skip = page_to_nodes(
@@ -34,6 +35,7 @@ def test_page_to_nodes_parent_and_child():
     assert "child" in roles
     assert "parent" in roles
     assert all(n.metadata.get("runId") == "r1" for n in nodes)
+    assert all(n.metadata.get("parserId") == "crawler-markdown" for n in nodes)
 
 
 def test_page_to_nodes_prefers_markdown():
@@ -58,3 +60,27 @@ def test_page_to_nodes_prefers_markdown():
     )
     assert skip == ""
     assert any("markdown content" in n.get_content().lower() for n in nodes)
+
+
+def test_page_to_nodes_rejects_html_only():
+    page = CrawlPage(
+        id="p3",
+        run_id="r1",
+        origin="https://acme.com",
+        url="https://acme.com/docs",
+        final_url="https://acme.com/docs",
+        html="<html><body>"
+        + ("This English documentation explains the partner API thoroughly. " * 40)
+        + "</body></html>",
+        markdown=None,
+    )
+    entity = EntityRef(None, "acme.com", "partner", ("acme.com",))
+    nodes, skip = page_to_nodes(
+        page=page,
+        run_id="r1",
+        crawl_type="partner",
+        entity=entity,
+        settings=Settings(openai_api_key="test"),
+    )
+    assert skip == "empty"
+    assert nodes == []

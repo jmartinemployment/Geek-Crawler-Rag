@@ -76,8 +76,32 @@ def infer_tags(url: str, title: str | None) -> list[str]:
     return tags[:12]
 
 
+def resolve_source_rights(
+    *,
+    host: str | None,
+    consented_hosts: tuple[str, ...] | list[str] | None = None,
+    existing: str | None = None,
+) -> str:
+    """Return consented|licensed|unknown|prohibited. Missing/invalid → unknown."""
+    allowed = {"consented", "licensed", "unknown", "prohibited"}
+    if existing:
+        v = str(existing).strip().lower()
+        if v in allowed:
+            return v
+    h = normalize_host(host)
+    consented = {
+        normalize_host(x)
+        for x in (consented_hosts or ())
+        if str(x).strip()
+    }
+    if h and h in consented:
+        return "consented"
+    return "unknown"
+
+
 def quality_score(*, text: str, title: str | None, has_markdown: bool) -> float:
     length = len((text or "").strip())
+
     score = 0.35
     if title:
         score += 0.15

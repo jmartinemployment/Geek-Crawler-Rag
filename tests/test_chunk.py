@@ -72,15 +72,15 @@ def test_prefer_markdown_over_html():
     assert title == "Hello"
 
 
-def test_html_fallback_when_no_markdown():
+def test_no_markdown_does_not_use_html():
     text, title, used_md = page_text_and_title(
         markdown=None,
         title=None,
         html="<html><head><title>Docs</title></head><body>Plain HTML English content here.</body></html>",
     )
     assert used_md is False
-    assert "Plain HTML" in text
-    assert title == "Docs"
+    assert text == ""
+    assert title is None
 
 
 def test_metadata_heuristics():

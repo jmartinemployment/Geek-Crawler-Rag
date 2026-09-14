@@ -61,6 +61,7 @@ CORPUS_DELETE_REASONS = frozenset({
     "extract_empty",
     "extract_error",
     "non_english",
+    "no_markdown",
 })
 
 
@@ -99,10 +100,11 @@ def classify_unusable_page(
     failure_reason: str | None = None,
     markdown_backfill_skip: str | None = None,
     robots_allowed: bool | None = None,
+    markdown: str | None = None,
 ) -> str | None:
     """Return delete reason or None if the page may stay in the corpus.
 
-    Does not run Readability — use extract_empty when extraction already failed.
+    Pages without crawler Markdown are deleted (no HTML backfill / synthesis).
     """
     if markdown_backfill_skip in ("locale", "failure", "extract_empty", "extract_error", "fetch_error", "no_html", "robots"):
         return "locale" if markdown_backfill_skip == "locale" else (
@@ -119,14 +121,21 @@ def classify_unusable_page(
     if isinstance(failure_reason, str) and failure_reason.strip():
         return "failure"
 
+    if not (isinstance(markdown, str) and markdown.strip()):
+        return "no_markdown"
+
     return None
 
 
 def classify_from_mongo_doc(doc: dict[str, Any]) -> str | None:
+    md = doc.get("Markdown")
+    if md is None:
+        md = doc.get("markdown")
     return classify_unusable_page(
         url=str(doc.get("Url") or ""),
         final_url=str(doc.get("FinalUrl") or ""),
         failure_reason=doc.get("FailureReason"),
         markdown_backfill_skip=doc.get("MarkdownBackfillSkip"),
         robots_allowed=doc.get("RobotsAllowed"),
+        markdown=md if isinstance(md, str) else None,
     )

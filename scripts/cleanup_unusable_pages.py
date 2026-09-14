@@ -4,7 +4,8 @@
 Reasons (aligned with Geek-Crawler-v2 reject plan):
   - locale URL paths
   - FailureReason / robots-denied / challenge
-  - extract_empty (and related backfill skip marks)
+  - extract_empty (and related historical skip marks)
+  - no_markdown (HTML-only — delete; never backfill)
 
 Also deletes crawl_links for removed PageIds.
 
@@ -30,7 +31,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from pymongo import MongoClient  # noqa: E402
 
-from geek_crawler_rag.unusable import should_exclude_locale_path  # noqa: E402
+from geek_crawler_rag.unusable import classify_from_mongo_doc  # noqa: E402
 
 
 @dataclass
@@ -187,26 +188,32 @@ def cleanup(
             if not write:
                 break
 
-    # --- Locale URL scan (remaining pages) ---
+    # --- Locale + missing-Markdown scan (remaining pages; no Markdown backfill) ---
     if not skip_locale_scan and (limit is None or counts.deleted_pages < limit):
         pending: list[dict[str, Any]] = []
-        cursor = pages.find(run_filter, {"_id": 1, "Id": 1, "Url": 1, "FinalUrl": 1, "FailureReason": 1, "RobotsAllowed": 1}).batch_size(batch_size)
+        cursor = pages.find(
+            run_filter,
+            {
+                "_id": 1,
+                "Id": 1,
+                "Url": 1,
+                "FinalUrl": 1,
+                "FailureReason": 1,
+                "RobotsAllowed": 1,
+                "Markdown": 1,
+                "markdown": 1,
+                "MarkdownBackfillSkip": 1,
+            },
+        ).batch_size(batch_size)
         for doc in cursor:
             if limit is not None and counts.deleted_pages + len(pending) >= limit:
                 break
             counts.scanned += 1
-            # Already-deleted failure rows won't appear when write=True
-            fr = doc.get("FailureReason")
-            if isinstance(fr, str) and fr.strip():
+            reason = classify_from_mongo_doc(doc)
+            # Fast path already covered failure / skip-marks; only locale + no_markdown here.
+            if reason not in ("locale", "no_markdown"):
                 continue
-            if doc.get("RobotsAllowed") is False:
-                continue
-            url = str(doc.get("FinalUrl") or doc.get("Url") or "")
-            if not should_exclude_locale_path(url) and not should_exclude_locale_path(
-                str(doc.get("Url") or "")
-            ):
-                continue
-            counts.by_reason["locale"] += 1
+            counts.by_reason[reason] += 1
             pending.append(doc)
             if len(pending) >= batch_size:
                 _delete_ids(
@@ -214,7 +221,7 @@ def cleanup(
                 )
                 pending = []
                 print(
-                    f"progress locale_scan scanned={counts.scanned} "
+                    f"progress classify_scan scanned={counts.scanned} "
                     f"deleted_pages={counts.deleted_pages} deleted_links={counts.deleted_links} "
                     f"reasons={dict(counts.by_reason)}",
                     flush=True,
@@ -226,7 +233,7 @@ def cleanup(
                 pages, links, pending, write=write, counts=counts, delete_links=delete_links
             )
             print(
-                f"progress locale_scan scanned={counts.scanned} "
+                f"progress classify_scan scanned={counts.scanned} "
                 f"deleted_pages={counts.deleted_pages} deleted_links={counts.deleted_links} "
                 f"reasons={dict(counts.by_reason)}",
                 flush=True,
