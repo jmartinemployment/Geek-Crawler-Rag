@@ -3,6 +3,8 @@ from geek_crawler_rag.extract import page_text_and_title
 from geek_crawler_rag.metadata import (
     entity_from_crawl,
     infer_category,
+    infer_competitor_chunk_kind,
+    infer_feature_tag,
     normalize_host,
     quality_score,
 )
@@ -91,6 +93,57 @@ def test_metadata_heuristics():
     assert ent.entity_name == "acme.com"
     score = quality_score(text="x" * 600, title="T", has_markdown=True)
     assert 0.5 <= score <= 1.0
+
+
+def test_competitor_chunk_kind_and_feature_tag():
+    assert (
+        infer_competitor_chunk_kind(
+            url="https://rival.example/pricing",
+            section_title="Plans",
+            text="Per seat pricing starts at $49",
+            category="pricing",
+        )
+        == "pricing"
+    )
+    assert (
+        infer_competitor_chunk_kind(
+            url="https://rival.example/compare/us-vs-them",
+            section_title="Versus",
+            text="Compared to alternatives",
+            category="compare",
+        )
+        == "comparison"
+    )
+    assert (
+        infer_competitor_chunk_kind(
+            url="https://rival.example/security",
+            section_title="Trust",
+            text="We maintain SOC 2 Type II and ISO 27001",
+            category="docs",
+        )
+        == "proof"
+    )
+    assert (
+        infer_competitor_chunk_kind(
+            url="https://rival.example/faq",
+            section_title="FAQ",
+            text="Does not support SSO for starter plans",
+            category="docs",
+        )
+        == "gap"
+    )
+    assert (
+        infer_competitor_chunk_kind(
+            url="https://rival.example/features/analytics",
+            section_title="Analytics",
+            text="Capability to report funnel conversion",
+            category="product",
+        )
+        == "feature"
+    )
+    assert infer_feature_tag("SSO & SCIM", ["docs"]) == "SSO  SCIM"
+    assert infer_feature_tag(None, ["pricing", "analytics"]) == "analytics"
+    assert infer_feature_tag(None, ["pricing", "docs"]) is None
 
 
 def test_rrf_and_bm25():

@@ -14,7 +14,9 @@ from geek_crawler_rag.language import is_english
 from geek_crawler_rag.metadata import (
     EntityRef,
     infer_category,
+    infer_competitor_chunk_kind,
     infer_content_intent,
+    infer_feature_tag,
     infer_tags,
     is_evergreen,
     quality_score,
@@ -62,7 +64,22 @@ def page_to_nodes(
 
     nodes: list[TextNode] = []
     seen_parents: set[int] = set()
+    crawl_norm = (crawl_type or "").strip().lower()
+    is_competitor = crawl_norm in {"competitor", "competitors"}
     for unit in units:
+        unit_kind = (
+            infer_competitor_chunk_kind(
+                url=page.url,
+                section_title=unit.section_title,
+                text=unit.child_text or unit.parent_text,
+                category=category,
+            )
+            if is_competitor
+            else None
+        )
+        feature_tag = (
+            infer_feature_tag(unit.section_title, tags) if is_competitor else None
+        )
         if unit.parent_index not in seen_parents:
             seen_parents.add(unit.parent_index)
             nodes.append(
@@ -89,6 +106,8 @@ def page_to_nodes(
                     visibility=settings.crawler_visibility,
                     embedding_model=settings.openai_embedding_model,
                     source_rights_consented_hosts=settings.source_rights_consented_hosts,
+                    competitor_chunk_kind=unit_kind,
+                    feature_tag=feature_tag,
                 )
             )
         nodes.append(
@@ -115,6 +134,8 @@ def page_to_nodes(
                 visibility=settings.crawler_visibility,
                 embedding_model=settings.openai_embedding_model,
                 source_rights_consented_hosts=settings.source_rights_consented_hosts,
+                competitor_chunk_kind=unit_kind,
+                feature_tag=feature_tag,
             )
         )
     return nodes, ""
@@ -144,6 +165,8 @@ def _node(
     visibility: str,
     embedding_model: str,
     source_rights_consented_hosts: str = "",
+    competitor_chunk_kind: str | None = None,
+    feature_tag: str | None = None,
 ) -> TextNode:
     metadata: dict[str, Any] = {
         "ownerId": owner_id,
@@ -188,6 +211,14 @@ def _node(
         "chunkerVersion": "1.0.0",
         "embeddingModel": embedding_model,
     }
+    crawl_norm = (crawl_type or "").strip().lower()
+    if crawl_norm in {"competitor", "competitors"}:
+        # competitor-extraction §9 — never stamp crawlType partner on rival chunks
+        metadata["competitorName"] = entity.entity_name
+        if competitor_chunk_kind:
+            metadata["competitorChunkKind"] = competitor_chunk_kind
+        if feature_tag:
+            metadata["featureTag"] = feature_tag
     # Drop Nones — Qdrant/LlamaIndex payload hygiene.
     metadata = {k: v for k, v in metadata.items() if v is not None}
     node_id = point_id(run_id, page.id, point_key)

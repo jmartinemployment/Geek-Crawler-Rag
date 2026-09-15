@@ -76,6 +76,68 @@ def infer_tags(url: str, title: str | None) -> list[str]:
     return tags[:12]
 
 
+def infer_competitor_chunk_kind(
+    *,
+    url: str,
+    section_title: str | None,
+    text: str,
+    category: str,
+) -> str:
+    """Competitor-extraction §9 chunk kinds: feature|pricing|comparison|gap|proof."""
+    blob = f"{(urlparse(url).path or '').lower()} {(section_title or '').lower()} {(text or '')[:800].lower()}"
+    if category == "pricing" or any(
+        n in blob for n in ("/pricing", "pricing", "plans and pricing", "per seat", "$/")
+    ):
+        return "pricing"
+    if category == "compare" or any(
+        n in blob for n in ("/compare", "/vs-", "versus", "alternative", "unlike ", "compared to")
+    ):
+        return "comparison"
+    if any(
+        n in blob
+        for n in (
+            "soc 2",
+            "iso 27001",
+            "g2 ",
+            "case study",
+            "customers",
+            "testimonial",
+            "award",
+            "% faster",
+        )
+    ):
+        return "proof"
+    if any(
+        n in blob
+        for n in (
+            "faq",
+            "frequently asked",
+            "missing",
+            "not available",
+            "does not support",
+            "limitation",
+        )
+    ):
+        return "gap"
+    if category == "product" or any(
+        n in blob for n in ("/features", "/product", "feature", "capability", "integrat")
+    ):
+        return "feature"
+    return "feature" if section_title else "feature"
+
+
+def infer_feature_tag(section_title: str | None, tags: list[str]) -> str | None:
+    """Axis-ish tag for competitor feature chunks (from section title or first path tag)."""
+    if section_title and section_title.strip():
+        cleaned = re.sub(r"[^a-zA-Z0-9 \-_]+", "", section_title.strip()).strip()
+        if cleaned:
+            return cleaned[:80]
+    for tag in tags:
+        if tag and tag not in {"pricing", "docs", "blog", "about"}:
+            return tag[:80]
+    return None
+
+
 def resolve_source_rights(
     *,
     host: str | None,
