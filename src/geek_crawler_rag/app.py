@@ -285,7 +285,7 @@ async def health() -> JSONResponse:
     dependencies=[Depends(require_api_key)],
 )
 async def capabilities() -> ProducerCapabilities:
-    """Declare retrieval library capabilities (index, query, pages)."""
+    """Declare strict generation and skill-envelope versions supported by this producer."""
     return ProducerCapabilities()
 
 
