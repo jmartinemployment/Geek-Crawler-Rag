@@ -674,3 +674,24 @@ async def delete_asset(body: AssetDeleteRequest) -> None:
 async def query_assets(body: ManifestQueryRequest) -> ManifestQueryResponse:
     """Query only exact entries from a digest- and signature-verified manifest."""
     return await state.assets.query(body)
+
+
+@app.delete(
+    "/v1/index/runs/{run_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_api_key)],
+)
+async def delete_run_index(run_id: str) -> None:
+    """Remove every crawler-owned vector for one run.
+
+    Called by GeekAPI as the first step of a run delete: vectors go before the
+    Markdown they cite, so retrieval can never return a chunk whose source no
+    longer exists. Deleting an already-absent run is a no-op, not an error.
+    """
+    if not run_id.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
+    await state.store.delete_by_run_id(
+        run_id,
+        owner_id=state.settings.crawler_owner_id,
+        visibility=state.settings.crawler_visibility,
+    )
