@@ -1,0 +1,24 @@
+---
+description: No Retries, No Fallbacks, No Crappy Code — fail closed; fix root causes
+alwaysApply: true
+---
+
+# No Retries. No Fallbacks. No Crappy Code.
+
+Authoritative source: `plans/rules.md` §3a (Correctness — fail closed).
+
+## Law
+
+- **No Retries** — Do not add or retain application-level retry loops, exponential backoff, or “try again later” wrappers around failures (HTTP 5xx, timeouts, Mongo, OpenAI, GeekAPI ingest). Fail on the first failure; return the real diagnostic error; fix the root cause.
+- **No Fallbacks** — Do not turn a required-operation failure into apparent success (drop fields, skip persistence, swallow exceptions, best-effort success). Intentional product processing paths are allowed only when explicit, logged, and contract-preserving — never to hide API/storage failure.
+- **No Crappy Code** — Delete incorrect behavior instead of concealing it. Empty error bodies, diagnostic truncation, and silent catches are defects.
+
+## Reject in plans and PRs
+
+- Proposals to “retry on 502/500”, “backoff and try again”, or soft-succeed after ingest/index failure.
+- Silent degradation that reports success when a required step failed.
+
+## Prefer
+
+- Fail closed with actionable diagnostics.
+- Root-cause fixes (limits, contracts, error mapping) — never band-aid retries.
