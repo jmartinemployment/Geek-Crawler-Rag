@@ -43,21 +43,6 @@ from geek_crawler_rag.diagnostic_models import (
     SchemaMarkupArtifact,
     SchemaMarkupRequest,
 )
-from geek_crawler_rag.content import ContentService
-from geek_crawler_rag.content_models import (
-    ClaimLedgerArtifact,
-    CitableClaimsRequest,
-    ComparisonBriefArtifact,
-    ComparisonBriefRequest,
-    CompetitiveResponseArtifact,
-    CompetitiveResponseRequest,
-    FaqGeneratorRequest,
-    FaqSetArtifact,
-    PillarArticleArtifact,
-    PillarArticleRequest,
-    PillarOutlineArtifact,
-    PillarOutlineRequest,
-)
 from geek_crawler_rag.diagnostics import DiagnosticService
 from geek_crawler_rag.indexer import IndexService
 from geek_crawler_rag.intelligence import IntelligenceService
@@ -113,7 +98,6 @@ class AppState:
     assets: AssetContextService
     diagnostics: DiagnosticService
     intelligence: IntelligenceService
-    content: ContentService
 
 
 state = AppState()
@@ -168,7 +152,6 @@ async def lifespan(_app: FastAPI):
     state.assets = AssetContextService(state.store, state.llama, settings)
     state.diagnostics = DiagnosticService()
     state.intelligence = IntelligenceService(state.diagnostics)
-    state.content = ContentService()
     state.scheduler = IndexScheduler(
         state.mongo,
         status_store,
@@ -535,73 +518,6 @@ async def competitor_positioning(
     """Map narrative attributes and labeled hypotheses without claiming market perception."""
     return state.intelligence.competitor_positioning(body)
 
-
-@app.post(
-    "/v1/content/faq-set",
-    response_model=FaqSetArtifact,
-    response_model_by_alias=True,
-    dependencies=[Depends(require_api_key)],
-)
-async def faq_set(body: FaqGeneratorRequest) -> FaqSetArtifact:
-    """Generate answer-first FAQ pairs from supplied queries and visible source content."""
-    return state.content.faq_set(body)
-
-
-@app.post(
-    "/v1/content/citable-claims",
-    response_model=ClaimLedgerArtifact,
-    response_model_by_alias=True,
-    dependencies=[Depends(require_api_key)],
-)
-async def citable_claims(body: CitableClaimsRequest) -> ClaimLedgerArtifact:
-    """Convert vague statements into attributable claims without inventing statistics."""
-    return state.content.citable_claims(body)
-
-
-@app.post(
-    "/v1/content/comparison-brief",
-    response_model=ComparisonBriefArtifact,
-    response_model_by_alias=True,
-    dependencies=[Depends(require_api_key)],
-)
-async def comparison_brief(body: ComparisonBriefRequest) -> ComparisonBriefArtifact:
-    """Build a structured X vs Y brief from supplied brand and competitor pages."""
-    return state.content.comparison_brief(body)
-
-
-@app.post(
-    "/v1/content/competitive-response",
-    response_model=CompetitiveResponseArtifact,
-    response_model_by_alias=True,
-    dependencies=[Depends(require_api_key)],
-)
-async def competitive_response(
-    body: CompetitiveResponseRequest,
-) -> CompetitiveResponseArtifact:
-    """Convert competitor coverage into a brand-aligned response strategy outline."""
-    return state.content.competitive_response(body)
-
-
-@app.post(
-    "/v1/content/pillar-outline",
-    response_model=PillarOutlineArtifact,
-    response_model_by_alias=True,
-    dependencies=[Depends(require_api_key)],
-)
-async def pillar_outline(body: PillarOutlineRequest) -> PillarOutlineArtifact:
-    """Produce a deterministic topic-cluster pillar outline (not a full article)."""
-    return state.content.pillar_outline(body)
-
-
-@app.post(
-    "/v1/content/pillar-article",
-    response_model=PillarArticleArtifact,
-    response_model_by_alias=True,
-    dependencies=[Depends(require_api_key)],
-)
-async def pillar_article(body: PillarArticleRequest) -> PillarArticleArtifact:
-    """Produce a grounded pillar Markdown draft plus supporting-content plan."""
-    return state.content.pillar_article(body)
 
 
 @app.post(
