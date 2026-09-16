@@ -27,10 +27,13 @@ jobs:
           ssh -i ~/.ssh/hostinger_key -o StrictHostKeyChecking=no root@2.24.101.90 \
             'cd /docker/geek-crawler-rag && docker compose pull && docker compose up -d'
 
+      # RAG is not public: the API binds to 127.0.0.1:8080 on the box, behind Caddy. Curling the
+      # host's public IP on 8080 can never succeed, so the check runs over SSH on the box itself.
       - name: Verify health
         run: |
           for i in $(seq 1 12); do
-            body=$(curl -fsS --max-time 10 http://2.24.101.90:8080/health) && \
+            body=$(ssh -i ~/.ssh/hostinger_key -o StrictHostKeyChecking=no root@2.24.101.90 \
+              'curl -fsS --max-time 10 http://localhost:8080/health') && \
               echo "$body" | grep -q '"status":"ok"' && echo "$body" && exit 0
             echo "waiting for API to come up ($i/12)..."
             sleep 10
