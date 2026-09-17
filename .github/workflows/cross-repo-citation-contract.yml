@@ -20,7 +20,7 @@ jobs:
     name: RAG deterministic (pytest)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
@@ -37,11 +37,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out Geek-Crawler-v2
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: jmartinemployment/Geek-Crawler-v2
           token: ${{ secrets.CROSS_REPO_TOKEN || github.token }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "24"
           cache: npm
@@ -55,13 +55,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out GeekBackend
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: jmartinemployment/GeekBackend
           token: ${{ secrets.CROSS_REPO_TOKEN || github.token }}
           path: GeekBackend
       - name: Check out pinned Geek-SEO dependency
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: jmartinemployment/Geek-SEO
           token: ${{ secrets.CROSS_REPO_TOKEN || github.token }}
@@ -94,11 +94,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out content-creator-v2
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: jmartinemployment/content-creator-v2
           token: ${{ secrets.CROSS_REPO_TOKEN || github.token }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "24"
           cache: npm
@@ -119,7 +119,7 @@ jobs:
       STAGING_RAG_TOPIC: ${{ vars.STAGING_RAG_TOPIC }}
       STAGING_RAG_WRITING_INTENT: ${{ vars.STAGING_RAG_WRITING_INTENT }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Detect optional staging configuration
         id: staging-config
         shell: bash
