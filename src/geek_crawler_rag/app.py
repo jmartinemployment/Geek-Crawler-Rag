@@ -656,9 +656,7 @@ async def host_index_exists(body: HostIndexRequest) -> HostIndexResponse:
     for url in body.urls:
         found = None
         for host in _host_candidates(url):
-            if await state.store.host_has_index(
-                host, owner_id=body.owner_id, visibility=body.visibility
-            ):
+            if await state.store.host_has_index(host):
                 found = host
                 break
         results.append(

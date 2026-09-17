@@ -617,21 +617,16 @@ class QdrantStore:
             logger.exception("Text search scroll failed for runId=%s", run_id)
             return []
 
-    async def host_has_index(
-        self,
-        host: str,
-        *,
-        owner_id: str = "system:crawler",
-        visibility: str = "service",
-    ) -> bool:
+    async def host_has_index(self, host: str) -> bool:
         """
         Whether any indexed chunk exists for a host.
 
         Whether, not how much: one point is fetched, not counted. A count would invite a threshold
-        ("is 46 chunks enough?"), which is a different question and not the one being asked.
+        ("is 46 chunks enough?"), which is a different question.
 
-        Answered from Qdrant rather than from crawl_runs on purpose. A crawl can complete with pages
-        in Mongo and nothing indexed, and a URL whose pages were never indexed cannot be cited.
+        Filtered on host alone. Crawler-written chunks carry no ownerId or visibility -- both are
+        absent on every crawl_pages-derived point -- so adding those conditions, as the delete paths
+        do, matches nothing and reports every host unindexed.
         """
         if not host:
             return False
@@ -639,13 +634,7 @@ class QdrantStore:
         points, _ = await self._client.scroll(
             collection_name=self._collection,
             scroll_filter=qm.Filter(
-                must=[
-                    qm.FieldCondition(key="host", match=qm.MatchValue(value=host)),
-                    qm.FieldCondition(key="ownerId", match=qm.MatchValue(value=owner_id)),
-                    qm.FieldCondition(
-                        key="visibility", match=qm.MatchValue(value=visibility)
-                    ),
-                ]
+                must=[qm.FieldCondition(key="host", match=qm.MatchValue(value=host))]
             ),
             limit=1,
             with_payload=False,
