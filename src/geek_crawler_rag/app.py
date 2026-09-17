@@ -95,6 +95,7 @@ class AppState:
     store: QdrantStore
     llama: LlamaIndexEngine
     indexer: IndexService
+    status_store: IndexStatusStore
     query: QueryService
     templates: AdTemplateIndexService
     webhook: IndexStatusWebhook
@@ -132,6 +133,7 @@ async def lifespan(_app: FastAPI):
     )
     state.llama = LlamaIndexEngine(settings)
     status_store = IndexStatusStore(state.mongo.db)
+    state.status_store = status_store
     state.webhook = IndexStatusWebhook(
         settings.index_status_webhook_url,
         settings.index_status_webhook_key or settings.api_key,
@@ -602,11 +604,16 @@ async def query_assets(body: ManifestQueryRequest) -> ManifestQueryResponse:
     dependencies=[Depends(require_api_key)],
 )
 async def delete_run_index(run_id: str) -> None:
-    """Remove every crawler-owned vector for one run.
+    """Remove every crawler-owned vector for one run, and its job row.
 
     Called by GeekAPI as the first step of a run delete: vectors go before the
     Markdown they cite, so retrieval can never return a chunk whose source no
     longer exists. Deleting an already-absent run is a no-op, not an error.
+
+    The job row goes with them. Purging vectors while leaving it behind meant
+    GET /v1/index/{runId} kept reporting ``complete`` with the page and chunk
+    counts of a corpus that had been deleted, and every caller that trusts that
+    status — the indexed-runs report among them — repeated those numbers.
     """
     if not run_id.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
@@ -615,6 +622,7 @@ async def delete_run_index(run_id: str) -> None:
         owner_id=state.settings.crawler_owner_id,
         visibility=state.settings.crawler_visibility,
     )
+    await state.status_store.delete(run_id)
 
 
 def _host_candidates(raw: str) -> list[str]:

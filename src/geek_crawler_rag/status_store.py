@@ -58,6 +58,16 @@ class IndexStatusStore:
             return None
         return _from_doc(doc)
 
+    async def delete(self, run_id: str) -> bool:
+        """Drop the job row for a run. True when one was removed.
+
+        Called when a run's vectors are purged. The row outliving the vectors is
+        what let a deleted run keep answering GET /v1/index/{runId} with the
+        page and chunk counts of a corpus that no longer existed.
+        """
+        result = await self._col.delete_one({"runId": run_id})
+        return result.deleted_count > 0
+
     async def save(
         self, status: IndexStatusResponse, *, owner: str | None = None
     ) -> bool:
