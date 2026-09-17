@@ -298,3 +298,27 @@ class ProducerCapabilities(BaseModel):
 
 def utc_now() -> datetime:
     return datetime.now(UTC)
+
+
+class HostIndexRequest(BaseModel):
+    """URLs to check. Hosts are derived here; callers pass what the operator typed."""
+
+    urls: list[str] = Field(..., min_length=1, max_length=100)
+    owner_id: str = Field("system:crawler", alias="ownerId", min_length=1)
+    visibility: str = Field("service", min_length=1)
+
+    model_config = {"populate_by_name": True}
+
+
+class HostIndexResult(BaseModel):
+    url: str
+    host: str | None = None
+    indexed: bool
+
+    model_config = {"populate_by_name": True, "ser_json_by_alias": True}
+
+
+class HostIndexResponse(BaseModel):
+    results: list[HostIndexResult]
+
+    model_config = {"populate_by_name": True, "ser_json_by_alias": True}

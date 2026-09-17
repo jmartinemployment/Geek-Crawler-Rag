@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import secrets
+from urllib.parse import urlsplit
 from contextlib import asynccontextmanager
 from typing import Annotated
 
@@ -66,6 +67,9 @@ from geek_crawler_rag.models import (
     AdTemplateIndexResponse,
     AdTemplateQueryRequest,
     AdTemplateQueryResponse,
+    HostIndexRequest,
+    HostIndexResponse,
+    HostIndexResult,
     IndexRunRequest,
     IndexSchedulerStatus,
     IndexStatusResponse,
@@ -611,3 +615,53 @@ async def delete_run_index(run_id: str) -> None:
         owner_id=state.settings.crawler_owner_id,
         visibility=state.settings.crawler_visibility,
     )
+
+
+def _host_candidates(raw: str) -> list[str]:
+    """
+    Hosts to try for a typed URL, most specific first.
+
+    A URL that will not parse yields nothing, which is the correct answer on its own: it was never
+    crawled, so no index can exist for it. That is why no separate syntax check is needed.
+
+    www and bare forms are stored as distinct payload values, so both are tried — otherwise a bare
+    domain reports no index for a site indexed under its www host.
+    """
+    text = (raw or "").strip()
+    if not text:
+        return []
+    if "://" not in text:
+        text = f"https://{text}"
+
+    try:
+        host = (urlsplit(text).hostname or "").lower()
+    except ValueError:
+        return []
+    if not host or "." not in host:
+        return []
+
+    bare = host[4:] if host.startswith("www.") else host
+    return [host] if host == bare else [host, bare]
+
+
+@app.post(
+    "/v1/index/hosts",
+    response_model=HostIndexResponse,
+    response_model_by_alias=True,
+    dependencies=[Depends(require_api_key)],
+)
+async def host_index_exists(body: HostIndexRequest) -> HostIndexResponse:
+    """Whether an index exists for each URL's host. Whether, not how much."""
+    results: list[HostIndexResult] = []
+    for url in body.urls:
+        found = None
+        for host in _host_candidates(url):
+            if await state.store.host_has_index(
+                host, owner_id=body.owner_id, visibility=body.visibility
+            ):
+                found = host
+                break
+        results.append(
+            HostIndexResult(url=url, host=found, indexed=found is not None)
+        )
+    return HostIndexResponse(results=results)
