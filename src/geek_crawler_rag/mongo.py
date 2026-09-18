@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
@@ -69,7 +69,12 @@ class CrawlPage:
     url: str
     final_url: str
     html: str | None
-    markdown: str | None = None
+    # The corpus body. `blocks` is the typed structure the chunker and the
+    # verification projection both read; `content_html` is the clean fragment,
+    # kept for display and audit. Markdown is gone — the crawler stopped
+    # emitting it (Geek-Crawler-v2 plans/corpus-rebuild.md).
+    content_html: str | None = None
+    blocks: list[dict[str, Any]] = field(default_factory=list)
     title: str | None = None
     crawled_at: str | None = None
     failure_reason: str | None = None
@@ -208,7 +213,7 @@ class MongoCorpus:
         *,
         batch_size: int = 25,
     ) -> AsyncIterator[list[CrawlPage]]:
-        """Paginate pages for a run. Batches Html/Markdown deliberately (large documents)."""
+        """Paginate pages for a run. Batches Html/ContentHtml/Blocks deliberately (large docs)."""
         projection = {
             "Id": 1,
             "RunId": 1,
@@ -216,8 +221,10 @@ class MongoCorpus:
             "Url": 1,
             "FinalUrl": 1,
             "Html": 1,
-            "Markdown": 1,
-            "markdown": 1,
+            "ContentHtml": 1,
+            "contentHtml": 1,
+            "Blocks": 1,
+            "blocks": 1,
             "Title": 1,
             "title": 1,
             "CrawledAtUtc": 1,
@@ -296,8 +303,10 @@ class MongoCorpus:
             "Url": 1,
             "FinalUrl": 1,
             "Html": 1,
-            "Markdown": 1,
-            "markdown": 1,
+            "ContentHtml": 1,
+            "contentHtml": 1,
+            "Blocks": 1,
+            "blocks": 1,
             "Title": 1,
             "title": 1,
             "Excerpt": 1,
@@ -322,8 +331,10 @@ class MongoCorpus:
             "Url": 1,
             "FinalUrl": 1,
             "Html": 1,
-            "Markdown": 1,
-            "markdown": 1,
+            "ContentHtml": 1,
+            "contentHtml": 1,
+            "Blocks": 1,
+            "blocks": 1,
             "Title": 1,
             "title": 1,
             "Excerpt": 1,
@@ -356,11 +367,18 @@ def _page_from_doc(doc: dict[str, Any], run_id: str) -> CrawlPage:
     html = doc.get("Html")
     if html is not None and not isinstance(html, str):
         html = str(html)
-    markdown = doc.get("Markdown")
-    if markdown is None:
-        markdown = doc.get("markdown")
-    if markdown is not None and not isinstance(markdown, str):
-        markdown = str(markdown)
+    content_html = doc.get("ContentHtml")
+    if content_html is None:
+        content_html = doc.get("contentHtml")
+    if content_html is not None and not isinstance(content_html, str):
+        content_html = str(content_html)
+    # Stored as a native BSON array, so pymongo hands back a list of dicts.
+    # Anything else is treated as absent rather than coerced: a page whose
+    # blocks did not survive storage is not one this service can index.
+    raw_blocks = doc.get("Blocks")
+    if raw_blocks is None:
+        raw_blocks = doc.get("blocks")
+    blocks = [b for b in raw_blocks if isinstance(b, dict)] if isinstance(raw_blocks, list) else []
     title = doc.get("Title")
     if title is None:
         title = doc.get("title")
@@ -385,9 +403,10 @@ def _page_from_doc(doc: dict[str, Any], run_id: str) -> CrawlPage:
         url=str(doc.get("Url") or ""),
         final_url=str(doc.get("FinalUrl") or doc.get("Url") or ""),
         html=html,
-        markdown=markdown.strip()
-        if isinstance(markdown, str) and markdown.strip()
+        content_html=content_html.strip()
+        if isinstance(content_html, str) and content_html.strip()
         else None,
+        blocks=blocks,
         title=title.strip() if isinstance(title, str) and title.strip() else None,
         crawled_at=crawled_at,
         failure_reason=failure_reason,

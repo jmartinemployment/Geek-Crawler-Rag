@@ -35,10 +35,9 @@ def page_to_nodes(
     settings: Settings,
 ) -> tuple[list[TextNode], str]:
     """Return (nodes, skip_reason). skip_reason is empty on success."""
-    text, title, used_markdown = page_text_and_title(
-        markdown=page.markdown,
+    text, title, has_blocks = page_text_and_title(
+        blocks=page.blocks,
         title=page.title,
-        html=page.html,
     )
     if not text:
         return [], "empty"
@@ -46,10 +45,25 @@ def page_to_nodes(
         return [], "lang"
 
     host = host_from_origin_or_url(page.origin, page.url)
+    # Carried so a retrieved chunk can cite its sources: a tool name without its
+    # href cites nothing. Chunking works over the flat projection, which cannot
+    # attribute an anchor to one chunk, so these are page-level and deduped.
+    anchors: list[dict[str, str]] = []
+    seen_hrefs: set[str] = set()
+    for block in page.blocks:
+        for anchor in block.get("anchors") or []:
+            if not isinstance(anchor, dict):
+                continue
+            href = str(anchor.get("href") or "").strip()
+            label = str(anchor.get("label") or "").strip()
+            if not href or href in seen_hrefs:
+                continue
+            seen_hrefs.add(href)
+            anchors.append({"label": label, "href": href})
     category = infer_category(page.url, text)
     content_intent = infer_content_intent(page.url, text)
     tags = infer_tags(page.url, title)
-    qscore = quality_score(text=text, title=title, has_markdown=used_markdown)
+    qscore = quality_score(text=text, title=title, has_blocks=has_blocks)
     evergreen = is_evergreen(page.url, text)
 
     units = parent_child_units(
@@ -108,6 +122,7 @@ def page_to_nodes(
                     source_rights_consented_hosts=settings.source_rights_consented_hosts,
                     competitor_chunk_kind=unit_kind,
                     feature_tag=feature_tag,
+                    anchors=anchors,
                 )
             )
         nodes.append(
@@ -136,6 +151,7 @@ def page_to_nodes(
                 source_rights_consented_hosts=settings.source_rights_consented_hosts,
                 competitor_chunk_kind=unit_kind,
                 feature_tag=feature_tag,
+                anchors=anchors,
             )
         )
     return nodes, ""
@@ -167,7 +183,9 @@ def _node(
     source_rights_consented_hosts: str = "",
     competitor_chunk_kind: str | None = None,
     feature_tag: str | None = None,
+    anchors: list[dict[str, str]] | None = None,
 ) -> TextNode:
+    anchors = anchors or []
     metadata: dict[str, Any] = {
         "ownerId": owner_id,
         "visibility": visibility,
@@ -194,8 +212,9 @@ def _node(
         "qualityScore": quality,
         "isEvergreen": evergreen,
         "lastCrawled": page.crawled_at,
+        "anchors": anchors,
         "sourceDigest": hashlib.sha256(
-            (page.markdown or page.html or "").encode("utf-8")
+            (page.content_html or page.html or "").encode("utf-8")
         ).hexdigest(),
         "sourceRights": resolve_source_rights(
             host=host,

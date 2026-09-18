@@ -203,13 +203,15 @@ class AdTemplateQueryResponse(BaseModel):
     model_config = {"populate_by_name": True, "ser_json_by_alias": True}
 
 
-class PageMarkdownResponse(BaseModel):
+class PageTextResponse(BaseModel):
     page_id: str = Field(..., alias="pageId")
     run_id: str = Field(..., alias="runId")
     url: str
     final_url: str = Field(..., alias="finalUrl")
     title: str | None = None
-    markdown: str
+    # Plain text derived from the page's typed blocks — the same projection the
+    # chunker embeds, so a quote taken from a chunk matches here.
+    text: str
     excerpt: str | None = None
 
     model_config = {"populate_by_name": True, "ser_json_by_alias": True}

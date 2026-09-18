@@ -107,8 +107,14 @@ async def test_index_circuit_open_skips_cleanup(tmp_path: Path):
                 url="https://example.com/",
                 final_url="https://example.com/",
                 html="<html><body>ignored</body></html>",
-                markdown="# Home\n\n"
-                + ("This is enough English content for indexing. " * 30),
+                blocks=[
+                    {"kind": "heading", "level": 1, "text": "Home", "anchors": []},
+                    {
+                        "kind": "paragraph",
+                        "text": "This is enough English content for indexing. " * 30,
+                        "anchors": [],
+                    },
+                ],
             )
         ]
 
@@ -241,8 +247,14 @@ async def test_index_empty_embed_400_quarantines_without_wipe(tmp_path: Path):
                 url="https://example.com/",
                 final_url="https://example.com/",
                 html="<html><body>ignored</body></html>",
-                markdown="# Home\n\n"
-                + ("This is enough English content for indexing. " * 30),
+                blocks=[
+                    {"kind": "heading", "level": 1, "text": "Home", "anchors": []},
+                    {
+                        "kind": "paragraph",
+                        "text": "This is enough English content for indexing. " * 30,
+                        "anchors": [],
+                    },
+                ],
             )
         ]
 

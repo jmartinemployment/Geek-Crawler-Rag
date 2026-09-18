@@ -63,24 +63,32 @@ Feature alpha includes SSO and audit logs for regulated teams. Feature beta adds
     assert any(u.child_text in u.parent_text or u.child_text[:20] in u.parent_text for u in units)
 
 
-def test_prefer_markdown_over_html():
-    text, title, used_md = page_text_and_title(
-        markdown="# Hello\n\nMarkdown body with enough English words for indexing.",
+def test_text_comes_from_blocks_and_title_falls_back_to_the_first_heading():
+    text, title, has_blocks = page_text_and_title(
+        blocks=[
+            {"kind": "heading", "level": 1, "text": "Hello", "anchors": []},
+            {
+                "kind": "paragraph",
+                "text": "Block body with enough English words for indexing.",
+                "anchors": [],
+            },
+        ],
         title=None,
-        html="<html><head><title>HTML Title</title></head><body>Ignored html</body></html>",
     )
-    assert used_md is True
-    assert "Markdown body" in text
+    assert has_blocks is True
+    assert "Block body" in text
     assert title == "Hello"
 
 
-def test_no_markdown_does_not_use_html():
-    text, title, used_md = page_text_and_title(
-        markdown=None,
-        title=None,
-        html="<html><head><title>Docs</title></head><body>Plain HTML English content here.</body></html>",
-    )
-    assert used_md is False
+def test_no_blocks_yields_no_text():
+    """HTML is never synthesised into a corpus body.
+
+    A page without typed blocks has no body this service can index, and
+    guessing one from markup is the behaviour the block format exists to
+    replace.
+    """
+    text, title, has_blocks = page_text_and_title(blocks=[], title=None)
+    assert has_blocks is False
     assert text == ""
     assert title is None
 
@@ -91,7 +99,7 @@ def test_metadata_heuristics():
     ent = entity_from_crawl("partner", "acme.com")
     assert ent.source_type == "partner"
     assert ent.entity_name == "acme.com"
-    score = quality_score(text="x" * 600, title="T", has_markdown=True)
+    score = quality_score(text="x" * 600, title="T", has_blocks=True)
     assert 0.5 <= score <= 1.0
 
 

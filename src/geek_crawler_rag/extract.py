@@ -1,11 +1,14 @@
-"""HTML → plain text + title for embedding."""
+"""Typed blocks → plain text + title for embedding."""
 
 from __future__ import annotations
 
 import re
+from typing import Any
 from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
+
+from geek_crawler_rag.block_text import derive_plaintext_from_blocks
 
 _WS = re.compile(r"\s+")
 
@@ -48,27 +51,28 @@ def extract_text_and_title(html: str | None) -> tuple[str, str | None]:
 
 def page_text_and_title(
     *,
-    markdown: str | None,
+    blocks: list[dict[str, Any]] | None,
     title: str | None,
-    html: str | None = None,
 ) -> tuple[str, str | None, bool]:
-    """Require crawler Markdown. Do not synthesize from HTML.
+    """Project a page's typed blocks to plain text.
 
-    HTML-only pages are deleted (cleanup / index sweeper), not backfilled.
-    ``html`` is accepted for call-site compatibility and ignored.
+    The projection is shared with citation verification
+    (:mod:`geek_crawler_rag.block_text`) rather than reimplemented, because a
+    quote is taken from a retrieved chunk and then matched against this string:
+    if the two are built differently, correct citations fail.
 
-    Returns (text, title, used_markdown).
+    Returns (text, title, has_blocks).
     """
-    del html  # never fall back to HTML extract
-    if markdown and markdown.strip():
-        md = markdown.strip()
-        md_title = title
-        if not md_title:
-            for line in md.splitlines():
-                line = line.strip()
-                if line.startswith("#"):
-                    md_title = line.lstrip("#").strip() or None
-                    break
-        return md, md_title, True
+    text = derive_plaintext_from_blocks(blocks)
+    if not text:
+        return "", title, False
 
-    return "", title, False
+    resolved = title
+    if not resolved:
+        for block in blocks or []:
+            if block.get("kind") == "heading":
+                candidate = (block.get("text") or "").strip()
+                if candidate:
+                    resolved = candidate
+                    break
+    return text, resolved, True

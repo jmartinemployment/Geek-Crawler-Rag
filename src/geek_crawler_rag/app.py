@@ -62,6 +62,7 @@ from geek_crawler_rag.intelligence_models import (
     ReadinessComparisonRequest,
 )
 from geek_crawler_rag.llama_engine import LlamaIndexEngine
+from geek_crawler_rag.block_text import derive_plaintext_from_blocks
 from geek_crawler_rag.models import (
     AdTemplateIndexRequest,
     AdTemplateIndexResponse,
@@ -73,7 +74,7 @@ from geek_crawler_rag.models import (
     IndexRunRequest,
     IndexSchedulerStatus,
     IndexStatusResponse,
-    PageMarkdownResponse,
+    PageTextResponse,
     ProducerCapabilities,
     QueryRequest,
     QueryResponse,
@@ -358,53 +359,55 @@ async def query_templates(body: AdTemplateQueryRequest) -> AdTemplateQueryRespon
 
 @app.get(
     "/v1/pages/{page_id}",
-    response_model=PageMarkdownResponse,
+    response_model=PageTextResponse,
     response_model_by_alias=True,
     dependencies=[Depends(require_api_key)],
 )
-async def get_page_markdown(
+async def get_page_text(
     page_id: str,
     run_id: Annotated[str, ApiQuery(alias="runId", min_length=1)],
-) -> PageMarkdownResponse:
-    """Return Mongo Markdown for citation reads (404 if missing or empty)."""
+) -> PageTextResponse:
+    """Return the page's plaintext projection for citation reads (404 if empty)."""
     page = await state.mongo.get_page(page_id)
-    if page is None or page.run_id != run_id or not page.markdown:
+    text = derive_plaintext_from_blocks(page.blocks) if page is not None else ""
+    if page is None or page.run_id != run_id or not text:
         raise HTTPException(
             status_code=404,
-            detail="No Markdown for the authorized page.",
+            detail="No text for the authorized page.",
         )
-    return PageMarkdownResponse(
+    return PageTextResponse(
         page_id=page.id,
         run_id=page.run_id,
         url=page.url,
         final_url=page.final_url or page.url,
         title=page.title,
-        markdown=page.markdown,
+        text=text,
         excerpt=None,
     )
 
 
 @app.get(
     "/v1/pages",
-    response_model=PageMarkdownResponse,
+    response_model=PageTextResponse,
     response_model_by_alias=True,
     dependencies=[Depends(require_api_key)],
 )
-async def get_page_markdown_by_url(run_id: str, url: str) -> PageMarkdownResponse:
-    """Lookup page Markdown by runId + Url/FinalUrl."""
+async def get_page_text_by_url(run_id: str, url: str) -> PageTextResponse:
+    """Lookup a page's plaintext projection by runId + Url/FinalUrl."""
     page = await state.mongo.get_page_by_url(run_id=run_id, url=url)
-    if page is None or not page.markdown:
+    text = derive_plaintext_from_blocks(page.blocks) if page is not None else ""
+    if page is None or not text:
         raise HTTPException(
             status_code=404,
-            detail=f"No Markdown for runId={run_id} url={url}",
+            detail=f"No text for runId={run_id} url={url}",
         )
-    return PageMarkdownResponse(
+    return PageTextResponse(
         page_id=page.id,
         run_id=page.run_id,
         url=page.url,
         final_url=page.final_url or page.url,
         title=page.title,
-        markdown=page.markdown,
+        text=text,
         excerpt=None,
     )
 

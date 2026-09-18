@@ -161,13 +161,13 @@ def resolve_source_rights(
     return "unknown"
 
 
-def quality_score(*, text: str, title: str | None, has_markdown: bool) -> float:
+def quality_score(*, text: str, title: str | None, has_blocks: bool) -> float:
     length = len((text or "").strip())
 
     score = 0.35
     if title:
         score += 0.15
-    if has_markdown:
+    if has_blocks:
         score += 0.15
     if length >= 500:
         score += 0.15

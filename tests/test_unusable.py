@@ -21,22 +21,22 @@ def test_classify_failure_and_locale() -> None:
         classify_unusable_page(
             url="https://adzooma.com/",
             failure_reason="Cloudflare challenge page detected",
-            markdown="# x",
+            blocks=[{"kind": "paragraph", "text": "x"}],
         )
         == "failure"
     )
     assert (
         classify_unusable_page(
             url="https://speakai.co/es/approaches/",
-            markdown="# x",
+            blocks=[{"kind": "paragraph", "text": "x"}],
         )
         == "locale"
     )
     assert (
-        classify_unusable_page(url="https://speakai.co/blog/ok", markdown="# ok")
+        classify_unusable_page(url="https://speakai.co/blog/ok", blocks=[{"kind": "paragraph", "text": "ok"}])
         is None
     )
-    assert classify_unusable_page(url="https://speakai.co/blog/ok") == "no_markdown"
+    assert classify_unusable_page(url="https://speakai.co/blog/ok") == "no_content"
 
 
 def test_classify_backfill_skip_maps() -> None:

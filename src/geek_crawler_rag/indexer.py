@@ -452,11 +452,11 @@ class IndexService:
                         final_url=page.final_url,
                         failure_reason=page.failure_reason,
                         robots_allowed=page.robots_allowed,
-                        markdown=page.markdown,
+                        blocks=page.blocks,
                     )
                     if reject:
-                        # no_markdown counts with empty deletes (HTML-only junk).
-                        reason = "extract_empty" if reject == "no_markdown" else reject
+                        # no_content counts as an empty extract (nothing to embed).
+                        reason = "extract_empty" if reject == "no_content" else reject
                         self._skip_unusable(page, reason, status)
                         continue
 

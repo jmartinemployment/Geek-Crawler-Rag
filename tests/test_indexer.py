@@ -167,10 +167,14 @@ async def test_index_skips_when_no_english():
     mongo.delete_page = AsyncMock(return_value=0)
     _entity_mock(mongo)
 
-    spanish_md = (
-        "# Página\n\n"
-        + ("Esta es una página en español con contenido suficiente. " * 20)
-    )
+    spanish_blocks = [
+        {"kind": "heading", "level": 1, "text": "Página", "anchors": []},
+        {
+            "kind": "paragraph",
+            "text": "Esta es una página en español con contenido suficiente. " * 20,
+            "anchors": [],
+        },
+    ]
 
     async def empty_english_pages(_run_id, batch_size=25):
         yield [
@@ -181,7 +185,7 @@ async def test_index_skips_when_no_english():
                 url="https://ejemplo.es/",
                 final_url="https://ejemplo.es/",
                 html="<html><body>ignored</body></html>",
-                markdown=spanish_md,
+                blocks=spanish_blocks,
                 title="Página",
             )
         ]
@@ -231,7 +235,7 @@ async def test_index_skips_html_only_pages_without_deleting_them():
                 html="<html><body>"
                 + ("This English documentation explains the partner API thoroughly. " * 40)
                 + "</body></html>",
-                markdown=None,
+                blocks=[],
             )
         ]
 
@@ -255,10 +259,14 @@ async def test_index_skips_html_only_pages_without_deleting_them():
 
 @pytest.mark.asyncio
 async def test_index_upserts_english_chunks():
-    md = (
-        "# Docs\n\n"
-        + ("This English documentation explains the partner API thoroughly. " * 40)
-    )
+    blocks = [
+        {"kind": "heading", "level": 1, "text": "Docs", "anchors": []},
+        {
+            "kind": "paragraph",
+            "text": "This English documentation explains the partner API thoroughly. " * 40,
+            "anchors": [],
+        },
+    ]
     mongo = MagicMock()
     mongo.get_run = AsyncMock(
         return_value=CrawlRun(id="r2", crawl_type="competitors", status="complete")
@@ -276,7 +284,7 @@ async def test_index_upserts_english_chunks():
                 url="https://rival.com/docs",
                 final_url="https://rival.com/docs",
                 html="<html><body>ignored</body></html>",
-                markdown=md,
+                blocks=blocks,
                 title="Docs",
             )
         ]
@@ -311,10 +319,14 @@ async def test_index_upserts_english_chunks():
 
 @pytest.mark.asyncio
 async def test_index_flush_failure_preserves_partial_points():
-    md = (
-        "# Docs\n\n"
-        + ("This English documentation explains the partner API thoroughly. " * 40)
-    )
+    blocks = [
+        {"kind": "heading", "level": 1, "text": "Docs", "anchors": []},
+        {
+            "kind": "paragraph",
+            "text": "This English documentation explains the partner API thoroughly. " * 40,
+            "anchors": [],
+        },
+    ]
     mongo = MagicMock()
     mongo.get_run = AsyncMock(
         return_value=CrawlRun(id="r3", crawl_type="partner", status="complete")
@@ -331,7 +343,7 @@ async def test_index_flush_failure_preserves_partial_points():
                 url="https://partner.com/docs",
                 final_url="https://partner.com/docs",
                 html="<html><body>ignored</body></html>",
-                markdown=md,
+                blocks=blocks,
             )
         ]
 
@@ -441,10 +453,14 @@ async def test_start_does_not_auto_reclaim_stale_leases():
 
 @pytest.mark.asyncio
 async def test_shutdown_preserves_partial_qdrant_index():
-    md = (
-        "# Docs\n\n"
-        + ("This English documentation explains the partner API thoroughly. " * 40)
-    )
+    blocks = [
+        {"kind": "heading", "level": 1, "text": "Docs", "anchors": []},
+        {
+            "kind": "paragraph",
+            "text": "This English documentation explains the partner API thoroughly. " * 40,
+            "anchors": [],
+        },
+    ]
     mongo = MagicMock()
     mongo.get_run = AsyncMock(
         return_value=CrawlRun(id="shutdown", crawl_type="partner", status="complete")
@@ -461,7 +477,7 @@ async def test_shutdown_preserves_partial_qdrant_index():
                 url="https://partner.com/docs",
                 final_url="https://partner.com/docs",
                 html="<html><body>ignored</body></html>",
-                markdown=md,
+                blocks=blocks,
             )
         ]
 

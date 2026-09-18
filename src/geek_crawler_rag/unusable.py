@@ -55,13 +55,15 @@ DELETE_SKIP_REASONS = frozenset({
     "already_markdown",  # only if marked skip without usable body — rare
 })
 
-CORPUS_DELETE_REASONS = frozenset({
+# Reasons a page cannot be indexed. Nothing deletes on them any more —
+# indexing is read-only over the corpus (see indexer._skip_unusable).
+CORPUS_SKIP_REASONS = frozenset({
     "locale",
     "failure",
     "extract_empty",
     "extract_error",
     "non_english",
-    "no_markdown",
+    "no_content",
 })
 
 
@@ -100,11 +102,12 @@ def classify_unusable_page(
     failure_reason: str | None = None,
     markdown_backfill_skip: str | None = None,
     robots_allowed: bool | None = None,
-    markdown: str | None = None,
+    blocks: list[Any] | None = None,
 ) -> str | None:
     """Return delete reason or None if the page may stay in the corpus.
 
-    Pages without crawler Markdown are deleted (no HTML backfill / synthesis).
+    A page without typed blocks carries no corpus body this service can read.
+    The caller counts it and moves on — nothing here deletes.
     """
     if markdown_backfill_skip in ("locale", "failure", "extract_empty", "extract_error", "fetch_error", "no_html", "robots"):
         return "locale" if markdown_backfill_skip == "locale" else (
@@ -121,21 +124,21 @@ def classify_unusable_page(
     if isinstance(failure_reason, str) and failure_reason.strip():
         return "failure"
 
-    if not (isinstance(markdown, str) and markdown.strip()):
-        return "no_markdown"
+    if not (isinstance(blocks, list) and len(blocks) > 0):
+        return "no_content"
 
     return None
 
 
 def classify_from_mongo_doc(doc: dict[str, Any]) -> str | None:
-    md = doc.get("Markdown")
-    if md is None:
-        md = doc.get("markdown")
+    raw = doc.get("Blocks")
+    if raw is None:
+        raw = doc.get("blocks")
     return classify_unusable_page(
         url=str(doc.get("Url") or ""),
         final_url=str(doc.get("FinalUrl") or ""),
         failure_reason=doc.get("FailureReason"),
         markdown_backfill_skip=doc.get("MarkdownBackfillSkip"),
         robots_allowed=doc.get("RobotsAllowed"),
-        markdown=md if isinstance(md, str) else None,
+        blocks=raw if isinstance(raw, list) else None,
     )

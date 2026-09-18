@@ -569,7 +569,7 @@ def _verified_evidence(
             {
                 "pageId": document.source.source_id,
                 "url": source.url,
-                "markdown": text,
+                "text": text,
             }
         ],
     )
