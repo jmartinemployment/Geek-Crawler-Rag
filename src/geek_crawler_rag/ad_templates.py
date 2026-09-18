@@ -37,10 +37,11 @@ def template_point_id(
 class AdTemplateIndexService:
     """Embed + retrieve operator ad templates.
 
-    This collection is a derived index, not a store. The records are held by
-    GeekRepository (`repo/content-creator-v2/ad-templates`) and pushed here via
-    `POST /v1/templates/index`; Content Creator is the input surface that creates
-    them, not where they live. Point ids are deterministic
+    This collection is a derived index, not a store. The records are reached
+    through a GeekRepository route (`repo/content-creator-v2/ad-templates`, per
+    `GeekBackend/GeekAPI/HttpClients/HttpGccV2Repository.cs:302-304`) and pushed
+    here via `POST /v1/templates/index`. Where they are authored is outside this
+    service and not asserted here. Point ids are deterministic
     (:func:`template_point_id`, `uuid5` over `owner_id:template_id`), so a
     re-index of the same records reproduces the same ids — dropping this
     collection loses embeddings, not data, provided the records still exist.
