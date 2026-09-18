@@ -153,28 +153,38 @@ indexes them: a cited table fact becomes unverifiable, silently.
   block's `anchors` carry onto node metadata. Replace
   `quality_score(has_markdown=…)` with a block-derived signal.
 
-### 4. Scheduler state gate
+### 4. Scheduler state gate — LANDED
 
-- `mongo.py:146` — `find_smallest_markdown_ready_run` →
-  `find_smallest_content_ready_run`, gating on `ContentReadyAt` (what the
-  crawler sends, `persist.ts:262`).
-- `mongo.py:99` — index `ix_crawl_runs_markdown_ready` →
-  `ix_crawl_runs_content_ready` over `(Status, ContentReadyAt, Id)`.
+**The index scheduler is deprecated.** Indexing is triggered by `POST /v1/index`.
+`INDEX_SCHEDULER_ENABLED` stays `false`; `scheduler.py` and
+`mongo.find_smallest_content_ready_run` remain in the tree but are not the live
+path.
 
-**This is not a text substitution.** `mongo.py:171` passes
-`hint="ix_crawl_runs_markdown_ready"`, and Mongo **errors on a hint naming an
-index that does not exist** — a rename in one edit breaks every scheduler scan.
-Four deploys, in this order:
+Done in `78c143b`: `find_smallest_markdown_ready_run` →
+`find_smallest_content_ready_run`, the run filter moved to `ContentReadyAt`
+(what the crawler sends, `persist.ts:262`), and the covering index became
+`ix_crawl_runs_content_ready` over `(Status, ContentReadyAt, Id)`.
 
-1. Deploy code that creates `ix_crawl_runs_content_ready` natively, leaving the
-   legacy index alive and the query untouched.
-2. Verify key casing against the incoming GeekAPI payload structure
-   (`ContentReadyAt` vs `contentReadyAt`).
-3. Swap the query filter and the `hint=` parameter together in a single commit.
-4. Drop `ix_crawl_runs_markdown_ready` once scan metrics are stable.
+**Deliberate deviation (2026-09-18).** This section originally prescribed four
+deploys, because `mongo.py` passes the index name as a `hint=` and Mongo
+**errors on a hint naming an index that does not exist** — so a rename split
+across deploys breaks every scan in between. It was collapsed into a **single
+edit** instead: filter, index name and hint moved together. Correct here only
+because no container instance was serving scheduler scans, so no runtime query
+could hit the missing-index window. On a live scheduler the four-deploy sequence
+would still be the right shape.
 
-The page projections hedge both casings; the run filter and the index cannot,
-which is why step 2 gates step 3 — see the external dependency below.
+**Outstanding live operational checkpoints:**
+
+- [ ] **Verify key casing.** Run `scripts/verify_ingest_fields.py` on the
+  Hostinger VPS to capture how Mongo actually spells `ContentReadyAt`. Still
+  worth doing with the scheduler retired: the page projections hedge both
+  casings, but the run filter and the index cannot, and a manual
+  `POST /v1/index` resolves the run through the same path.
+- [ ] **Drop the legacy index.**
+  `db.crawl_runs.dropIndex("ix_crawl_runs_markdown_ready")`. No longer gated on
+  scan metrics, because nothing scans. Safe once the image carrying `78c143b` is
+  running — not before, or an older instance still hinting the old name breaks.
 
 ### 5. Retire selective pruning
 

@@ -9,12 +9,12 @@ Historical Phase U generate contract fixture (models only; no `/v1/generate` end
 
 ## Product overview
 
-> ## ⛔ Markdown is FORBIDDEN
+> ## ⛔ One corpus format. No converters.
 >
-> **Markdown is not a corpus format, not a verification target, and not an
-> interchange format.** The crawl path contains no Markdown converter
-> (`Geek-Crawler-v2/plans/corpus-rebuild.md`) and nothing here may reintroduce
-> one. The corpus body is clean semantic `contentHtml` plus typed `blocks`.
+> **The corpus body is clean semantic `contentHtml` plus typed `blocks`** — that is
+> the only representation, for storage, for verification and on the wire between
+> services. The crawl path contains no text-format conversion step
+> (`Geek-Crawler-v2/plans/corpus-rebuild.md`) and nothing here may add one.
 >
 > | Concern | The method |
 > |---|---|
@@ -29,28 +29,33 @@ Historical Phase U generate contract fixture (models only; no `/v1/generate` end
 > quote is taken from a retrieved chunk and matched against the page, so two
 > "join the blocks" implementations make correct citations fail.
 >
-> **Why this is a hard rule.** The crawler migrated off Markdown and this service
-> did not. Every page classified `no_markdown`; `_delete_unusable` removed it
-> **and its Qdrant points**. Eight runs, 5,274 pages, 0 chunks upserted, corpus
-> destroyed on 2026-09-18.
+> **Why this is a hard rule.** The crawler changed corpus format and this service
+> did not. Every page then classified as having no usable body, and
+> `_delete_unusable` removed it **along with its Qdrant points**. Eight runs,
+> 5,274 pages, 0 chunks upserted, corpus destroyed on 2026-09-18. A second
+> representation is not a convenience; it is the seam the two halves drift apart
+> along.
 >
-> **Migration state — corpus path done, scheduling path not.**
-> `extract.py`, `block_text.py`, `citation_verify.quote_in_text`, `unusable.py`
-> (`no_content`, never `no_markdown`) and `indexer._skip_unusable` (counts, never
-> deletes) are all block-based, and the page API returns `PageTextResponse`.
-> Still Markdown-bound: `mongo.find_smallest_markdown_ready_run` filters
-> `MarkdownReadyAt` and hints `ix_crawl_runs_markdown_ready`, so the scheduler
-> starves once runs carry only `ContentReadyAt`; `llama_nodes.py` stamps
-> `parserId: "crawler-markdown"`; `chunk._split_heading_sections` splits on ATX
-> `#` headings the projection never emits, so section chunking silently never
-> fires; `scripts/cleanup_unusable_pages.py` still documents and projects
-> Markdown fields. Remaining work:
-> [`plans/retire-markdown-from-rag.md`](./plans/retire-markdown-from-rag.md).
+> **Migration state — complete in this service.** `extract.py`, `block_text.py`,
+> `citation_verify.quote_in_text`, `unusable.py` (`no_content` only) and
+> `indexer._skip_unusable` (counts, never deletes) are block-based; the page API
+> returns `PageTextResponse`; the run filter and its covering index are
+> `ContentReadyAt` / `ix_crawl_runs_content_ready`; chunks are cut at heading
+> blocks with per-section anchors; `parserId` is `crawler-blocks`. The ops
+> scripts that existed only to serve the old format are deleted.
 >
-> **Legitimate Markdown, and only here:** an operator-supplied asset
-> (`text/markdown` in `asset_context.py`, `context_models.py`,
-> `diagnostic_models.py`, `intelligence_models.py`) and a generated report a
-> human reads. Neither is corpus.
+> Two operational items remain, neither in code — confirm the Mongo key casing
+> for `ContentReadyAt` with `scripts/verify_ingest_fields.py` on the VPS, and
+> drop the superseded legacy readiness index once the image carrying `78c143b` is
+> running (the name is in §4's drop command). Detail:
+> [`plans/retire-markdown-from-rag.md`](./plans/retire-markdown-from-rag.md) §4.
+>
+> **Chunks indexed before `b9fadcc` need a reindex** to gain section titles and
+> per-section anchors; they are otherwise valid.
+>
+> **Operator-supplied assets are a separate concern.** `asset_context.parse_asset`
+> accepts `text/plain` and `text/html` only, and a generated report a human reads
+> is not corpus. Neither path feeds retrieval or verification.
 
 Geek-Crawler-Rag turns partner and competitor website crawls into searchable evidence with verified block-text reads. It combines semantic and keyword retrieval, hierarchical context, entity-aware filtering, and quote-level verification for downstream content systems.
 
@@ -177,20 +182,28 @@ remains in GeekRepository.
 Index concurrency is **1**. Rebuild deletes all Qdrant points for `runId`, then reindexes.
 At index start the service logs **`mongoPageCount`**. Runs with `mongoPageCount` above **50 000** are skipped (Hostinger safety cap).
 
-### Scheduled indexing and OpenAI rate limits
+### Indexing trigger and OpenAI rate limits
 
-Production schedules one eligible run every **300 seconds** (`INDEX_SCHEDULER_INTERVAL_SECONDS`). The
-scheduler persists its next due time in Mongo, takes an atomic lease, and chooses
-the smallest completed run whose crawl-level readiness marker confirms every
-persisted page carries extracted content and which is not already indexed.
-**Legacy defect:** that marker is still read as `MarkdownReadyAt`
-(`mongo.find_smallest_markdown_ready_run`) while GeekAPI now writes
-`ContentReadyAt`, so the scheduler finds nothing — it is `enabled: false` for
-that reason, not by preference. Index jobs use
-Mongo leases, heartbeats, and stale-job recovery. Failed jobs are **not**
-auto-retried in-process — they fail closed; an operator (or a new enqueue)
-starts a fresh attempt. See [`plans/rules.md`](./plans/rules.md) §3a
-(**No Retries. No Fallbacks. No Crappy Code.**).
+**The index scheduler is deprecated.** Indexing is triggered by `POST /v1/index`.
+`INDEX_SCHEDULER_ENABLED` stays `false` — the scheduled path is not maintained, and `scheduler.py`
+plus `mongo.find_smallest_content_ready_run` remain in the tree without being the live route.
+
+**Set that flag explicitly.** `config.py:50` defaults it to `True` and
+`deploy/hostinger-compose.yml:45` resolves `${INDEX_SCHEDULER_ENABLED:-true}`, so both default the
+deprecated scheduler **on**; only `.env.example:51` sets it false. An environment rebuilt from the
+compose defaults would start scanning. To read what is actually resolved on the box:
+
+```bash
+docker compose exec api env | grep INDEX_SCHEDULER_ENABLED
+```
+
+When it did run, the scheduler persisted its next due time in Mongo, took an atomic lease, and chose the
+smallest completed run whose crawl-level `ContentReadyAt` confirms every persisted page carries extracted
+content and which is not already indexed (`INDEX_SCHEDULER_INTERVAL_SECONDS`, 300s in production).
+
+Index jobs — scheduled or manual — use Mongo leases, heartbeats, and stale-job recovery. Failed jobs are
+**not** auto-retried in-process; they fail closed, and an operator or a new enqueue starts a fresh
+attempt. See [`plans/rules.md`](./plans/rules.md) §3a (**No Retries. No Fallbacks. No Crappy Code.**).
 
 All corpus, query, and ad-template embeddings pass through one rolling
 token-per-minute limiter, sequentially partitioned by item and token count.
@@ -223,11 +236,14 @@ parent, ~29% of calls on marketing pages).
 status includes `attempt`, `trigger`, `embeddingRateLimitRetries`, and
 `embeddingWaitSeconds`; scheduler status includes `lastSelectionReason`.
 
-Historical readiness is reconciled sequentially and safely (dry-run by default):
+Run readiness is stamped by GeekAPI at ingest (`ContentReadyAt`), so this service
+has no reconciliation script — the one that backfilled the old marker was deleted
+with the format it served. To check what Mongo actually holds, per field and per
+casing:
 
 ```bash
-uv run python scripts/reconcile_markdown_readiness.py --max-runs 20
-uv run python scripts/reconcile_markdown_readiness.py --write
+uv run python scripts/verify_ingest_fields.py
+uv run python scripts/verify_ingest_fields.py --run-id <guid>
 ```
 
 ### Index status push (no UI polling)
