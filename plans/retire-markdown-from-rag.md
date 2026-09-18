@@ -182,45 +182,50 @@ which is why step 2 gates step 3 — see the external dependency below.
 - Leave `delete_by_run_id` (`indexer.py:335`) alone — whole-run purge on
   re-index is correct and is not selective pruning.
 
-## External dependency — GeekAPI (.NET, neither repo)
+## External dependency — GeekAPI (.NET) — **CONFIRMED NEGATIVE**
 
-Mongo must actually hold `ContentHtml`, `Blocks` and `ContentReadyAt`. The
-crawler sends the first two, but the RAG projection has never requested them, so
-nothing has ever read them back. **Confirm before writing section 3**:
+Read from source 2026-09-18, `GeekBackend/GeekAPI/Controllers/GeekCrawler/GeekCrawlerIngestController.cs`.
+No crawl was needed; the DTO settles it.
 
-```
-db.crawl_pages.findOne({RunId:"<id>"}, {ContentHtml:1, Blocks:1})
-db.crawl_runs.findOne({Id:"<id>"}, {ContentReadyAt:1, MarkdownReadyAt:1})
-```
+```csharp
+public record IngestPageItem(
+    string? Origin, string? Url, string? FinalUrl,
+    int StatusCode, bool RobotsAllowed,
+    string? Html,
+    string? FailureReason = null,
+    string? Title = null,
+    string? Markdown = null,
+    string? Excerpt = null);          // :860 — no ContentHtml, no Blocks, no Text
 
-If GeekAPI drops unknown fields, that is the first fix and the rest waits.
-
-**Measured 2026-09-18 against the VPS — BLOCKED.**
-
-```
-ContentReadyAt  : ABSENT
-contentReadyAt  : ABSENT
-MarkdownReadyAt : null        (on all 8 runs)
-indexes         : ix_crawl_runs_markdown_ready {Status, MarkdownReadyAt, Id}
+public record IngestPatchRunRequest(
+    ..., DateTimeOffset? MarkdownReadyAt = null,
+    bool ClearMarkdownReadyAt = false, ...);   // :847 — no ContentReadyAt
 ```
 
-GeekAPI never took the field rename. It still stores `MarkdownReadyAt`, and the
-crawler's `contentReadyAt` (`persist.ts:262`) is dropped rather than mapped.
+ASP.NET ignores unknown JSON properties, so `contentHtml`, `blocks` and
+`contentReadyAt` are discarded on arrival. `:529-538` maps only
+`Html, FailureReason, Title, Markdown, Excerpt` into
+`CreateGeekCrawlerPageItemCommand`.
 
-It is also `null` on every run, though each crawl computed `contentReady = true`
-(`pagesSaved > 0 && pagesWithoutContent === 0`). So the scheduler filter
-`MarkdownReadyAt: {$exists: true, $nin: [null, ""]}` matches nothing, and
-scheduled indexing has never fired — the 8 `rag_index_jobs` that deleted the
-corpus were triggered another way.
+**Why §2e's "ingest fails closed" prediction did not hold.** Acceptance at
+`:521-524` requires `Html` **or** `Markdown`, and the crawler still sends
+`html`. So the payload passed validation while the content that mattered was
+thrown away — it failed open and silent, which is how 5,274 pages were stored
+and then deleted rather than refused at the door.
 
-Consequence for section 4: creating `ix_crawl_runs_content_ready` now would
-index a field GeekAPI never writes, matching zero runs exactly as the existing
-index does. **The .NET persistence fix comes first.**
+This is the root cause of the whole failure chain: pages arrive without
+`Markdown`, the Library's `classify_unusable_page` returns `no_markdown`,
+`_delete_unusable` removes page and vectors, and `chunksUpserted` is 0.
+`MarkdownReadyAt` stays null for the same reason, starving the scheduler.
 
-`crawl_pages` is 0, so whether `ContentHtml` and `Blocks` persist is still
-unknown — there are no pages left to inspect. Because every run is
-`MarkdownReadyAt: null` the scheduler cannot claim anything, so a small fresh
-crawl is a safe way to produce one page document to read.
+**So this is no longer a confirmation step — it is work item #1**, and nothing
+in Geek-Crawler-Rag can be built before it:
+
+1. `IngestPageItem` — add `ContentHtml`, `Blocks`, and `Text` if wanted
+2. `IngestPatchRunRequest` — add `ContentReadyAt` / `ClearContentReadyAt`
+3. `CreateGeekCrawlerPageItemCommand` + the Mongo write — persist them
+4. Acceptance at `:521-524` — require real content, so a page with markup but
+   no extract is refused rather than stored and later deleted
 
 ## Sequence
 
