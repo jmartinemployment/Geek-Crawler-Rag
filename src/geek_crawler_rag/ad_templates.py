@@ -35,7 +35,16 @@ def template_point_id(
 
 
 class AdTemplateIndexService:
-    """Embed + retrieve operator ad templates. Corpus owned by content-creator-v2."""
+    """Embed + retrieve operator ad templates.
+
+    This collection is a derived index, not a store. The records are held by
+    GeekRepository (`repo/content-creator-v2/ad-templates`) and pushed here via
+    `POST /v1/templates/index`; Content Creator is the input surface that creates
+    them, not where they live. Point ids are deterministic
+    (:func:`template_point_id`, `uuid5` over `owner_id:template_id`), so a
+    re-index of the same records reproduces the same ids — dropping this
+    collection loses embeddings, not data, provided the records still exist.
+    """
 
     def __init__(self, settings: Settings, llama: LlamaIndexEngine) -> None:
         self._settings = settings

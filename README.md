@@ -104,7 +104,7 @@ Geek-Crawler-v2 → MongoDB → Geek-Crawler-Rag/Qdrant
 | `GET` | `/v1/index/{runId}` | Index job status (ops/debug; UI uses SignalR, not polling) |
 | `GET` | `/v1/index-scheduler` | Persisted scheduler cadence, next run, and last enqueue |
 | `POST` | `/v1/query` | Hybrid or graph retrieve (see below) |
-| `POST` | `/v1/templates/index` | Upsert ad-template exemplars (Content Creator owns corpus) |
+| `POST` | `/v1/templates/index` | Upsert ad-template exemplars — a derived index; the records are GeekRepository's |
 | `POST` | `/v1/templates/query` | Retrieve few-shot templates by need (+ channel/framework/tags) |
 | `GET` | `/v1/pages/{pageId}?runId=…` | Run-scoped block-text projection for citation reads (`PageTextResponse`) |
 | `GET` | `/v1/pages?runId=&url=` | Same lookup by run + URL |
