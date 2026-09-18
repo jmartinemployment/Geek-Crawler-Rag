@@ -13,7 +13,7 @@ This file lives in Geek-Crawler-Rag as the cross-repo tracking plan; cited paths
 
 Runs failed on `POST …/pages/batch` with **502** / empty **500** after large crawls because:
 
-1. Uncapped raw HTML (plus a capped Markdown body, since retired) was sent inline per page → Mongo BSON **16 MiB** document overflows and/or API/repo request-size mismatch.
+1. Uncapped raw HTML (plus a capped text body field, since retired) was sent inline per page → Mongo BSON **16 MiB** document overflows and/or API/repo request-size mismatch.
 2. GeekAPI mapped repository non-2xx → **502**, and timeouts / unhandled exceptions → **500** with empty body — concealing the real cause.
 3. Application-level retry/split-after-failure hid those root causes instead of failing closed.
 
@@ -26,7 +26,7 @@ Runs failed on `POST …/pages/batch` with **502** / empty **500** after large c
 | Rule | Decision |
 |------|----------|
 | Truncation | **Prohibited** for `html`, `contentHtml` and `blocks`. Never shorten content to fit. |
-| Corpus body | Typed **`blocks`** (+ `contentHtml` for display/audit), with `title` / `excerpt`. **Markdown is forbidden** — the crawler does not send it, ingest must not accept it, and no hop may convert HTML to it. Superseded the `markdown` field this plan originally specified. |
+| Corpus body | Typed **`blocks`** (+ `contentHtml` for display/audit), with `title` / `excerpt`. One representation only — ingest must not accept another, and no hop may convert HTML into one. Supersedes the separate text body field this plan originally specified. |
 | Raw HTML | **Retained only when the full serialized page document stays under the per-document limit** (see §2). Not stored by reference in this plan (no blob/object-store phase). |
 | When HTML would exceed budget | Set `html` to `null`, persist the rest of the page (`contentHtml` + `blocks` always), and record `htmlOmittedBytes` + reason in structured logs / optional response metadata. This is an **explicit contract path**, not a silent fallback. |
 | When the page **without** HTML still exceeds the per-document limit | **Reject** that page (server: fail the batch per §5; client: must not submit it). |

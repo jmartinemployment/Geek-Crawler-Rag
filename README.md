@@ -48,7 +48,7 @@ Historical Phase U generate contract fixture (models only; no `/v1/generate` end
 > for `ContentReadyAt` with `scripts/verify_ingest_fields.py` on the VPS, and
 > drop the superseded legacy readiness index once the image carrying `78c143b` is
 > running (the name is in §4's drop command). Detail:
-> [`plans/retire-markdown-from-rag.md`](./plans/retire-markdown-from-rag.md) §4.
+> [`plans/retire-legacy-corpus-format.md`](./plans/retire-legacy-corpus-format.md).
 >
 > **Chunks indexed before `b9fadcc` need a reindex** to gain section titles and
 > per-section anchors; they are otherwise valid.

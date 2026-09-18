@@ -10,7 +10,7 @@ Standard: [failure-findings-report-standard.md](failure-findings-report-standard
 | runId | `a8ee85a3-70e6-4f6a-a475-fd38ffb604db` |
 | Seed | `https://n8n.io` |
 | CrawlType / Status | partner / **external** |
-| MarkdownReadyAt | `2026-09-09T14:50:35.066588+00:00` |
+| Readiness marker (legacy field, since removed) | `2026-09-09T14:50:35.066588+00:00` |
 | mongoPageCount | 443 |
 
 ## 2. Primary failure mode
@@ -52,7 +52,7 @@ File: `requeue_quarantine_a8ee85a3-….json`
 |-------|--------|
 | Mongo job | `skipped`, attempt 3, trigger scheduled, progress counters as above, park error text |
 | Qdrant | **0** points for this runId |
-| Crawl | Still `external`, Markdown ready — source corpus intact |
+| Crawl | Still `external`, readiness marked — source corpus intact |
 | Recoverability | Full re-index required; corpus available; do not treat park JSON as diagnostic of embed failure |
 
 ## 7. Conclusion

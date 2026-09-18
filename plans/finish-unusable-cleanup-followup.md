@@ -5,9 +5,9 @@ Status: **Not started**
 Closes remaining work after the Hostinger bulk purge and local sweeper fixes
 that lived in the former `cleanup-unusable-pages.md`.
 
-**Policy:** **Markdown is forbidden** — there is nothing to backfill and no
+**Policy:** there is one corpus representation and nothing to backfill, so no
 backfill may run. A page is unusable when it carries no typed `blocks`
-(`no_content`), never "missing Markdown". Repair the corpus by **re-crawling**;
+(`no_content`), never a missing legacy body. Repair the corpus by **re-crawling**;
 indexing itself no longer deletes anything (`indexer._skip_unusable`). Former
 pipeline Phase M is cancelled and its backfill scripts were removed from this
 repo.
