@@ -185,17 +185,14 @@ At index start the service logs **`mongoPageCount`**. Runs with `mongoPageCount`
 ### Indexing trigger and OpenAI rate limits
 
 **The index scheduler is deprecated.** Indexing is triggered by `POST /v1/index`.
-`INDEX_SCHEDULER_ENABLED` stays `false` — the scheduled path is not maintained, and `scheduler.py`
-plus `mongo.find_smallest_content_ready_run` remain in the tree without being the live route.
+`INDEX_SCHEDULER_ENABLED` is `false`; `scheduler.py` and
+`mongo.find_smallest_content_ready_run` remain in the tree without being the live route.
 
-**Set that flag explicitly.** `config.py:50` defaults it to `True` and
-`deploy/hostinger-compose.yml:45` resolves `${INDEX_SCHEDULER_ENABLED:-true}`, so both default the
-deprecated scheduler **on**; only `.env.example:51` sets it false. An environment rebuilt from the
-compose defaults would start scanning. To read what is actually resolved on the box:
-
-```bash
-docker compose exec api env | grep INDEX_SCHEDULER_ENABLED
-```
+Keep the flag set in the environment rather than relying on a default — `config.py:50` and
+`deploy/hostinger-compose.yml:45` (`${INDEX_SCHEDULER_ENABLED:-true}`) both default it on. Until
+`78c143b` it also could not have selected a run, because the filter matched nothing; the flag is now
+the only thing holding it off. If it ever did run it would cost embedding spend, not corpus —
+indexing is read-only (`indexer._skip_unusable`).
 
 When it did run, the scheduler persisted its next due time in Mongo, took an atomic lease, and chose the
 smallest completed run whose crawl-level `ContentReadyAt` confirms every persisted page carries extracted
