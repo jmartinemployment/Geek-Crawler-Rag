@@ -338,27 +338,23 @@ class IndexService:
             visibility=self._settings.crawler_visibility,
         )
 
-    async def _delete_page_points(self, page_id: str) -> None:
-        await self._store.delete_by_page_id(
-            page_id,
-            owner_id=self._settings.crawler_owner_id,
-            visibility=self._settings.crawler_visibility,
-        )
-
-    async def _delete_unusable(
+    def _skip_unusable(
         self, page: CrawlPage, reason: str, status: IndexStatusResponse
     ) -> None:
-        await self._mongo.delete_page(page.id)
-        await self._delete_page_points(page.id)
-        if reason == "locale":
-            status.pages_deleted_locale += 1
-        elif reason == "failure":
-            status.pages_deleted_failure += 1
-        elif reason == "non_english":
-            status.pages_deleted_non_english += 1
+        """Count a page this run cannot index. Never deletes it.
+
+        Indexing is read-only over the corpus. The crawler already decides what
+        is corpus-worthy — it owns the reject taxonomy, the prose floor and
+        locale exclusion — and this service re-adjudicating that decision is
+        what destroyed 5,274 pages on 2026-09-18: every page classified
+        `no_markdown` after the crawler stopped emitting Markdown, and each one
+        was removed from Mongo along with its Qdrant points. A page this run
+        cannot use may be perfectly usable to the next one.
+        """
+        status.pages_skipped_unusable += 1
+        if reason == "non_english":
             status.pages_skipped_lang += 1
-        else:
-            status.pages_deleted_empty += 1
+        elif reason not in ("locale", "failure"):
             status.pages_skipped_empty += 1
 
     async def _index_run(self, run_id: str) -> None:
@@ -374,10 +370,7 @@ class IndexService:
         status.pages_english = 0
         status.pages_skipped_lang = 0
         status.pages_skipped_empty = 0
-        status.pages_deleted_locale = 0
-        status.pages_deleted_failure = 0
-        status.pages_deleted_empty = 0
-        status.pages_deleted_non_english = 0
+        status.pages_skipped_unusable = 0
         status.chunks_upserted = 0
         status.embedding_rate_limit_retries = 0
         status.embedding_wait_seconds = 0.0
@@ -464,7 +457,7 @@ class IndexService:
                     if reject:
                         # no_markdown counts with empty deletes (HTML-only junk).
                         reason = "extract_empty" if reject == "no_markdown" else reject
-                        await self._delete_unusable(page, reason, status)
+                        self._skip_unusable(page, reason, status)
                         continue
 
                     host_key = host_from_origin_or_url(page.origin, page.url)
@@ -481,10 +474,10 @@ class IndexService:
                         settings=self._settings,
                     )
                     if skip == "empty":
-                        await self._delete_unusable(page, "extract_empty", status)
+                        self._skip_unusable(page, "extract_empty", status)
                         continue
                     if skip == "lang":
-                        await self._delete_unusable(page, "non_english", status)
+                        self._skip_unusable(page, "non_english", status)
                         continue
 
                     status.pages_english += 1
@@ -544,17 +537,16 @@ class IndexService:
 
         if status.pages_english == 0:
             status.state = IndexState.COMPLETE
-            status.error = "No English pages to embed (unusable pages deleted)"
+            status.error = "No English pages to embed (pages left in place)"
             status.finished_at_utc = utc_now()
             logger.warning(
-                "Index complete (empty corpus) for runId=%s — pagesSeen=%s deletedLocale=%s "
-                "deletedFailure=%s deletedEmpty=%s deletedNonEnglish=%s",
+                "Index complete (nothing indexable) for runId=%s — pagesSeen=%s "
+                "skippedUnusable=%s skippedLang=%s skippedEmpty=%s; corpus untouched",
                 run_id,
                 status.pages_seen,
-                status.pages_deleted_locale,
-                status.pages_deleted_failure,
-                status.pages_deleted_empty,
-                status.pages_deleted_non_english,
+                status.pages_skipped_unusable,
+                status.pages_skipped_lang,
+                status.pages_skipped_empty,
             )
             await self._persist(status)
             return
@@ -564,13 +556,12 @@ class IndexService:
         status.finished_at_utc = utc_now()
         logger.info(
             "Index complete for runId=%s chunksUpserted=%s pagesEnglish=%s "
-            "deletedLocale=%s deletedFailure=%s deletedEmpty=%s deletedNonEnglish=%s",
+            "skippedUnusable=%s skippedLang=%s skippedEmpty=%s",
             run_id,
             status.chunks_upserted,
             status.pages_english,
-            status.pages_deleted_locale,
-            status.pages_deleted_failure,
-            status.pages_deleted_empty,
-            status.pages_deleted_non_english,
+            status.pages_skipped_unusable,
+            status.pages_skipped_lang,
+            status.pages_skipped_empty,
         )
         await self._persist(status)

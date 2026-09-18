@@ -35,10 +35,10 @@ class IndexStatusResponse(BaseModel):
     pages_english: int = Field(0, alias="pagesEnglish")
     pages_skipped_lang: int = Field(0, alias="pagesSkippedLang")
     pages_skipped_empty: int = Field(0, alias="pagesSkippedEmpty")
-    pages_deleted_locale: int = Field(0, alias="pagesDeletedLocale")
-    pages_deleted_failure: int = Field(0, alias="pagesDeletedFailure")
-    pages_deleted_empty: int = Field(0, alias="pagesDeletedEmpty")
-    pages_deleted_non_english: int = Field(0, alias="pagesDeletedNonEnglish")
+    # Indexing no longer deletes, so there is no ranked deletion taxonomy to
+    # report — one total of what this run could not use, beside the lang/empty
+    # breakdown that already existed.
+    pages_skipped_unusable: int = Field(0, alias="pagesSkippedUnusable")
     chunks_upserted: int = Field(0, alias="chunksUpserted")
     attempt: int = 0
     trigger: str = "manual"

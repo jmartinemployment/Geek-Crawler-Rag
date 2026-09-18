@@ -80,27 +80,36 @@ async def test_index_deletes_locale_and_failure_pages():
     status = await svc.get_status("r-loc")
     assert status is not None
     assert status.state == IndexState.COMPLETE
-    assert status.pages_deleted_locale == 1
-    assert status.pages_deleted_failure == 1
-    assert mongo.delete_page.await_count == 2
+    assert status.pages_skipped_unusable == 2
+    # Indexing is read-only over the corpus: unusable pages are counted and left
+    # where they are. Deleting them is what destroyed 5,274 pages on 2026-09-18.
+    mongo.delete_page.assert_not_awaited()
+    store.delete_by_page_id.assert_not_awaited()
     llama.embed_and_upsert.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_index_fails_closed_when_unusable_delete_fails():
+async def test_index_never_deletes_a_page_it_cannot_use():
+    """The regression that cost the corpus.
+
+    A page this run cannot index may be perfectly usable to the next one — and
+    on 2026-09-18 every page was unusable for one reason (the crawler had
+    stopped emitting Markdown), so deleting them emptied the corpus and its
+    Qdrant points in a single pass. Indexing must never mutate what it reads.
+    """
     mongo = MagicMock()
     mongo.get_run = AsyncMock(
-        return_value=CrawlRun(id="r-del", crawl_type="partner", status="complete")
+        return_value=CrawlRun(id="r-keep", crawl_type="partner", status="complete")
     )
     mongo.count_pages = AsyncMock(return_value=1)
-    mongo.delete_page = AsyncMock(side_effect=RuntimeError("mongo delete failed"))
+    mongo.delete_page = AsyncMock()
     _entity_mock(mongo)
 
     async def pages(_run_id, batch_size=25):
         yield [
             CrawlPage(
-                id="p-del",
-                run_id="r-del",
+                id="p-keep",
+                run_id="r-keep",
                 origin="https://speakai.co",
                 url="https://speakai.co/es/approaches/",
                 final_url="https://speakai.co/es/approaches/",
@@ -117,13 +126,14 @@ async def test_index_fails_closed_when_unusable_delete_fails():
     svc = IndexService(
         mongo, store, Settings(openai_api_key="test"), llama=_llama_mock()
     )
-    await svc._index_run("r-del")
+    await svc._index_run("r-keep")
 
-    status = await svc.get_status("r-del")
+    status = await svc.get_status("r-keep")
     assert status is not None
-    assert status.state == IndexState.FAILED
-    assert status.error and "mongo delete failed" in status.error.lower()
-    assert status.pages_deleted_locale == 0
+    # Nothing indexable, but that is a finished run, not a failed one.
+    assert status.state == IndexState.COMPLETE
+    assert status.pages_skipped_unusable >= 1
+    mongo.delete_page.assert_not_awaited()
     store.delete_by_page_id.assert_not_awaited()
 
 
@@ -191,15 +201,17 @@ async def test_index_skips_when_no_english():
     assert status is not None
     assert status.state == IndexState.COMPLETE
     assert status.mongo_page_count == 1
-    assert status.pages_deleted_non_english >= 1
+    assert status.pages_skipped_unusable >= 1
     assert status.pages_skipped_lang >= 1
-    mongo.delete_page.assert_awaited()
-    store.delete_by_page_id.assert_awaited()
+    mongo.delete_page.assert_not_awaited()
+    # The page's Qdrant points are left alone too — a non-English page this run
+    # cannot embed is not a reason to destroy vectors another run may have built.
+    store.delete_by_page_id.assert_not_awaited()
     llama.embed_and_upsert.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_index_deletes_html_only_pages():
+async def test_index_skips_html_only_pages_without_deleting_them():
     mongo = MagicMock()
     mongo.get_run = AsyncMock(
         return_value=CrawlRun(id="r-html", crawl_type="partner", status="complete")
@@ -237,8 +249,8 @@ async def test_index_deletes_html_only_pages():
     status = await svc.get_status("r-html")
     assert status is not None
     assert status.state == IndexState.COMPLETE
-    assert status.pages_deleted_empty >= 1
-    mongo.delete_page.assert_awaited_once()
+    assert status.pages_skipped_empty >= 1
+    mongo.delete_page.assert_not_awaited()
 
 
 @pytest.mark.asyncio
