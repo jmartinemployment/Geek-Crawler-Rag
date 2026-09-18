@@ -1,4 +1,9 @@
-from geek_crawler_rag.chunk import chunk_text, parent_child_units
+from geek_crawler_rag.block_text import derive_plaintext_from_blocks
+from geek_crawler_rag.chunk import (
+    chunk_text,
+    parent_child_units,
+    split_blocks_into_sections,
+)
 from geek_crawler_rag.extract import page_text_and_title
 from geek_crawler_rag.metadata import (
     entity_from_crawl,
@@ -40,34 +45,100 @@ def test_chunk_rejects_bad_overlap():
         pass
 
 
-def test_parent_child_windows_the_block_projection():
-    """The input is the flat block projection, so no section title can be inferred.
+def test_parents_are_bounded_by_headings_and_carry_their_section():
+    """Each chunk reports the heading it sits under, and its own section's anchors.
 
-    A page string carries no structural markers — heading blocks render as their
-    bare text — so every unit reports `section_title=None` rather than a title
-    parsed out of the prose. Structure lives on the blocks, not on the string.
+    Sections are cut at heading blocks, so a parent window never straddles two
+    headings. Blocks before the first heading are a preamble with `section_title`
+    of None — an absent heading, never an invented one.
     """
-    text = """Pricing
-
-Our plans start at nine dollars per month with usage based billing and enterprise support.
-
-Features
-
-Feature alpha includes SSO and audit logs for regulated teams. Feature beta adds sandboxes.
-"""
+    blocks = [
+        {"kind": "paragraph", "text": "Intro before any heading.", "anchors": []},
+        {"kind": "heading", "level": 2, "text": "Pricing", "anchors": []},
+        {
+            "kind": "paragraph",
+            "text": "Our plans start at nine dollars per month with usage based billing.",
+            "anchors": [],
+        },
+        {"kind": "heading", "level": 2, "text": "Features", "anchors": []},
+        {
+            "kind": "paragraph",
+            "text": "Feature alpha includes SSO and audit logs for regulated teams.",
+            "anchors": [{"label": "Zapier", "href": "/tools/zapier"}],
+        },
+    ]
     units = parent_child_units(
-        text,
+        blocks,
         child_size_tokens=40,
         child_overlap_tokens=5,
         parent_size_tokens=120,
         parent_overlap_tokens=10,
     )
     assert units
-    assert all(u.section_title is None for u in units)
     assert all(u.parent_text and u.child_text for u in units)
-    # Every parent window is drawn from the supplied text, and children from their parent.
-    assert all(u.parent_text[:20] in text for u in units)
-    assert any(u.child_text in u.parent_text or u.child_text[:20] in u.parent_text for u in units)
+
+    titles = [u.section_title for u in units]
+    assert None in titles, "the preamble keeps an absent title"
+    assert "Pricing" in titles
+    assert "Features" in titles
+
+    # A parent never spans two headings.
+    for unit in units:
+        others = {"Pricing", "Features"} - {unit.section_title}
+        for other in others:
+            assert other not in unit.parent_text
+
+    # The heading stays in its own section body, so its words are embedded.
+    pricing = [u for u in units if u.section_title == "Pricing"]
+    assert pricing and all("Pricing" in u.parent_text for u in pricing)
+
+    # Anchors are attributed to the section they appear in, not to the whole page.
+    features = [u for u in units if u.section_title == "Features"]
+    assert features and all(
+        u.section_anchors == (("Zapier", "/tools/zapier"),) for u in features
+    )
+    assert all(u.section_anchors == () for u in pricing)
+
+    assert any(
+        u.child_text in u.parent_text or u.child_text[:20] in u.parent_text
+        for u in units
+    )
+
+
+def test_section_text_is_the_page_projection_restricted_to_those_blocks():
+    """The invariant that keeps citations verifiable.
+
+    A quote is taken from a retrieved chunk and matched against the whole-page
+    projection. Section text must therefore be built by the same projection over a
+    subset of blocks — identical rendering, identical join — so every section's
+    text is a substring of the page's.
+    """
+    blocks = [
+        {"kind": "heading", "level": 1, "text": "Plans", "anchors": []},
+        {"kind": "paragraph", "text": "Starter is free for one seat.", "anchors": []},
+        {"kind": "row", "header": False, "cells": ["Pro", "$15/month"], "anchors": []},
+        {"kind": "heading", "level": 2, "text": "Limits", "anchors": []},
+        {"kind": "paragraph", "text": "Uptime is 99.9% on every plan.", "anchors": []},
+    ]
+    page_text = derive_plaintext_from_blocks(blocks)
+    sections = split_blocks_into_sections(blocks)
+
+    assert [s.title for s in sections] == ["Plans", "Limits"]
+    assert [s.level for s in sections] == [1, 2]
+    for section in sections:
+        assert section.text in page_text
+
+    units = parent_child_units(blocks, parent_size_tokens=1000, child_size_tokens=200)
+    for unit in units:
+        assert unit.parent_text in page_text
+
+
+def test_no_blocks_yields_no_units():
+    assert parent_child_units(None) == []
+    assert parent_child_units([]) == []
+    assert split_blocks_into_sections(None) == []
+    # Blocks that render to nothing are not a section.
+    assert split_blocks_into_sections([{"kind": "paragraph", "text": "  "}]) == []
 
 
 def test_text_comes_from_blocks_and_title_falls_back_to_the_first_heading():

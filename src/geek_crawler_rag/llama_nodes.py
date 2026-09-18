@@ -45,29 +45,16 @@ def page_to_nodes(
         return [], "lang"
 
     host = host_from_origin_or_url(page.origin, page.url)
-    # Carried so a retrieved chunk can cite its sources: a tool name without its
-    # href cites nothing. Chunking works over the flat projection, which cannot
-    # attribute an anchor to one chunk, so these are page-level and deduped.
-    anchors: list[dict[str, str]] = []
-    seen_hrefs: set[str] = set()
-    for block in page.blocks:
-        for anchor in block.get("anchors") or []:
-            if not isinstance(anchor, dict):
-                continue
-            href = str(anchor.get("href") or "").strip()
-            label = str(anchor.get("label") or "").strip()
-            if not href or href in seen_hrefs:
-                continue
-            seen_hrefs.add(href)
-            anchors.append({"label": label, "href": href})
     category = infer_category(page.url, text)
     content_intent = infer_content_intent(page.url, text)
     tags = infer_tags(page.url, title)
     qscore = quality_score(text=text, title=title, has_blocks=has_blocks)
     evergreen = is_evergreen(page.url, text)
 
+    # Sections come from the typed blocks, so each chunk carries the heading it
+    # actually sits under and the anchors from that heading's own blocks.
     units = parent_child_units(
-        text,
+        page.blocks,
         child_size_tokens=settings.child_chunk_size_tokens,
         child_overlap_tokens=settings.child_chunk_overlap_tokens,
         parent_size_tokens=settings.parent_chunk_size_tokens,
@@ -94,6 +81,9 @@ def page_to_nodes(
         feature_tag = (
             infer_feature_tag(unit.section_title, tags) if is_competitor else None
         )
+        unit_anchors = [
+            {"label": label, "href": href} for label, href in unit.section_anchors
+        ]
         if unit.parent_index not in seen_parents:
             seen_parents.add(unit.parent_index)
             nodes.append(
@@ -122,7 +112,7 @@ def page_to_nodes(
                     source_rights_consented_hosts=settings.source_rights_consented_hosts,
                     competitor_chunk_kind=unit_kind,
                     feature_tag=feature_tag,
-                    anchors=anchors,
+                    anchors=unit_anchors,
                 )
             )
         nodes.append(
@@ -151,7 +141,7 @@ def page_to_nodes(
                 source_rights_consented_hosts=settings.source_rights_consented_hosts,
                 competitor_chunk_kind=unit_kind,
                 feature_tag=feature_tag,
-                anchors=anchors,
+                anchors=unit_anchors,
             )
         )
     return nodes, ""
