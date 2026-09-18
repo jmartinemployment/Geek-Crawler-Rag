@@ -9,12 +9,16 @@ Historical Phase U generate contract fixture (models only; no `/v1/generate` end
 
 ## Product overview
 
-> ## ⚠️ Markdown is being retired — this document still describes it
+> ## ⚠️ Markdown no longer exists — this service still demands it
 >
-> The crawler stopped emitting Markdown (`Geek-Crawler-v2/plans/corpus-rebuild.md`).
-> It now sends clean semantic `contentHtml` plus typed `blocks`. **This service
-> has not followed yet**, so every Markdown reference below is accurate about the
-> code as it stands and obsolete as direction.
+> **Markdown was the crawler's output format and it is gone.** Removed in
+> `Geek-Crawler-v2/plans/corpus-rebuild.md`; the crawl path contains no Markdown
+> converter. The crawler now emits clean semantic `contentHtml` plus typed
+> `blocks`.
+>
+> Nothing produces Markdown any more. **This service still requires it**, so
+> every Markdown reference below is accurate about the code as it stands and
+> describes an input that no longer arrives.
 >
 > Consequence, measured 2026-09-18: pages arrive with no `Markdown`,
 > `classify_unusable_page` returns `no_markdown`, and `_delete_unusable` deletes
