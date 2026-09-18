@@ -195,6 +195,33 @@ db.crawl_runs.findOne({Id:"<id>"}, {ContentReadyAt:1, MarkdownReadyAt:1})
 
 If GeekAPI drops unknown fields, that is the first fix and the rest waits.
 
+**Measured 2026-09-18 against the VPS — BLOCKED.**
+
+```
+ContentReadyAt  : ABSENT
+contentReadyAt  : ABSENT
+MarkdownReadyAt : null        (on all 8 runs)
+indexes         : ix_crawl_runs_markdown_ready {Status, MarkdownReadyAt, Id}
+```
+
+GeekAPI never took the field rename. It still stores `MarkdownReadyAt`, and the
+crawler's `contentReadyAt` (`persist.ts:262`) is dropped rather than mapped.
+
+It is also `null` on every run, though each crawl computed `contentReady = true`
+(`pagesSaved > 0 && pagesWithoutContent === 0`). So the scheduler filter
+`MarkdownReadyAt: {$exists: true, $nin: [null, ""]}` matches nothing, and
+scheduled indexing has never fired — the 8 `rag_index_jobs` that deleted the
+corpus were triggered another way.
+
+Consequence for section 4: creating `ix_crawl_runs_content_ready` now would
+index a field GeekAPI never writes, matching zero runs exactly as the existing
+index does. **The .NET persistence fix comes first.**
+
+`crawl_pages` is 0, so whether `ContentHtml` and `Blocks` persist is still
+unknown — there are no pages left to inspect. Because every run is
+`MarkdownReadyAt: null` the scheduler cannot claim anything, so a small fresh
+crawl is a safe way to produce one page document to read.
+
 ## Sequence
 
 1. Confirm the GeekAPI/Mongo fields exist (above).
