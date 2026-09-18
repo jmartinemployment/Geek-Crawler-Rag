@@ -9,6 +9,24 @@ Historical Phase U generate contract fixture (models only; no `/v1/generate` end
 
 ## Product overview
 
+> ## ⚠️ Markdown is being retired — this document still describes it
+>
+> The crawler stopped emitting Markdown (`Geek-Crawler-v2/plans/corpus-rebuild.md`).
+> It now sends clean semantic `contentHtml` plus typed `blocks`. **This service
+> has not followed yet**, so every Markdown reference below is accurate about the
+> code as it stands and obsolete as direction.
+>
+> Consequence, measured 2026-09-18: pages arrive with no `Markdown`,
+> `classify_unusable_page` returns `no_markdown`, and `_delete_unusable` deletes
+> the page **and its Qdrant points**. Eight runs, 5,274 pages, 0 chunks upserted,
+> corpus destroyed. GeekAPI compounds it — `IngestPageItem` does not accept
+> `contentHtml` or `blocks`, so the crawler's content is discarded before it ever
+> reaches Mongo.
+>
+> **Do not trigger indexing against a fresh crawl until this lands.**
+> Remaining work: [`plans/retire-markdown-from-rag.md`](./plans/retire-markdown-from-rag.md).
+> The block→text projection is already in place: `src/geek_crawler_rag/block_text.py`.
+
 Geek-Crawler-Rag turns partner and competitor website crawls into searchable evidence with verified Markdown reads. It combines semantic and keyword retrieval, hierarchical context, entity-aware filtering, and quote-level verification for downstream content systems.
 
 ### Capabilities
@@ -22,7 +40,7 @@ Geek-Crawler-Rag turns partner and competitor website crawls into searchable evi
 - Few-shot advertising-template indexing and retrieval
 - Full-page Markdown reads for source verification
 - Quote verification helpers (chunk and citation text must appear in source Markdown)
-- Corpus hygiene (delete unusable / HTML-only pages; re-crawl for Markdown) and idempotent run-level reindexing
+- Corpus hygiene (delete unusable / HTML-only pages; re-crawl for Markdown) and idempotent run-level reindexing — **this is the deletion path that destroyed the corpus on 2026-09-18; every page now reads as HTML-only because the crawler no longer sends Markdown**
 
 ### Technology
 
