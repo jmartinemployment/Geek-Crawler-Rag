@@ -5,10 +5,12 @@ Status: **Not started**
 Closes remaining work after the Hostinger bulk purge and local sweeper fixes
 that lived in the former `cleanup-unusable-pages.md`.
 
-**Policy:** Markdown **backfill must not run**. Repair the corpus by **deleting**
-unusable / HTML-only (missing Markdown) pages and **re-crawling** when clean
-Markdown is required (former pipeline Phase M — cancelled).
-Backfill scripts were removed from this repo.
+**Policy:** **Markdown is forbidden** — there is nothing to backfill and no
+backfill may run. A page is unusable when it carries no typed `blocks`
+(`no_content`), never "missing Markdown". Repair the corpus by **re-crawling**;
+indexing itself no longer deletes anything (`indexer._skip_unusable`). Former
+pipeline Phase M is cancelled and its backfill scripts were removed from this
+repo.
 
 Also carries **verification caveats** / open ops from former plans:
 
@@ -60,8 +62,8 @@ was stale (“not yet implemented”).
 
 Live verification still not evidenced:
 
-- Re-crawl n8n; confirm `/integrations/if/` and `/integrations/set/` markdown
-  drops below the 500k cap and `truncated` does not fire
+- Re-crawl n8n; confirm `/integrations/if/` and `/integrations/set/` extracted
+  content drops below the cap and `truncated` does not fire
 - Guardrail sample of low-gallery `/integrations/*` pages (selector no-op)
 - Spot-check retained prose is the node description, not empty
 

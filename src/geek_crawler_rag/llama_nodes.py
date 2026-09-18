@@ -224,7 +224,7 @@ def _node(
                 if h.strip()
             ),
         ),
-        "parserId": "crawler-markdown",
+        "parserId": "crawler-blocks",
         "parserVersion": "1.0.0",
         "chunkerId": "parent-child-token-window",
         "chunkerVersion": "1.0.0",

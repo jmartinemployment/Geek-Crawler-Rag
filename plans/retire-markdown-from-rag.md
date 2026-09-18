@@ -1,5 +1,11 @@
 # Blunt Greenfield: retire Markdown from the RAG Library
 
+> **Markdown is forbidden** — not deprecated, not discouraged. Every "Markdown"
+> below names a legacy identifier this plan deletes, never a format to preserve.
+> The method is: typed `blocks` for the body, `contentHtml` for display/audit, one
+> shared `block_text.derive_plaintext_from_blocks` projection for the page string,
+> `citation_verify.quote_in_text` for quotes, `ContentReadyAt` for readiness.
+
 ## Context
 
 The crawler completed its Markdown→HTML migration (`plans/corpus-rebuild.md`,

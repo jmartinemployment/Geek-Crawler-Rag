@@ -9,33 +9,50 @@ Historical Phase U generate contract fixture (models only; no `/v1/generate` end
 
 ## Product overview
 
-> ## ⚠️ Markdown no longer exists — this service still demands it
+> ## ⛔ Markdown is FORBIDDEN
 >
-> **Markdown was the crawler's output format and it is gone.** Removed in
-> `Geek-Crawler-v2/plans/corpus-rebuild.md`; the crawl path contains no Markdown
-> converter. The crawler now emits clean semantic `contentHtml` plus typed
-> `blocks`.
+> **Markdown is not a corpus format, not a verification target, and not an
+> interchange format.** The crawl path contains no Markdown converter
+> (`Geek-Crawler-v2/plans/corpus-rebuild.md`) and nothing here may reintroduce
+> one. The corpus body is clean semantic `contentHtml` plus typed `blocks`.
 >
-> Nothing produces Markdown any more. **This service still requires it**, so
-> every Markdown reference below is accurate about the code as it stands and
-> describes an input that no longer arrives.
+> | Concern | The method |
+> |---|---|
+> | Corpus body | typed **`blocks`** (`heading`+`level`, `paragraph`, `listItem`, `quote`, `code`, `row`+`cells`, `term`, `definition`; each with `text`/`cells`, `html`, `anchors`) |
+> | Display / audit | **`contentHtml`** |
+> | Page as a string | **one** projection — `block_text.derive_plaintext_from_blocks` |
+> | Quote verification | `citation_verify.quote_in_text(quote, plain_text, blocks)` against that same string |
+> | Page read API | `GET /v1/pages…` → `PageTextResponse.text` |
+> | Run readiness | **`ContentReadyAt`** |
 >
-> Consequence, measured 2026-09-18: pages arrive with no `Markdown`,
-> `classify_unusable_page` returns `no_markdown`, and `_delete_unusable` deletes
-> the page **and its Qdrant points**. Eight runs, 5,274 pages, 0 chunks upserted,
-> corpus destroyed.
+> Chunk text and verification text come from the same projection deliberately: a
+> quote is taken from a retrieved chunk and matched against the page, so two
+> "join the blocks" implementations make correct citations fail.
 >
-> **This service is now the only thing left to migrate.** GeekAPI used to
-> compound the problem by discarding `contentHtml` and `blocks` before they
-> reached Mongo; since `GeekBackend@5561209` it carries both, `blocks` as a
-> native BSON array, and rejects a page that arrives without extracted content.
-> So the content is in Mongo — this service simply does not read it.
+> **Why this is a hard rule.** The crawler migrated off Markdown and this service
+> did not. Every page classified `no_markdown`; `_delete_unusable` removed it
+> **and its Qdrant points**. Eight runs, 5,274 pages, 0 chunks upserted, corpus
+> destroyed on 2026-09-18.
 >
-> **Do not trigger indexing against a fresh crawl until this lands.**
-> Remaining work: [`plans/retire-markdown-from-rag.md`](./plans/retire-markdown-from-rag.md).
-> The block→text projection is already in place: `src/geek_crawler_rag/block_text.py`.
+> **Migration state — corpus path done, scheduling path not.**
+> `extract.py`, `block_text.py`, `citation_verify.quote_in_text`, `unusable.py`
+> (`no_content`, never `no_markdown`) and `indexer._skip_unusable` (counts, never
+> deletes) are all block-based, and the page API returns `PageTextResponse`.
+> Still Markdown-bound: `mongo.find_smallest_markdown_ready_run` filters
+> `MarkdownReadyAt` and hints `ix_crawl_runs_markdown_ready`, so the scheduler
+> starves once runs carry only `ContentReadyAt`; `llama_nodes.py` stamps
+> `parserId: "crawler-markdown"`; `chunk._split_heading_sections` splits on ATX
+> `#` headings the projection never emits, so section chunking silently never
+> fires; `scripts/cleanup_unusable_pages.py` still documents and projects
+> Markdown fields. Remaining work:
+> [`plans/retire-markdown-from-rag.md`](./plans/retire-markdown-from-rag.md).
+>
+> **Legitimate Markdown, and only here:** an operator-supplied asset
+> (`text/markdown` in `asset_context.py`, `context_models.py`,
+> `diagnostic_models.py`, `intelligence_models.py`) and a generated report a
+> human reads. Neither is corpus.
 
-Geek-Crawler-Rag turns partner and competitor website crawls into searchable evidence with verified Markdown reads. It combines semantic and keyword retrieval, hierarchical context, entity-aware filtering, and quote-level verification for downstream content systems.
+Geek-Crawler-Rag turns partner and competitor website crawls into searchable evidence with verified block-text reads. It combines semantic and keyword retrieval, hierarchical context, entity-aware filtering, and quote-level verification for downstream content systems.
 
 ### Capabilities
 
@@ -46,9 +63,9 @@ Geek-Crawler-Rag turns partner and competitor website crawls into searchable evi
 - Entity, source, category, quality, host, and chunk-role filters
 - Graph-style entity/category/co-occurrence themes
 - Few-shot advertising-template indexing and retrieval
-- Full-page Markdown reads for source verification
-- Quote verification helpers (chunk and citation text must appear in source Markdown)
-- Corpus hygiene (delete unusable / HTML-only pages; re-crawl for Markdown) and idempotent run-level reindexing — **this is the deletion path that destroyed the corpus on 2026-09-18; every page now reads as HTML-only because the crawler no longer sends Markdown**
+- Full-page block-text reads for source verification (`PageTextResponse.text`)
+- Quote verification helpers (chunk and citation text must appear in the page's block-text projection)
+- Idempotent run-level reindexing. **Indexing no longer deletes anything** — the crawler owns the reject taxonomy, and this service re-adjudicating it is what destroyed 5,274 pages on 2026-09-18. A page this run cannot use is counted (`pagesSkippedUnusable`) and left alone
 
 ### Technology
 
@@ -62,7 +79,7 @@ Geek-Crawler-v2 → MongoDB → Geek-Crawler-Rag/Qdrant
                          GeekAPI → Content Creator v2
 ```
 
-**Geek-Crawler-v2** produces the clean crawl corpus. This service owns corpus hygiene, indexing, hybrid/graph retrieval, themes, and run-scoped Markdown reads. **Content Creator v2** owns generation, operator writing workflows, and publishing.
+**Geek-Crawler-v2** produces the clean crawl corpus. This service owns indexing, hybrid/graph retrieval, themes, and run-scoped block-text reads. **Content Creator v2** owns generation, operator writing workflows, and publishing.
 
 ## What this is / is not
 
@@ -84,10 +101,10 @@ Geek-Crawler-v2 → MongoDB → Geek-Crawler-Rag/Qdrant
 | `POST` | `/v1/query` | Hybrid or graph retrieve (see below) |
 | `POST` | `/v1/templates/index` | Upsert ad-template exemplars (Content Creator owns corpus) |
 | `POST` | `/v1/templates/query` | Retrieve few-shot templates by need (+ channel/framework/tags) |
-| `GET` | `/v1/pages/{pageId}?runId=…` | Run-scoped Mongo Markdown for citation reads |
+| `GET` | `/v1/pages/{pageId}?runId=…` | Run-scoped block-text projection for citation reads (`PageTextResponse`) |
 | `GET` | `/v1/pages?runId=&url=` | Same lookup by run + URL |
 
-RAG in this repository is **library-only**: index, query, and page Markdown. There is no `POST /v1/generate` endpoint.
+RAG in this repository is **library-only**: index, query, and page block text. There is no `POST /v1/generate` endpoint.
 
 `POST /v1/query` body (camelCase; new fields optional / backward compatible):
 
@@ -164,8 +181,12 @@ At index start the service logs **`mongoPageCount`**. Runs with `mongoPageCount`
 
 Production schedules one eligible run every **300 seconds** (`INDEX_SCHEDULER_INTERVAL_SECONDS`). The
 scheduler persists its next due time in Mongo, takes an atomic lease, and chooses
-the smallest completed run whose crawl-level `MarkdownReadyAt` confirms every
-persisted page has Markdown and which is not already indexed. Index jobs use
+the smallest completed run whose crawl-level readiness marker confirms every
+persisted page carries extracted content and which is not already indexed.
+**Legacy defect:** that marker is still read as `MarkdownReadyAt`
+(`mongo.find_smallest_markdown_ready_run`) while GeekAPI now writes
+`ContentReadyAt`, so the scheduler finds nothing — it is `enabled: false` for
+that reason, not by preference. Index jobs use
 Mongo leases, heartbeats, and stale-job recovery. Failed jobs are **not**
 auto-retried in-process — they fail closed; an operator (or a new enqueue)
 starts a fresh attempt. See [`plans/rules.md`](./plans/rules.md) §3a

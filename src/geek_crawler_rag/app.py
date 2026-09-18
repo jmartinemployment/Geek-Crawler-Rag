@@ -610,7 +610,7 @@ async def delete_run_index(run_id: str) -> None:
     """Remove every crawler-owned vector for one run, and its job row.
 
     Called by GeekAPI as the first step of a run delete: vectors go before the
-    Markdown they cite, so retrieval can never return a chunk whose source no
+    pages they cite, so retrieval can never return a chunk whose source no
     longer exists. Deleting an already-absent run is a no-op, not an error.
 
     The job row goes with them. Purging vectors while leaving it behind meant

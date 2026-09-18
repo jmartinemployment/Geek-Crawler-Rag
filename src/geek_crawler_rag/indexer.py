@@ -346,10 +346,10 @@ class IndexService:
         Indexing is read-only over the corpus. The crawler already decides what
         is corpus-worthy — it owns the reject taxonomy, the prose floor and
         locale exclusion — and this service re-adjudicating that decision is
-        what destroyed 5,274 pages on 2026-09-18: every page classified
-        `no_markdown` after the crawler stopped emitting Markdown, and each one
-        was removed from Mongo along with its Qdrant points. A page this run
-        cannot use may be perfectly usable to the next one.
+        what destroyed 5,274 pages on 2026-09-18: every page was classified
+        body-less against a corpus format this service no longer received, and
+        each one was removed from Mongo along with its Qdrant points. A page this
+        run cannot use may be perfectly usable to the next one.
         """
         status.pages_skipped_unusable += 1
         if reason == "non_english":

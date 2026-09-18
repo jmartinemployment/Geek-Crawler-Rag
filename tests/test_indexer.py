@@ -93,9 +93,9 @@ async def test_index_never_deletes_a_page_it_cannot_use():
     """The regression that cost the corpus.
 
     A page this run cannot index may be perfectly usable to the next one — and
-    on 2026-09-18 every page was unusable for one reason (the crawler had
-    stopped emitting Markdown), so deleting them emptied the corpus and its
-    Qdrant points in a single pass. Indexing must never mutate what it reads.
+    on 2026-09-18 every page was unusable for one reason (the crawler had changed
+    corpus format), so deleting them emptied the corpus and its Qdrant points in
+    a single pass. Indexing must never mutate what it reads.
     """
     mongo = MagicMock()
     mongo.get_run = AsyncMock(

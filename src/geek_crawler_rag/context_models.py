@@ -99,9 +99,7 @@ class SourceCoordinates(StrictModel):
 class KnowledgeResource(StrictModel):
     resource_id: str = Field(..., alias="resourceId", min_length=1, max_length=120)
     resource_digest: str = Field(..., alias="resourceDigest", pattern=r"^[0-9a-f]{64}$")
-    media_type: Literal["text/plain", "text/markdown", "text/html"] = Field(
-        ..., alias="mediaType"
-    )
+    media_type: Literal["text/plain", "text/html"] = Field(..., alias="mediaType")
     source_reference: str = Field(
         ..., alias="sourceReference", min_length=1, max_length=2_000
     )
@@ -255,9 +253,7 @@ class TrustedAssetIndexRequest(StrictModel):
     derived_sha256: str = Field(..., alias="derivedSha256", pattern=r"^[0-9a-f]{64}$")
     content: str = Field(..., min_length=1, max_length=2_000_000)
     object_key: str = Field(..., alias="objectKey", min_length=1, max_length=2_000)
-    media_type: Literal["text/plain", "text/markdown", "text/html"] = Field(
-        ..., alias="mediaType"
-    )
+    media_type: Literal["text/plain", "text/html"] = Field(..., alias="mediaType")
     parser_name: str = Field(..., alias="parserName", min_length=1, max_length=120)
     parser_version: str = Field(..., alias="parserVersion", min_length=1, max_length=40)
     source_coordinates: list[SourceCoordinates] = Field(

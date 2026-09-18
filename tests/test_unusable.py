@@ -39,7 +39,6 @@ def test_classify_failure_and_locale() -> None:
     assert classify_unusable_page(url="https://speakai.co/blog/ok") == "no_content"
 
 
-def test_classify_backfill_skip_maps() -> None:
-    assert classify_unusable_page(markdown_backfill_skip="extract_empty") == "extract_empty"
-    assert classify_unusable_page(markdown_backfill_skip="failure") == "failure"
+def test_classify_failure_signals() -> None:
+    assert classify_unusable_page(failure_reason="challenge") == "failure"
     assert classify_unusable_page(robots_allowed=False) == "failure"

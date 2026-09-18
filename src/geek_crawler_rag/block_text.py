@@ -1,15 +1,15 @@
 """Block to plaintext projection — the single source of truth for page text.
 
-The crawler emits typed blocks (Geek-Crawler-v2 `extract-content.ts`), not
-Markdown. Everything downstream that needs a page as a string derives it here:
-the chunker, so embeddings are built from it, and citation verification, so
-quotes are matched against it.
+The crawler emits typed blocks (Geek-Crawler-v2 `extract-content.ts`).
+Everything downstream that needs a page as a string derives it here: the
+chunker, so embeddings are built from it, and citation verification, so quotes
+are matched against it.
 
 One module rather than one loop per consumer, deliberately. Chunk text and
 verification text must be the same string — a quote comes out of a retrieved
 chunk and is then matched against the page projection, so any divergence makes
 correct citations fail. Two implementations of "join the blocks" is exactly the
-drift that broke this pipeline once already: the crawler migrated off Markdown
+drift that broke this pipeline once already: the crawler changed corpus format
 and the Library did not, and every page silently classified as empty.
 """
 

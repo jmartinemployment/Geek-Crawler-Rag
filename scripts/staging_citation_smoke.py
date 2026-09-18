@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only staging smoke for library retrieval and Markdown citation reads."""
+"""Read-only staging smoke for library retrieval and page-text citation reads."""
 
 from __future__ import annotations
 
@@ -172,10 +172,10 @@ def run_smoke(config: SmokeConfig, client: JsonHttpClient) -> dict[str, int]:
     page = client.request("GET", f"/v1/pages/{quote(query_page_id, safe='')}?runId={quote(config.run_id, safe='')}")
     if page.get("pageId") != query_page_id:
         raise SmokeFailure("page response pageId does not match query chunk")
-    markdown = _required_string(page.get("markdown"), "page markdown", config.max_response_bytes)
-    if chunk_text not in markdown:
+    page_text = _required_string(page.get("text"), "page text", config.max_response_bytes)
+    if chunk_text not in page_text:
         raise SmokeFailure(
-            "query chunk text is not an exact substring of page Markdown"
+            "query chunk text is not an exact substring of the page text"
         )
 
     return {"queryChunks": len(chunks), "chunksVerified": 1}

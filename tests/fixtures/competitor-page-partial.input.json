@@ -9,7 +9,7 @@
     "competitorId": "competitor-1",
     "competitorName": "Competitor Inc.",
     "visibleContent": "A supplied fragment without full-page context.",
-    "mediaType": "text/markdown",
+    "mediaType": "text/plain",
     "contentCompleteness": "partial",
     "evidence": []
   }

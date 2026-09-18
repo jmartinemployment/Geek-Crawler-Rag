@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
-"""Confirm GeekAPI actually persists the post-Markdown fields.
+"""Confirm GeekAPI actually persists the corpus fields the Library reads.
 
-Dry read-only against Mongo. This gates every other step of the Markdown
-retirement: the Library is about to read `ContentHtml` and `Blocks` instead of
-`Markdown`, and to schedule on `ContentReadyAt` instead of `MarkdownReadyAt`.
-The crawler sends all three, but the Library has never requested them, so
-nothing has ever read them back — if GeekAPI drops unknown fields, that is the
-first fix and the rest of the plan waits.
+Dry read-only against Mongo. The Library reads `ContentHtml` and `Blocks` per
+page and schedules on the run-level `ContentReadyAt`. The crawler sends all
+three; this confirms they survive the hop through GeekAPI, because a field
+silently dropped on ingest reads back exactly like a page that never had content.
 
 Reports field presence and casing, because the run filter and the scheduler
 index cannot hedge across casings the way the page projections do.
@@ -34,12 +32,10 @@ PAGE_FIELDS = [
     ("Blocks", "blocks"),
     ("Text", "text"),
     ("Html", "html"),
-    ("Markdown", "markdown"),
     ("Title", "title"),
 ]
 RUN_FIELDS = [
     ("ContentReadyAt", "contentReadyAt"),
-    ("MarkdownReadyAt", "markdownReadyAt"),
 ]
 
 

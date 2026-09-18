@@ -44,7 +44,7 @@ class FakeClient:
         if path == "/v1/pages/page%2Fone?runId=run-123":
             return {
                 "pageId": "page/one",
-                "markdown": "# Identity\n\nAcme supports SSO for enterprise teams.",
+                "text": "Identity\n\nAcme supports SSO for enterprise teams.",
             }
         raise AssertionError(f"unexpected request: {method} {path}")
 
@@ -58,7 +58,7 @@ def config() -> SmokeConfig:
     )
 
 
-def test_smoke_is_read_only_and_verifies_chunk_in_markdown():
+def test_smoke_is_read_only_and_verifies_chunk_in_page_text():
     client = FakeClient()
 
     result = run_smoke(config(), client)  # type: ignore[arg-type]

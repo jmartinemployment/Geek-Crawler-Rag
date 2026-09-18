@@ -82,8 +82,8 @@ class TechnicalSignals(StrictContract):
 class DiagnosticDocument(StrictContract):
     source: SourceProvenance
     visible_content: str = Field(..., alias="visibleContent", min_length=1)
-    media_type: Literal["text/markdown", "text/plain", "text/html"] = Field(
-        "text/markdown", alias="mediaType"
+    media_type: Literal["text/plain", "text/html"] = Field(
+        "text/plain", alias="mediaType"
     )
     content_completeness: Literal["full", "partial"] = Field(
         "full", alias="contentCompleteness"

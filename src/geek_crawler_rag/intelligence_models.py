@@ -183,8 +183,8 @@ class PageSnapshot(StrictContract):
     visible_content: str = Field(
         ..., alias="visibleContent", min_length=1, max_length=2_000_000
     )
-    media_type: Literal["text/markdown", "text/plain", "text/html"] = Field(
-        "text/markdown", alias="mediaType"
+    media_type: Literal["text/plain", "text/html"] = Field(
+        "text/plain", alias="mediaType"
     )
     content_completeness: ContentCompleteness = Field(
         ContentCompleteness.FULL, alias="contentCompleteness"

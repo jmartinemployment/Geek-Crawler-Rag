@@ -71,8 +71,7 @@ class CrawlPage:
     html: str | None
     # The corpus body. `blocks` is the typed structure the chunker and the
     # verification projection both read; `content_html` is the clean fragment,
-    # kept for display and audit. Markdown is gone — the crawler stopped
-    # emitting it (Geek-Crawler-v2 plans/corpus-rebuild.md).
+    # kept for display and audit.
     content_html: str | None = None
     blocks: list[dict[str, Any]] = field(default_factory=list)
     title: str | None = None
@@ -101,8 +100,8 @@ class MongoCorpus:
     async def ensure_indexes(self) -> None:
         """Create RAG-owned covered indexes without indexing large page bodies."""
         await self._db["crawl_runs"].create_index(
-            [("Status", 1), ("MarkdownReadyAt", 1), ("Id", 1)],
-            name="ix_crawl_runs_markdown_ready",
+            [("Status", 1), ("ContentReadyAt", 1), ("Id", 1)],
+            name="ix_crawl_runs_content_ready",
         )
         await self._db["rag_execution_replays"].create_index(
             [("stageExecutionId", 1)],
@@ -148,32 +147,38 @@ class MongoCorpus:
     async def count_pages(self, run_id: str) -> int:
         return int(await self._db["crawl_pages"].count_documents({"RunId": run_id}))
 
-    async def find_smallest_markdown_ready_run(
+    async def find_smallest_content_ready_run(
         self,
         *,
         excluded_run_ids: set[str],
         maximum_pages: int = 50_000,
     ) -> SchedulableRunScan:
-        """Return the smallest completed, Markdown-ready crawl not yet indexed."""
+        """Return the smallest completed, content-ready crawl not yet indexed.
+
+        Readiness is `ContentReadyAt`, the marker GeekAPI stamps once every
+        persisted page of the run carries extracted content. The `hint` names the
+        index `ensure_indexes` creates at startup — Mongo errors on a hint naming
+        an index that does not exist, so the two must be changed together.
+        """
         run_filter: dict[str, Any] = {
             "Status": {"$in": ["complete", "external"]},
-            "MarkdownReadyAt": {"$exists": True, "$nin": [None, ""]},
+            "ContentReadyAt": {"$exists": True, "$nin": [None, ""]},
             "Id": {"$type": "string", "$ne": ""},
         }
         missing_ready_marker = await self._db["crawl_runs"].count_documents(
             {
                 "Status": {"$in": ["complete", "external"]},
                 "$or": [
-                    {"MarkdownReadyAt": {"$exists": False}},
-                    {"MarkdownReadyAt": None},
-                    {"MarkdownReadyAt": ""},
+                    {"ContentReadyAt": {"$exists": False}},
+                    {"ContentReadyAt": None},
+                    {"ContentReadyAt": ""},
                 ],
             }
         )
         cursor = self._db["crawl_runs"].find(
             run_filter,
             {"Id": 1, "_id": 0},
-            hint="ix_crawl_runs_markdown_ready",
+            hint="ix_crawl_runs_content_ready",
         )
 
         candidates: list[SchedulableRun] = []
@@ -293,7 +298,7 @@ class MongoCorpus:
         return self._entity_cache
 
     async def get_page(self, page_id: str) -> CrawlPage | None:
-        """Load one page by Id (Guid string). Includes Markdown for citation reads."""
+        """Load one page by Id (Guid string). Projects `Blocks` for citation reads."""
         if not page_id:
             return None
         projection = {

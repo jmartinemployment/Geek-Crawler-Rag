@@ -1,5 +1,13 @@
 # RAG baseline inventory (Phase 0)
 
+> **HISTORICAL — do not action. Markdown is forbidden.**
+> This plan predates the corpus rebuild and describes Markdown as a stored body,
+> a backfill target, or a delete criterion. None of that is current policy: the
+> corpus body is typed `blocks` (+ `contentHtml`), the page string is
+> `block_text.derive_plaintext_from_blocks`, Phase M backfill is **cancelled**, and
+> indexing no longer deletes anything. Current state: [`README.md`](../../README.md)
+> · current work: [`../retire-markdown-from-rag.md`](../retire-markdown-from-rag.md).
+
 Captured: 2026-09-06 (Hostinger live + code). Gate for Phase B in [`rag-content-writing-pipeline.md`](./rag-content-writing-pipeline.md).
 
 ## Live stack

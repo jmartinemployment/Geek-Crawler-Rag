@@ -60,7 +60,7 @@ class AssetChunk:
 def parse_asset(
     content: str, media_type: str, *, max_chars: int = 2_000_000
 ) -> ParsedAsset:
-    """Dispatch only locally parsed UTF-8 text, Markdown, and HTML."""
+    """Dispatch only locally parsed UTF-8 text and HTML."""
     if len(content) > max_chars:
         raise ValueError("Asset exceeds the extracted character limit.")
     if "\x00" in content:
@@ -71,9 +71,6 @@ def parse_asset(
             tag.decompose()
         text = soup.get_text(separator="\n", strip=True)
         parser_id = "beautifulsoup-lxml"
-    elif media_type == "text/markdown":
-        text = content
-        parser_id = "markdown-utf8"
     elif media_type == "text/plain":
         text = content
         parser_id = "plain-utf8"

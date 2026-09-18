@@ -27,7 +27,7 @@
       "criterion": "capabilities",
       "subjectSignals": [
         "## Capabilities",
-        "It supports Markdown analysis and evidence linking."
+        "It supports document analysis and evidence linking."
       ],
       "competitorSignals": [
         "## Can I try it?"
@@ -166,7 +166,7 @@
       {
         "evidenceId": "170077192f873d45198f086d",
         "sourceId": "subject-page-1",
-        "quote": "It supports Markdown analysis and evidence linking.",
+        "quote": "It supports document analysis and evidence linking.",
         "startChar": 83,
         "endChar": 134
       },

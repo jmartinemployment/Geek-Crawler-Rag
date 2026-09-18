@@ -12,7 +12,7 @@ REMOVED:
   - Zero-width / BOM / soft-hyphen (U+200B–U+200D, U+FEFF, U+00AD)
 
 NOT done here (by design):
-  - HTML/Markdown stripping
+  - Markup stripping
   - Semantic rewriting
   - Token truncation (handled by partition_embedding_batches)
 

@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 
 import tiktoken
 
 _ENCODING_NAME = "cl100k_base"
-_HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$", re.MULTILINE)
-_BLANK_RE = re.compile(r"\n{2,}")
 
 
 def _encoding() -> tiktoken.Encoding:
@@ -70,34 +67,6 @@ def _token_windows(
     return chunk_text(text, size_tokens=size_tokens, overlap_tokens=overlap_tokens)
 
 
-def _split_heading_sections(text: str) -> list[tuple[str | None, str]]:
-    """Split markdown-ish text on AT headings; fallback to whole doc."""
-    cleaned = (text or "").strip()
-    if not cleaned:
-        return []
-
-    matches = list(_HEADING_RE.finditer(cleaned))
-    if not matches:
-        return [(None, cleaned)]
-
-    sections: list[tuple[str | None, str]] = []
-    if matches[0].start() > 0:
-        preamble = cleaned[: matches[0].start()].strip()
-        if preamble:
-            sections.append((None, preamble))
-
-    for i, match in enumerate(matches):
-        title = match.group(2).strip() or None
-        start = match.end()
-        end = matches[i + 1].start() if i + 1 < len(matches) else len(cleaned)
-        body = cleaned[start:end].strip()
-        if body:
-            sections.append((title, body))
-        elif title:
-            sections.append((title, title))
-    return sections or [(None, cleaned)]
-
-
 def parent_child_units(
     text: str,
     *,
@@ -106,7 +75,14 @@ def parent_child_units(
     parent_size_tokens: int = 1000,
     parent_overlap_tokens: int = 80,
 ) -> list[ParentChildUnit]:
-    """Build child pinpoint chunks nested under parent sections (~800–1200 tok)."""
+    """Build child pinpoint chunks nested under parent windows (~800–1200 tok).
+
+    Sections are not derived here. The input is the flat block projection, which
+    carries no structural markers, so windowing it is the only honest split; a
+    title would have to be invented. Heading structure lives on the blocks
+    (`kind == "heading"`, `level`) and a structural split must take the blocks as
+    input rather than re-deriving them from a string.
+    """
     cleaned = (text or "").strip()
     if not cleaned:
         return []
@@ -121,33 +97,30 @@ def parent_child_units(
     parent_index = 0
     child_index = 0
 
-    for section_title, section_body in _split_heading_sections(cleaned):
-        parents = _token_windows(
-            section_body,
-            size_tokens=parent_size_tokens,
-            overlap_tokens=parent_overlap_tokens,
+    parents = _token_windows(
+        cleaned,
+        size_tokens=parent_size_tokens,
+        overlap_tokens=parent_overlap_tokens,
+    )
+    for parent_text in parents:
+        children = _token_windows(
+            parent_text,
+            size_tokens=child_size_tokens,
+            overlap_tokens=child_overlap_tokens,
         )
-        if not parents:
-            continue
-        for parent_text in parents:
-            children = _token_windows(
-                parent_text,
-                size_tokens=child_size_tokens,
-                overlap_tokens=child_overlap_tokens,
-            )
-            if not children:
-                children = [parent_text]
-            for child_text in children:
-                units.append(
-                    ParentChildUnit(
-                        parent_text=parent_text,
-                        child_text=child_text,
-                        section_title=section_title,
-                        parent_index=parent_index,
-                        child_index=child_index,
-                    )
+        if not children:
+            children = [parent_text]
+        for child_text in children:
+            units.append(
+                ParentChildUnit(
+                    parent_text=parent_text,
+                    child_text=child_text,
+                    section_title=None,
+                    parent_index=parent_index,
+                    child_index=child_index,
                 )
-                child_index += 1
-            parent_index += 1
+            )
+            child_index += 1
+        parent_index += 1
 
     return units

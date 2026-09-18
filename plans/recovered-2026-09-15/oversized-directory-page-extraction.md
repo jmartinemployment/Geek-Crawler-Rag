@@ -1,5 +1,13 @@
 # Filter oversized link-directory pages before they inflate the corpus
 
+> **HISTORICAL — do not action. Markdown is forbidden.**
+> This plan predates the corpus rebuild and describes Markdown as a stored body,
+> a backfill target, or a delete criterion. None of that is current policy: the
+> corpus body is typed `blocks` (+ `contentHtml`), the page string is
+> `block_text.derive_plaintext_from_blocks`, Phase M backfill is **cancelled**, and
+> indexing no longer deletes anything. Current state: [`README.md`](../../README.md)
+> · current work: [`../retire-markdown-from-rag.md`](../retire-markdown-from-rag.md).
+
 Status: **Selector identified, extraction fix not yet implemented**
 Found: **2026-09-11** while auditing why n8n `/integrations/*` pages hit the
 500,000-char truncation cap (see `plans/crawl-scope-and-duplicate-pages.md`,

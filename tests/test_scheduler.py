@@ -17,7 +17,7 @@ from geek_crawler_rag.status_store import (
 @pytest.mark.asyncio
 async def test_due_scheduler_enqueues_smallest_ready_run():
     mongo = MagicMock()
-    mongo.find_smallest_markdown_ready_run = AsyncMock(
+    mongo.find_smallest_content_ready_run = AsyncMock(
         return_value=SchedulableRunScan(
             candidate=SchedulableRun("small-run", 12)
         )
@@ -41,7 +41,7 @@ async def test_due_scheduler_enqueues_smallest_ready_run():
     selected = await scheduler.tick()
 
     assert selected == "small-run"
-    mongo.find_smallest_markdown_ready_run.assert_awaited_once_with(
+    mongo.find_smallest_content_ready_run.assert_awaited_once_with(
         excluded_run_ids={"done-run"}
     )
     indexer.enqueue_scheduled.assert_awaited_once_with("small-run")
@@ -64,13 +64,13 @@ async def test_not_due_scheduler_does_not_scan_corpus():
     scheduler = IndexScheduler(mongo, store, indexer, settings, owner="owner")
 
     assert await scheduler.tick() is None
-    assert not mongo.find_smallest_markdown_ready_run.called
+    assert not mongo.find_smallest_content_ready_run.called
 
 
 @pytest.mark.asyncio
 async def test_due_scheduler_reports_why_no_run_is_ready():
     mongo = MagicMock()
-    mongo.find_smallest_markdown_ready_run = AsyncMock(
+    mongo.find_smallest_content_ready_run = AsyncMock(
         return_value=SchedulableRunScan(
             candidate=None,
             missing_ready_marker=4,

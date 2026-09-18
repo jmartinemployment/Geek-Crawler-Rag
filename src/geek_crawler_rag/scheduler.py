@@ -108,14 +108,14 @@ class IndexScheduler:
             excluded = await self._status_store.excluded_run_ids(
                 max_attempts=self._settings.index_scheduler_max_attempts
             )
-            scan = await self._mongo.find_smallest_markdown_ready_run(
+            scan = await self._mongo.find_smallest_content_ready_run(
                 excluded_run_ids=excluded
             )
             candidate = scan.candidate
             if candidate is None:
                 selection_reason = scan.summary()
                 logger.info(
-                    "Index scheduler found no eligible Markdown-ready run: %s",
+                    "Index scheduler found no eligible content-ready run: %s",
                     selection_reason,
                 )
                 return None

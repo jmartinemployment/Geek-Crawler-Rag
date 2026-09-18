@@ -1,5 +1,13 @@
 # Cleanup: delete unusable crawl data (this repo)
 
+> **HISTORICAL — do not action. Markdown is forbidden.**
+> This plan predates the corpus rebuild and describes Markdown as a stored body,
+> a backfill target, or a delete criterion. None of that is current policy: the
+> corpus body is typed `blocks` (+ `contentHtml`), the page string is
+> `block_text.derive_plaintext_from_blocks`, Phase M backfill is **cancelled**, and
+> indexing no longer deletes anything. Current state: [`README.md`](../../README.md)
+> · current work: [`../retire-markdown-from-rag.md`](../retire-markdown-from-rag.md).
+
 Status: **implemented** — ops procedure for corpus hygiene when junk leaks past Geek-Crawler-v2.
 
 Sibling: [Geek-Crawler-v2 `plans/crawl-reject-unusable-pages.md`](../../Geek-Crawler-v2/plans/crawl-reject-unusable-pages.md) (prevent at crawl). This repo **deletes** what still arrives.

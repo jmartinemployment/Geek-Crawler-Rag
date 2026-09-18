@@ -45,12 +45,12 @@ async def test_run_level_readiness_selects_smallest_and_reports_exclusions():
     corpus = MongoCorpus.__new__(MongoCorpus)
     corpus._db = {"crawl_runs": runs, "crawl_pages": FakePages()}
 
-    scan = await corpus.find_smallest_markdown_ready_run(
+    scan = await corpus.find_smallest_content_ready_run(
         excluded_run_ids={"done"},
         maximum_pages=50_000,
     )
 
-    assert runs.query["MarkdownReadyAt"] == {
+    assert runs.query["ContentReadyAt"] == {
         "$exists": True,
         "$nin": [None, ""],
     }

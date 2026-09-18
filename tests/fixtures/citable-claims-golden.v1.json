@@ -7,7 +7,7 @@
       "title": "Claims Source"
     },
     "visibleContent": "# Claims Source\n\nAccording to Acme Research, teams cut review time by 37% in 2024.\n\nMany customers see better outcomes overall.\n\nTrusted by Contoso Analytics for document workflows.",
-    "mediaType": "text/markdown",
+    "mediaType": "text/plain",
     "contentCompleteness": "full",
     "queries": [],
     "evidence": []

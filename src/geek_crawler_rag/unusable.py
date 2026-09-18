@@ -43,7 +43,7 @@ NON_ENGLISH_LOCALE = frozenset({
     "za", "zh", "zu",
 })
 
-# Backfill skip marks and reject reasons that mean "delete, do not keep".
+# Reject reasons that mean "delete, do not keep".
 DELETE_SKIP_REASONS = frozenset({
     "locale",
     "failure",
@@ -52,7 +52,6 @@ DELETE_SKIP_REASONS = frozenset({
     "fetch_error",
     "no_html",
     "robots",
-    "already_markdown",  # only if marked skip without usable body — rare
 })
 
 # Reasons a page cannot be indexed. Nothing deletes on them any more —
@@ -100,7 +99,6 @@ def classify_unusable_page(
     url: str = "",
     final_url: str = "",
     failure_reason: str | None = None,
-    markdown_backfill_skip: str | None = None,
     robots_allowed: bool | None = None,
     blocks: list[Any] | None = None,
 ) -> str | None:
@@ -109,11 +107,6 @@ def classify_unusable_page(
     A page without typed blocks carries no corpus body this service can read.
     The caller counts it and moves on — nothing here deletes.
     """
-    if markdown_backfill_skip in ("locale", "failure", "extract_empty", "extract_error", "fetch_error", "no_html", "robots"):
-        return "locale" if markdown_backfill_skip == "locale" else (
-            "failure" if markdown_backfill_skip in ("failure", "robots") else "extract_empty"
-        )
-
     page_url = final_url or url
     if should_exclude_locale_path(page_url) or should_exclude_locale_path(url):
         return "locale"
@@ -138,7 +131,6 @@ def classify_from_mongo_doc(doc: dict[str, Any]) -> str | None:
         url=str(doc.get("Url") or ""),
         final_url=str(doc.get("FinalUrl") or ""),
         failure_reason=doc.get("FailureReason"),
-        markdown_backfill_skip=doc.get("MarkdownBackfillSkip"),
         robots_allowed=doc.get("RobotsAllowed"),
         blocks=raw if isinstance(raw, list) else None,
     )

@@ -109,15 +109,13 @@ def test_service_auth_is_mandatory_and_local_test_mode_is_explicit() -> None:
     assert invalid.value.status_code == 401
 
 
-def test_text_markdown_html_dispatch_is_local_and_bounded() -> None:
+def test_text_html_dispatch_is_local_and_bounded() -> None:
     plain = parse_asset("alpha\nbeta", "text/plain")
-    markdown = parse_asset("# Alpha\n\nBody", "text/markdown")
     html = parse_asset(
         "<html><body><script>attack()</script><h1>Alpha</h1><p>Body</p></body></html>",
         "text/html",
     )
     assert plain.parser_id == "plain-utf8"
-    assert markdown.parser_id == "markdown-utf8"
     assert html.parser_id == "beautifulsoup-lxml"
     assert "attack" not in html.text
     with pytest.raises(ValueError, match="Unsupported"):

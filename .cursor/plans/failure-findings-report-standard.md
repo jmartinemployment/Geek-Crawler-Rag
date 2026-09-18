@@ -8,7 +8,7 @@ Unacceptable in prior reports:
 
 ## Required sections (every quarantined / failed run)
 
-1. **Identity** — runId, seed, crawl Status/Type, MarkdownReady
+1. **Identity** — runId, seed, crawl Status/Type, ContentReady (`ContentReadyAt`; `MarkdownReadyAt` is legacy — Markdown is forbidden)
 2. **Primary failure mode** — one technical sentence (cancel / OpenAI 400 / OpenAI 500 / recovery reclaim). Never “operator quarantine.”
 3. **Evidence chain** — timestamped log lines (or job field values *as of failure*, not as of park)
 4. **Secondary damage** — wipe, attempt bumps, error-field overwrite, lost points

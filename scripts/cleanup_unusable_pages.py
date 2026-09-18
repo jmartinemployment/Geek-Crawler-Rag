@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 """Delete unusable crawl_pages that leaked past the crawler.
 
-Reasons (aligned with Geek-Crawler-v2 reject plan):
+Deletes on crawler-owned rejects only:
   - locale URL paths
   - FailureReason / robots-denied / challenge
-  - extract_empty (and related historical skip marks)
-  - no_markdown (HTML-only — delete; never backfill)
+
+**A page with no corpus body is NOT deleted here.** `classify_from_mongo_doc`
+reports it as `no_content` and this script passes over it, deliberately: a page
+this service cannot read may be perfectly readable to the next one, and
+re-adjudicating the crawler's decision is what destroyed 5,274 pages and their
+Qdrant points on 2026-09-18. Widening the filter to `no_content` re-arms exactly
+that path.
 
 Also deletes crawl_links for removed PageIds.
 
@@ -61,20 +66,8 @@ PROJECTION = {
     "Url": 1,
     "FinalUrl": 1,
     "FailureReason": 1,
-    "MarkdownBackfillSkip": 1,
     "RobotsAllowed": 1,
 }
-
-
-SKIP_MARKS = [
-    "locale",
-    "failure",
-    "extract_empty",
-    "extract_error",
-    "fetch_error",
-    "no_html",
-    "robots",
-]
 
 
 def _delete_ids(
@@ -136,15 +129,10 @@ def cleanup(
         return extra
 
     # --- Fast path: field-based deletes (queries shaped for indexes) ---
-    # Prefer $gt:"" over $type so FailureReason_1 / MarkdownBackfillSkip_1 can be used.
+    # Prefer $gt:"" over $type so FailureReason_1 can be used.
     fast_steps: list[tuple[str, dict[str, Any], str | None]] = [
         ("failure", scoped({"FailureReason": {"$gt": ""}}), "FailureReason_1"),
         ("failure", scoped({"RobotsAllowed": False}), "RobotsAllowed_1"),
-        (
-            "marked",
-            scoped({"MarkdownBackfillSkip": {"$in": SKIP_MARKS}}),
-            "MarkdownBackfillSkip_1",
-        ),
     ]
     for label, q, hint in fast_steps:
         if limit is not None and counts.deleted_pages >= limit:
@@ -155,7 +143,7 @@ def cleanup(
             take = batch_size
             if limit is not None:
                 take = min(batch_size, limit - counts.deleted_pages)
-            cursor = pages.find(q, {"_id": 1, "Id": 1, "MarkdownBackfillSkip": 1}).limit(take)
+            cursor = pages.find(q, {"_id": 1, "Id": 1}).limit(take)
             if hint:
                 try:
                     cursor = cursor.hint(hint)
@@ -166,16 +154,7 @@ def cleanup(
                 break
             for doc in batch:
                 counts.scanned += 1
-                skip = doc.get("MarkdownBackfillSkip")
-                if label == "marked":
-                    if skip == "locale":
-                        counts.by_reason["locale"] += 1
-                    elif skip in ("failure", "robots"):
-                        counts.by_reason["failure"] += 1
-                    else:
-                        counts.by_reason["extract_empty"] += 1
-                else:
-                    counts.by_reason[label] += 1
+                counts.by_reason[label] += 1
             _delete_ids(
                 pages, links, batch, write=write, counts=counts, delete_links=delete_links
             )
@@ -188,7 +167,7 @@ def cleanup(
             if not write:
                 break
 
-    # --- Locale + missing-Markdown scan (remaining pages; no Markdown backfill) ---
+    # --- Locale scan over the remaining pages ---
     if not skip_locale_scan and (limit is None or counts.deleted_pages < limit):
         pending: list[dict[str, Any]] = []
         cursor = pages.find(
@@ -200,9 +179,8 @@ def cleanup(
                 "FinalUrl": 1,
                 "FailureReason": 1,
                 "RobotsAllowed": 1,
-                "Markdown": 1,
-                "markdown": 1,
-                "MarkdownBackfillSkip": 1,
+                "Blocks": 1,
+                "blocks": 1,
             },
         ).batch_size(batch_size)
         for doc in cursor:
@@ -210,8 +188,9 @@ def cleanup(
                 break
             counts.scanned += 1
             reason = classify_from_mongo_doc(doc)
-            # Fast path already covered failure / skip-marks; only locale + no_markdown here.
-            if reason not in ("locale", "no_markdown"):
+            # Fast path already covered failure; only locale deletes here. `no_content`
+            # is reported by the classifier and deliberately never deleted.
+            if reason != "locale":
                 continue
             counts.by_reason[reason] += 1
             pending.append(doc)
@@ -255,7 +234,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--skip-locale-scan",
         action="store_true",
-        help="Only delete FailureReason / RobotsAllowed / MarkdownBackfillSkip matches",
+        help="Only delete FailureReason / RobotsAllowed matches",
     )
     parser.add_argument(
         "--skip-link-delete",

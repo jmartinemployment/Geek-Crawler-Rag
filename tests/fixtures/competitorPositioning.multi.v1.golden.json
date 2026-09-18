@@ -36,16 +36,16 @@
       ]
     },
     {
-      "attributeId": "3a1d7f987468935b1bbbbe58",
-      "attribute": "It supports Markdown analysis.",
+      "attributeId": "69b6bad09cc52a97f8b2060a",
+      "attribute": "It supports document analysis.",
       "party": "brand",
       "competitorId": null,
       "competitorName": null,
       "signals": [
-        "It supports Markdown analysis."
+        "It supports document analysis."
       ],
       "evidenceIds": [
-        "12e678257e823ae6833ee812"
+        "3944385db54906c8e8a29fbd"
       ],
       "sourceIds": [
         "brand-page-1"
@@ -562,7 +562,7 @@
       "supplied-price-evidence",
       "efc8115cd7eb931731f3caba",
       "770430a42c9e3e4290f3c907",
-      "12e678257e823ae6833ee812",
+      "3944385db54906c8e8a29fbd",
       "1d41d4d893cd56c277635a1c",
       "fe66970ee602c6a7cc5db38a",
       "eab90251e1d48d23b7f7ecae",
@@ -599,9 +599,9 @@
         "endChar": 77
       },
       {
-        "evidenceId": "12e678257e823ae6833ee812",
+        "evidenceId": "3944385db54906c8e8a29fbd",
         "sourceId": "brand-page-1",
-        "quote": "It supports Markdown analysis.",
+        "quote": "It supports document analysis.",
         "startChar": 79,
         "endChar": 109
       },

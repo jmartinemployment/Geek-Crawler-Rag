@@ -40,12 +40,18 @@ def test_chunk_rejects_bad_overlap():
         pass
 
 
-def test_parent_child_from_headings():
-    text = """# Pricing
+def test_parent_child_windows_the_block_projection():
+    """The input is the flat block projection, so no section title can be inferred.
+
+    A page string carries no structural markers — heading blocks render as their
+    bare text — so every unit reports `section_title=None` rather than a title
+    parsed out of the prose. Structure lives on the blocks, not on the string.
+    """
+    text = """Pricing
 
 Our plans start at nine dollars per month with usage based billing and enterprise support.
 
-## Features
+Features
 
 Feature alpha includes SSO and audit logs for regulated teams. Feature beta adds sandboxes.
 """
@@ -57,9 +63,10 @@ Feature alpha includes SSO and audit logs for regulated teams. Feature beta adds
         parent_overlap_tokens=10,
     )
     assert units
-    assert any(u.section_title and "Pricing" in u.section_title for u in units)
+    assert all(u.section_title is None for u in units)
     assert all(u.parent_text and u.child_text for u in units)
-    # Child is contained in / related to parent context.
+    # Every parent window is drawn from the supplied text, and children from their parent.
+    assert all(u.parent_text[:20] in text for u in units)
     assert any(u.child_text in u.parent_text or u.child_text[:20] in u.parent_text for u in units)
 
 
