@@ -58,3 +58,42 @@ def test_projection_is_deterministic_for_the_same_blocks():
     # verification path each ask for, they get byte-identical strings.
     blocks = [para("Acme supports SSO."), row("Plan", "$15/month")]
     assert derive_plaintext_from_blocks(blocks) == derive_plaintext_from_blocks(blocks)
+
+
+def test_escaped_markup_a_page_embedded_in_its_own_text_is_decoded_and_removed():
+    # Observed on freshbooks.com/hub and five stampli.com pages. Note there is
+    # no backslash in the stored text — it is a bare `u003c`.
+    raw = "manage your time. u003ca href=u0022#videou0022u003eClick here for a video.u003c/au003e"
+    assert render_block_text({"kind": "paragraph", "text": raw}) == (
+        "manage your time. Click here for a video."
+    )
+
+
+def test_backslashed_escapes_are_handled_too():
+    raw = "see \\u003ca href=\\u0022/pricing\\u0022\\u003epricing\\u003c/a\\u003e now"
+    assert render_block_text({"kind": "paragraph", "text": raw}) == "see pricing now"
+
+
+def test_non_ascii_survives_untouched():
+    # str.decode("unicode-escape") would turn these into mojibake across the
+    # whole corpus without raising, which is why cleaning is sequence-targeted.
+    for text in ("café", "don’t — really", "naïve", "Dext Canada — reçus"):
+        assert render_block_text({"kind": "paragraph", "text": text}) == text
+
+
+def test_code_blocks_keep_their_angle_brackets():
+    # FreshBooks API docs: these are the subject matter, not markup to scrub.
+    for text in ('Bearer <a token>', "PUT .../account/<accountId>/users", "<request method='x'>"):
+        assert render_block_text({"kind": "code", "text": text}) == text
+
+
+def test_text_without_escapes_is_never_rewritten():
+    # The cleaning pass only engages when an escape is present, so ordinary
+    # prose containing angle brackets is left exactly as extracted.
+    text = "Use the <accountId> parameter in your header."
+    assert render_block_text({"kind": "paragraph", "text": text}) == text
+
+
+def test_escaped_markup_inside_a_table_cell_is_cleaned():
+    block = {"kind": "row", "cells": ["Plan", "u003ca href=u0022/xu0022u003eSee moreu003c/au003e"]}
+    assert render_block_text(block) == "Plan | See more"
