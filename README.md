@@ -23,9 +23,13 @@ Historical Phase U generate contract fixture (models only; no `/v1/generate` end
 > Consequence, measured 2026-09-18: pages arrive with no `Markdown`,
 > `classify_unusable_page` returns `no_markdown`, and `_delete_unusable` deletes
 > the page **and its Qdrant points**. Eight runs, 5,274 pages, 0 chunks upserted,
-> corpus destroyed. GeekAPI compounds it — `IngestPageItem` does not accept
-> `contentHtml` or `blocks`, so the crawler's content is discarded before it ever
-> reaches Mongo.
+> corpus destroyed.
+>
+> **This service is now the only thing left to migrate.** GeekAPI used to
+> compound the problem by discarding `contentHtml` and `blocks` before they
+> reached Mongo; since `GeekBackend@5561209` it carries both, `blocks` as a
+> native BSON array, and rejects a page that arrives without extracted content.
+> So the content is in Mongo — this service simply does not read it.
 >
 > **Do not trigger indexing against a fresh crawl until this lands.**
 > Remaining work: [`plans/retire-markdown-from-rag.md`](./plans/retire-markdown-from-rag.md).

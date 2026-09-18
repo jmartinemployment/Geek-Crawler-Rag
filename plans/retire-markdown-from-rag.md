@@ -182,7 +182,20 @@ which is why step 2 gates step 3 — see the external dependency below.
 - Leave `delete_by_run_id` (`indexer.py:335`) alone — whole-run purge on
   re-index is correct and is not selective pruning.
 
-## External dependency — GeekAPI (.NET) — **CONFIRMED NEGATIVE**
+## External dependency — GeekAPI (.NET) — **RESOLVED**
+
+> **Shipped in `GeekBackend@5561209`.** `IngestPageItem` now carries
+> `ContentHtml` and `Blocks`; `IngestPatchRunRequest` carries `ContentReadyAt` /
+> `ClearContentReadyAt`; both travel all four hops to Mongo, with `Blocks` as a
+> native BSON array and `ContentReadyAt` on the same pg-text serializer as
+> `MarkdownReadyAt`. The external ingest route now fails closed — a
+> robots-allowed page with no failure reason must carry `contentHtml` and a
+> non-empty `blocks` array or the batch is rejected `400`. The internal
+> `SameOriginBfsCrawler` path is unchanged, keeping its Html-only contract.
+>
+> Plan: `GeekBackend/plans/crawler-ingest-block-contract.md`.
+> The analysis below is kept as the record of what was wrong and why.
+
 
 Read from source 2026-09-18, `GeekBackend/GeekAPI/Controllers/GeekCrawler/GeekCrawlerIngestController.cs`.
 No crawl was needed; the DTO settles it.
@@ -229,7 +242,7 @@ in Geek-Crawler-Rag can be built before it:
 
 ## Sequence
 
-1. Confirm the GeekAPI/Mongo fields exist (above).
+1. ~~Confirm the GeekAPI/Mongo fields exist~~ — done, `GeekBackend@5561209`.
 2. Sections 1–3 — plaintext primitive, public contracts, schema reads.
 3. Section 4 + drop the legacy corpus and indexes.
 4. Section 5.
