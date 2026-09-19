@@ -662,15 +662,18 @@ def _host_candidates(raw: str) -> list[str]:
     dependencies=[Depends(require_api_key)],
 )
 async def host_index_exists(body: HostIndexRequest) -> HostIndexResponse:
-    """Whether an index exists for each URL's host. Whether, not how much."""
+    """Whether an index exists for each URL's host, and which run indexed it."""
     results: list[HostIndexResult] = []
     for url in body.urls:
         found = None
+        run_id = None
         for host in _host_candidates(url):
-            if await state.store.host_has_index(host):
+            payload = await state.store.find_host_index_payload(host)
+            if payload is not None:
                 found = host
+                run_id = payload.get("runId")
                 break
         results.append(
-            HostIndexResult(url=url, host=found, indexed=found is not None)
+            HostIndexResult(url=url, host=found, indexed=found is not None, run_id=run_id)
         )
     return HostIndexResponse(results=results)

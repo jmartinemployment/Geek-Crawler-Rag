@@ -617,19 +617,24 @@ class QdrantStore:
             logger.exception("Text search scroll failed for runId=%s", run_id)
             return []
 
-    async def host_has_index(self, host: str) -> bool:
+    async def find_host_index_payload(self, host: str) -> dict[str, Any] | None:
         """
-        Whether any indexed chunk exists for a host.
+        The raw payload of an indexed chunk for a host, if any exists, else None.
 
         Whether, not how much: one point is fetched, not counted. A count would invite a threshold
-        ("is 46 chunks enough?"), which is a different question.
+        ("is 46 chunks enough?"), which is a different question. A host has one active run at a
+        time, so the first match's payload is already the whole answer.
+
+        Returns the full, unfiltered payload rather than a derived bool or a bare id -- one value
+        standing in for two different questions ("does it exist" vs "what is it") is how that
+        conflation bug gets written. Callers derive both facts explicitly from this one value.
 
         Filtered on host alone. Crawler-written chunks carry no ownerId or visibility -- both are
         absent on every crawl_pages-derived point -- so adding those conditions, as the delete paths
         do, matches nothing and reports every host unindexed.
         """
         if not host:
-            return False
+            return None
 
         points, _ = await self._client.scroll(
             collection_name=self._collection,
@@ -637,7 +642,7 @@ class QdrantStore:
                 must=[qm.FieldCondition(key="host", match=qm.MatchValue(value=host))]
             ),
             limit=1,
-            with_payload=False,
+            with_payload=True,
             with_vectors=False,
         )
-        return len(points) > 0
+        return points[0].payload if points else None

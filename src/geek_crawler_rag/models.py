@@ -314,6 +314,7 @@ class HostIndexResult(BaseModel):
     url: str
     host: str | None = None
     indexed: bool
+    run_id: str | None = Field(None, alias="runId")
 
     model_config = {"populate_by_name": True, "ser_json_by_alias": True}
 
