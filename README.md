@@ -74,7 +74,14 @@ Geek-Crawler-Rag turns partner and competitor website crawls into searchable evi
 
 ### Technology
 
-Python, FastAPI, Pydantic, LlamaIndex, MongoDB, Qdrant, OpenAI, BM25, Cohere, Readability, Docker, and GHCR.
+Python, FastAPI, Pydantic, LlamaIndex, MongoDB, Qdrant, OpenAI, BM25, Cohere, Docker, and GHCR.
+
+**Readability was removed and is not a dependency** — no import in `src/`, no entry in
+`pyproject.toml`. It is an *article* extractor, and most crawled pages are product, pricing, feature
+and solution pages. Measured against visible prose it returned 9%, 44% and 175% of three live pages;
+the crawler's selector-based extractor measures 101-103% on the same three
+(`Geek-Crawler-v2/src/crawl/extract-content.ts` header). The corpus arrives as `contentHtml` plus
+typed `blocks`; nothing here re-extracts it.
 
 ## Place in the Geek content platform
 

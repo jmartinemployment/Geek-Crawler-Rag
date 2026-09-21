@@ -73,6 +73,9 @@ Dashed GeekAPI→Geek-Crawler-Rag edge: thin glue only (trigger, query proxy, we
 8. **Fail soft for consumers** — index/query miss → notify-and-skip research; do not block generate.
 9. **Hostinger caps** — Qdrant ~3 GB RAM, search threads = 1; indexer concurrency = 1; leave OS headroom.
 10. **Index status is push** — RAG → GeekAPI webhook → SignalR `GeekCrawlerRagIndexEvent`. UI must not poll `GET /v1/index`.
+11. **RAG never generates** — Library-only: retrieval and verification. `POST /v1/generate` and `rag-generate.*` were deliberately removed and must never be revived; `RagLibraryStatus.generateEnabled` is documented "Always false". The model writes, GeekAPI-side, grounded on corpus text this repo retrieved and verified.
+12. **Typed `blocks` are the corpus; Markdown is forbidden** — seven kinds (`heading(level)`, `paragraph`, `listItem(ordered)`, `quote`, `code`, `term`, `definition`), each with `text`/`cells`, `html`, `anchors`. One shared projection to a string (`block_text.derive_plaintext_from_blocks`) serves both chunking and quote verification, so they cannot drift. No Markdown at any hop — not ingest, not index, not extraction, not prompt assembly. The crawler migrated off Markdown and this Library did not; every page then classified `no_markdown` and 5,274 were deleted with their Qdrant points on 2026-09-18.
+13. **Readability is not used and must not be reintroduced** — it is an article extractor applied to a corpus that is mostly not articles. Measured: 9% / 44% / 175% of three live pages, against 101-103% for the crawler's selector-based extraction.
 
 ---
 
