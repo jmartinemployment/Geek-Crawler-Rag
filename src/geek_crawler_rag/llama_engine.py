@@ -91,7 +91,7 @@ class LlamaIndexEngine:
             aclient=self._aclient,
             collection_name=settings.qdrant_collection,
             batch_size=settings.embed_batch_size,
-            enable_hybrid=False,
+            enable_hybrid=True,
             text_key="text",
         )
 
@@ -360,7 +360,8 @@ class LlamaIndexEngine:
                 query_embedding=query_embedding,
                 similarity_top_k=top_k,
                 filters=filters,
-                mode=VectorStoreQueryMode.DEFAULT,
+                mode=VectorStoreQueryMode.HYBRID, 
+                sparse_top_k=top_k,
             )
         )
         nodes = list(result.nodes or [])
