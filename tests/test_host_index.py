@@ -4,7 +4,7 @@ from geek_crawler_rag.app import _host_candidates
 
 
 def test_missing_scheme_is_tolerated():
-    assert _host_candidates("pipedrive.com") == ["pipedrive.com"]
+    assert _host_candidates("pipedrive.com") == ["pipedrive.com", "www.pipedrive.com"]
 
 
 def test_www_and_bare_are_both_tried():
@@ -13,8 +13,21 @@ def test_www_and_bare_are_both_tried():
     assert _host_candidates("www.pipedrive.com") == ["www.pipedrive.com", "pipedrive.com"]
 
 
+def test_a_bare_domain_finds_a_site_indexed_under_www():
+    # The direction the comment above always described and the code never did. Which form a host is
+    # indexed under follows the crawl seed, so typing the other one reported a fully indexed site
+    # as missing -- https://www.medius.com indexed, https://medius.com not, one run, same moment.
+    assert _host_candidates("medius.com") == ["medius.com", "www.medius.com"]
+
+
+def test_the_typed_form_is_tried_first():
+    # Most specific first: an exact match must not be beaten to the answer by the form we inferred.
+    assert _host_candidates("www.medius.com")[0] == "www.medius.com"
+    assert _host_candidates("medius.com")[0] == "medius.com"
+
+
 def test_path_and_query_are_ignored():
-    assert _host_candidates("https://x.com/pricing?plan=pro") == ["x.com"]
+    assert _host_candidates("https://x.com/pricing?plan=pro") == ["x.com", "www.x.com"]
 
 
 def test_case_is_normalized():

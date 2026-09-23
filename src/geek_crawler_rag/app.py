@@ -637,6 +637,14 @@ def _host_candidates(raw: str) -> list[str]:
 
     www and bare forms are stored as distinct payload values, so both are tried — otherwise a bare
     domain reports no index for a site indexed under its www host.
+
+    Both directions, which is the whole point and was half-implemented until 2026-09-23: the old
+    body stripped "www." but never added it, so a www-indexed host answered a www query and nothing
+    else. Which form a host lands under is decided by whatever seed was crawled, not normalised at
+    write time -- the store holds www.medius.com and www.stampli.com beside tipalti.com and
+    melio.com -- so a one-directional lookup makes "is this indexed" depend on the operator typing
+    the same form as the crawl seed. https://www.medius.com reported indexed while
+    https://medius.com reported not indexed, for one run, at the same moment.
     """
     text = (raw or "").strip()
     if not text:
@@ -652,7 +660,11 @@ def _host_candidates(raw: str) -> list[str]:
         return []
 
     bare = host[4:] if host.startswith("www.") else host
-    return [host] if host == bare else [host, bare]
+    candidates = [host]
+    for alternate in (bare, f"www.{bare}"):
+        if alternate not in candidates:
+            candidates.append(alternate)
+    return candidates
 
 
 @app.post(
