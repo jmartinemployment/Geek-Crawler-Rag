@@ -225,6 +225,9 @@ class QueryService:
                     chunk_role=payload.get("chunkRole"),
                     section_title=payload.get("sectionTitle"),
                     quality_score=_as_float(payload.get("qualityScore")),
+                    parent_text=payload.get("parentText"),
+                    child_text=payload.get("childText"),
+                    anchors=list(payload.get("anchors") or []),
                     dense_score=_as_float(cand.get("dense_score")),
                     rerank_score=float(rerank_score)
                     if self._reranker.enabled

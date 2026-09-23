@@ -106,6 +106,13 @@ class ChunkHit(BaseModel):
     chunk_role: str | None = Field(None, alias="chunkRole")
     section_title: str | None = Field(None, alias="sectionTitle")
     quality_score: float | None = Field(None, alias="qualityScore")
+    # Stamped into the Qdrant payload by llama_nodes.py and, until now, never returned. The consumer
+    # is therefore blind to parent/child structure: a retrieved child arrives as an isolated
+    # fragment, even though the parent text it belongs to is sitting in the same payload and needs
+    # no second fetch. anchors is the same loss for the crawler's link structure.
+    parent_text: str | None = Field(None, alias="parentText")
+    child_text: str | None = Field(None, alias="childText")
+    anchors: list[str] = Field(default_factory=list)
     dense_score: float | None = Field(None, alias="denseScore")
     rerank_score: float | None = Field(None, alias="rerankScore")
     lexical_score: float | None = Field(None, alias="lexicalScore")
