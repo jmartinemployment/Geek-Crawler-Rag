@@ -84,6 +84,20 @@ class QueryRequest(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class ChunkAnchor(BaseModel):
+    """A link under the chunk's heading.
+
+    The crawler stores these as {label, href} objects, not strings. Typing the field ``list[str]``
+    made /v1/query return 500 for every chunk that had any -- validation failed before the response
+    was built, so a change meant to expose more metadata took retrieval down instead.
+    """
+
+    label: str | None = None
+    href: str | None = None
+
+    model_config = {"populate_by_name": True, "ser_json_by_alias": True}
+
+
 class ChunkHit(BaseModel):
     point_id: str | None = Field(None, alias="pointId")
     chunk_id: str | None = Field(None, alias="chunkId")
@@ -112,7 +126,7 @@ class ChunkHit(BaseModel):
     # no second fetch. anchors is the same loss for the crawler's link structure.
     parent_text: str | None = Field(None, alias="parentText")
     child_text: str | None = Field(None, alias="childText")
-    anchors: list[str] = Field(default_factory=list)
+    anchors: list[ChunkAnchor] = Field(default_factory=list)
     dense_score: float | None = Field(None, alias="denseScore")
     rerank_score: float | None = Field(None, alias="rerankScore")
     lexical_score: float | None = Field(None, alias="lexicalScore")

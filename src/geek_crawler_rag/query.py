@@ -227,7 +227,9 @@ class QueryService:
                     quality_score=_as_float(payload.get("qualityScore")),
                     parent_text=payload.get("parentText"),
                     child_text=payload.get("childText"),
-                    anchors=list(payload.get("anchors") or []),
+                    anchors=[
+                        a for a in (payload.get("anchors") or []) if isinstance(a, dict)
+                    ],
                     dense_score=_as_float(cand.get("dense_score")),
                     rerank_score=float(rerank_score)
                     if self._reranker.enabled

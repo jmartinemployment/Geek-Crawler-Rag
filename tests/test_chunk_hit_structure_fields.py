@@ -35,14 +35,31 @@ def test_parent_and_child_text_survive_the_response():
 def test_anchors_survive_and_default_to_empty():
     # Anchors are what make anchor-based tool detection possible at all; dropping them at the
     # response boundary is the same structural loss as dropping them at ingest.
-    assert _hit(anchors=["Tipalti", "Medius"]).anchors == ["Tipalti", "Medius"]
+    #
+    # They are {label, href} objects in the payload, not strings. Typing them list[str] made
+    # /v1/query return 500 for every chunk that had any -- this test asserted the wrong shape and
+    # passed, because it supplied the wrong shape too.
+    hit = _hit(anchors=[{"label": "Tipalti", "href": "https://tipalti.com"}])
+
+    assert [a.label for a in hit.anchors] == ["Tipalti"]
+    assert [a.href for a in hit.anchors] == ["https://tipalti.com"]
     assert _hit().anchors == []
+
+
+def test_an_anchor_missing_a_label_or_href_still_validates():
+    # Real crawl payloads are not uniform, and a half-populated anchor must not fail the whole
+    # response the way the wrong type just did.
+    hit = _hit(anchors=[{"label": "Docs"}, {"href": "https://example.test"}])
+
+    assert len(hit.anchors) == 2
 
 
 def test_the_fields_serialize_under_their_camel_case_aliases():
     # The C# consumer binds on the alias, so a rename here silently empties the fields there.
-    dumped = _hit(parentText="p", childText="c", anchors=["a"]).model_dump(by_alias=True)
+    dumped = _hit(
+        parentText="p", childText="c", anchors=[{"label": "a", "href": "https://a.test"}]
+    ).model_dump(by_alias=True)
 
     assert dumped["parentText"] == "p"
     assert dumped["childText"] == "c"
-    assert dumped["anchors"] == ["a"]
+    assert dumped["anchors"] == [{"label": "a", "href": "https://a.test"}]
