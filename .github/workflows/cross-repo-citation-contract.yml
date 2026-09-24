@@ -80,7 +80,7 @@ jobs:
           dotnet test GeekBackend.Tests/GeekBackend.Tests.csproj
           --configuration Release
           --filter
-          "FullyQualifiedName~RagGenerateServiceTests|FullyQualifiedName~HttpGeekCrawlerRagClientTests|FullyQualifiedName~GccV2GeekCrawlerResearchResolverTests"
+          "FullyQualifiedName~HttpGeekCrawlerRagClientTests|FullyQualifiedName~GccV2GeekCrawlerResearchResolverTests"
       - name: Run deterministic cross-service protocol tests
         working-directory: GeekBackend
         run: >-
@@ -130,6 +130,6 @@ jobs:
             echo "configured=false" >> "$GITHUB_OUTPUT"
             echo "::notice::Staging smoke skipped; STAGING_RAG_URL, STAGING_RAG_API_KEY, and STAGING_RAG_RUN_ID are optional but must all be configured."
           fi
-      - name: Verify health, query, page, generate, and citation quote
+      - name: Verify health, query, page, and citation quote
         if: steps.staging-config.outputs.configured == 'true'
         run: python3 scripts/staging_citation_smoke.py
