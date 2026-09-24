@@ -405,11 +405,14 @@ async def test_status_store_is_authoritative_over_local_cache():
 
 
 @pytest.mark.asyncio
-async def test_claim_is_revalidated_before_index_execution():
+async def test_a_live_lease_held_by_another_owner_refuses_execution():
+    # The lease still means what it always meant: one worker per run. What changed is that a
+    # lapsed lease is retaken rather than fatal -- see the test below.
     mongo = MagicMock()
     store = MagicMock()
     status_store = MagicMock()
     status_store.is_owned = AsyncMock(return_value=False)
+    status_store.reacquire = AsyncMock(return_value=False)
     llama = _llama_mock()
     svc = IndexService(
         mongo,
@@ -420,9 +423,59 @@ async def test_claim_is_revalidated_before_index_execution():
     )
 
     with pytest.raises(LeaseLostError):
-        await svc._run_claimed_job("expired")
+        await svc._run_claimed_job("owned-elsewhere")
 
     llama.embed_and_upsert.assert_not_awaited()
+    status_store.reacquire.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_lease_that_lapsed_while_queued_is_retaken_at_execution():
+    # Concurrency is 1, so a job waits for everything ahead of it. On 2026-09-24 a 148-page run
+    # held the worker for 2,323s against a 900s lease and the ten jobs behind it were killed the
+    # instant they were reached. Waiting your turn is not losing the lock.
+    mongo = MagicMock()
+    store = MagicMock()
+    status_store = MagicMock()
+    status_store.is_owned = AsyncMock(return_value=False)
+    status_store.reacquire = AsyncMock(return_value=True)
+    status_store.heartbeat = AsyncMock(return_value=True)
+    svc = IndexService(
+        mongo,
+        store,
+        Settings(openai_api_key="test"),
+        llama=_llama_mock(),
+        status_store=status_store,
+    )
+    svc._index_run = AsyncMock(return_value=None)
+
+    await svc._run_claimed_job("waited-its-turn")
+
+    svc._index_run.assert_awaited_once_with("waited-its-turn")
+    status_store.reacquire.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_lease_still_held_skips_the_retake_entirely():
+    mongo = MagicMock()
+    store = MagicMock()
+    status_store = MagicMock()
+    status_store.is_owned = AsyncMock(return_value=True)
+    status_store.reacquire = AsyncMock(return_value=True)
+    status_store.heartbeat = AsyncMock(return_value=True)
+    svc = IndexService(
+        mongo,
+        store,
+        Settings(openai_api_key="test"),
+        llama=_llama_mock(),
+        status_store=status_store,
+    )
+    svc._index_run = AsyncMock(return_value=None)
+
+    await svc._run_claimed_job("still-mine")
+
+    status_store.reacquire.assert_not_awaited()
+    svc._index_run.assert_awaited_once_with("still-mine")
 
 
 @pytest.mark.asyncio

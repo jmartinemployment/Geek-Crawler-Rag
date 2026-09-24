@@ -228,7 +228,24 @@ class IndexService:
             await self._index_run(run_id)
             return
         if not await self._status_store.is_owned(run_id, owner=self.owner):
-            raise LeaseLostError(f"Index lease expired before execution: {run_id}")
+            # The lease is taken when a job is enqueued, but concurrency is 1, so a job waits for
+            # everything queued ahead of it. On 2026-09-24 one 148-page run took 2,323s against a
+            # 900s lease, and the ten jobs queued behind it were all killed the instant the worker
+            # reached them -- "Stopped stale index worker after lease loss", ten of them inside
+            # 16ms, for the offence of waiting their turn.
+            #
+            # A lease locks execution; it is not a ticket for a place in the queue. Take it now,
+            # at the moment it starts to mean something. reacquire() only matches a lease that has
+            # lapsed or is already ours, so a run another process is genuinely indexing is still
+            # refused below.
+            if not await self._status_store.reacquire(
+                run_id,
+                owner=self.owner,
+                lease_seconds=self._settings.index_job_lease_seconds,
+            ):
+                raise LeaseLostError(
+                    f"Index lease held by another owner: {run_id}"
+                )
 
         index_task = asyncio.create_task(
             self._index_run(run_id), name=f"index-run-{run_id}"

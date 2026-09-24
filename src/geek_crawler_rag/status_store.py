@@ -152,6 +152,35 @@ class IndexStatusStore:
             return None
         return _from_doc(doc) if doc else None
 
+    async def reacquire(self, run_id: str, *, owner: str, lease_seconds: int) -> bool:
+        """Take the lease for a job this worker is about to execute.
+
+        Distinct from `claim`: no attempt increment and no state change. The job was already
+        claimed when it was enqueued, and this covers only the gap between that moment and the
+        moment the single worker reaches it -- which, at concurrency 1, is however long everything
+        queued ahead of it takes. Counting that wait as a failed attempt would spend the retry
+        budget on jobs that never ran.
+
+        Matches a lease that has expired, is absent, or is already ours. A live lease held by a
+        different owner is a real conflict and is left untouched, so this cannot take a run that
+        another process is indexing.
+        """
+        now = datetime.now(timezone.utc)
+        result = await self._col.update_one(
+            {
+                "runId": run_id,
+                "state": {"$in": [IndexState.PENDING, IndexState.RUNNING]},
+                "$or": lease_expired_or_missing(now) + [{"leaseOwner": owner}],
+            },
+            {
+                "$set": {
+                    "leaseOwner": owner,
+                    "leaseUntil": now + timedelta(seconds=lease_seconds),
+                }
+            },
+        )
+        return result.matched_count == 1
+
     async def heartbeat(self, run_id: str, *, owner: str, lease_seconds: int) -> bool:
         now = datetime.now(timezone.utc)
         result = await self._col.update_one(
