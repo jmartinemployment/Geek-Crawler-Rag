@@ -17,6 +17,21 @@ class Settings(BaseSettings):
     qdrant_ad_templates_collection: str = "geek_ad_templates"
     qdrant_upsert_delay_seconds: float = 0.5
 
+    # Hybrid retrieval over the named sparse vector. Off by default, and deliberately a setting
+    # rather than a constant: turning it on requires the collection to carry the sparse vector AND
+    # its points to carry values (scripts/migrate_sparse_vectors.py). Flipping it before the
+    # backfill scores the sparse branch against vectors nothing wrote, and _query_hybrid converts
+    # any resulting error into chunks=[] on HTTP 200 -- an empty corpus the writer cannot tell from
+    # a real one. That is the failure this setting exists to keep out of the default path.
+    hybrid_retrieval_enabled: bool = False
+
+    # Sparse (SPLADE) model for the hybrid branch. One setting because three places have to agree:
+    # llama_engine encodes queries with it, scripts/migrate_sparse_vectors.py encodes the backfill
+    # with it, and the indexer encodes new chunks with it. Two different SPLADE models produce
+    # weights over different vocabularies, so a mismatch does not error -- it scores query tokens
+    # against an index built from other tokens and quietly returns the wrong passages.
+    sparse_model: str = "prithivida/Splade_PP_en_v1"
+
     openai_api_key: str = ""
     openai_embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = 1536

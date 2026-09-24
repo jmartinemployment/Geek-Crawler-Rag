@@ -19,11 +19,12 @@ from llama_index.core.vector_stores.types import (
 )
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.vector_stores.qdrant import QdrantVectorStore
+from llama_index.vector_stores.qdrant.utils import fastembed_sparse_encoder
 from openai import InternalServerError
 from qdrant_client import AsyncQdrantClient, QdrantClient
 
 from geek_crawler_rag.config import Settings
-from geek_crawler_rag.qdrant_store import find_existing_point_ids
+from geek_crawler_rag.qdrant_store import SPARSE_VECTOR_NAME, find_existing_point_ids
 from geek_crawler_rag.embedding_circuit import (
     EmbeddingCircuitOpen,
     open_embedding_circuit,
@@ -86,12 +87,29 @@ class LlamaIndexEngine:
             client_kwargs["api_key"] = settings.qdrant_api_key
         self._client = QdrantClient(**client_kwargs)
         self._aclient = AsyncQdrantClient(**client_kwargs)
+        self._hybrid_enabled = settings.hybrid_retrieval_enabled
+        # Both sparse encoders are passed explicitly, and that is load-bearing rather than tidy.
+        # QdrantVectorStore only picks its own encoder when these are None, and its pick is decided
+        # by use_old_sparse_encoder(), which returns True for a collection carrying a vector named
+        # "text-sparse" -- ours -- and then encodes with naver/efficient-splade-VI-BT-large-doc.
+        # The backfill writes prithivida/Splade_PP_en_v1 weights. Two SPLADE models index different
+        # vocabularies, so that mismatch raises nothing: it scores query terms against an index
+        # built from other terms and returns plausible, wrong passages. Passing both functions keeps
+        # index time, query time and the migration on the one model in settings.sparse_model.
+        sparse_encoder = (
+            fastembed_sparse_encoder(model_name=settings.sparse_model)
+            if self._hybrid_enabled
+            else None
+        )
         self._vector_store = QdrantVectorStore(
             client=self._client,
             aclient=self._aclient,
             collection_name=settings.qdrant_collection,
             batch_size=settings.embed_batch_size,
-            enable_hybrid=False,
+            enable_hybrid=self._hybrid_enabled,
+            sparse_vector_name=SPARSE_VECTOR_NAME,
+            sparse_doc_fn=sparse_encoder,
+            sparse_query_fn=sparse_encoder,
             text_key="text",
         )
 
@@ -355,12 +373,20 @@ class LlamaIndexEngine:
             categories=categories,
             min_quality=min_quality,
         )
+        # HYBRID only when the sparse vector is actually populated. VectorStoreQueryMode.HYBRID
+        # against a collection whose points carry no sparse values is not a no-op -- it is an error
+        # the caller sees as an empty corpus.
         result = await self._vector_store.aquery(
             VectorStoreQuery(
                 query_embedding=query_embedding,
                 similarity_top_k=top_k,
                 filters=filters,
-                mode=VectorStoreQueryMode.DEFAULT,
+                mode=(
+                    VectorStoreQueryMode.HYBRID
+                    if self._hybrid_enabled
+                    else VectorStoreQueryMode.DEFAULT
+                ),
+                sparse_top_k=top_k if self._hybrid_enabled else None,
             )
         )
         nodes = list(result.nodes or [])

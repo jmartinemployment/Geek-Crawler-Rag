@@ -10,6 +10,11 @@ requires-python = ">=3.13"
 dependencies = [
     "beautifulsoup4>=4.15.0",
     "fastapi>=0.141.1",
+    # Sparse (SPLADE) vectors for hybrid retrieval. Pinned at or above 0.8.1 rather than the
+    # 0.3.x line: 0.3.6 is the newest 0.3 release that resolves on this interpreter and it
+    # downgrades pillow 12.3.0 -> 10.4.0, a regression on an already-installed package, for no
+    # gain -- prithivida/Splade_PP_en_v1 is supported in both.
+    "fastembed>=0.8.1",
     "httpx>=0.28.1",
     "langdetect>=1.0.9",
     "llama-index-core>=0.14.24",

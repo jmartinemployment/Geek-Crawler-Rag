@@ -16,6 +16,11 @@ logger = logging.getLogger(__name__)
 # Stable namespace for deterministic point IDs.
 _POINT_NS = uuid.UUID("a1b2c3d4-e5f6-7890-abcd-ef1234567890")
 
+#: Named sparse vector carrying SPLADE token weights for hybrid retrieval. The name is part of the
+#: on-disk contract: llama_engine binds its sparse branch to it, and scripts/migrate_sparse_vectors.py
+#: backfills it, so all three have to agree or a hybrid query scores against a vector nothing wrote.
+SPARSE_VECTOR_NAME = "text-sparse"
+
 
 def point_id(run_id: str, page_id: str, chunk_key: int | str) -> str:
     return str(uuid.uuid5(_POINT_NS, f"{run_id}:{page_id}:{chunk_key}"))
@@ -87,13 +92,63 @@ class QdrantStore:
                     distance=qm.Distance.COSINE,
                     on_disk=True,
                 ),
+                sparse_vectors_config={
+                    SPARSE_VECTOR_NAME: qm.SparseVectorParams(
+                        index=qm.SparseIndexParams(on_disk=True),
+                    ),
+                },
                 on_disk_payload=True,
             )
-            logger.info("Created Qdrant collection %s (vectors on_disk)", self._collection)
+            logger.info(
+                "Created Qdrant collection %s (vectors on_disk, sparse '%s' on_disk)",
+                self._collection,
+                SPARSE_VECTOR_NAME,
+            )
         else:
             await self._ensure_vectors_on_disk()
+            await self._ensure_sparse_vectors()
             await self._drop_body_text_indexes()
         await self._ensure_payload_indexes()
+
+    async def _ensure_sparse_vectors(self) -> None:
+        """Append the sparse vector to a collection that predates it.
+
+        Additive and non-destructive: sparse vectors are a separate namespace from the dense
+        configuration, so update_collection adds the definition without touching the 168k dense
+        vectors already stored. Points carry no sparse values until
+        scripts/migrate_sparse_vectors.py backfills them, and a point with no sparse value is simply
+        absent from the sparse branch of a hybrid query rather than an error.
+
+        Raising here would take indexing down over a retrieval optimisation, so a failure is logged
+        and indexing continues dense-only -- the same posture as _ensure_vectors_on_disk.
+        """
+        try:
+            info = await self._client.get_collection(self._collection)
+            existing = info.config.params.sparse_vectors or {}
+            if SPARSE_VECTOR_NAME in existing:
+                return
+
+            await self._client.update_collection(
+                collection_name=self._collection,
+                sparse_vectors_config={
+                    SPARSE_VECTOR_NAME: qm.SparseVectorParams(
+                        index=qm.SparseIndexParams(on_disk=True),
+                    ),
+                },
+            )
+            logger.info(
+                "Added sparse vector '%s' (on_disk) to Qdrant collection %s; "
+                "existing points carry no sparse values until the backfill runs",
+                SPARSE_VECTOR_NAME,
+                self._collection,
+            )
+        except Exception:
+            logger.warning(
+                "Could not ensure sparse vector '%s' on collection %s; retrieval stays dense-only",
+                SPARSE_VECTOR_NAME,
+                self._collection,
+                exc_info=True,
+            )
 
     async def _ensure_vectors_on_disk(self) -> None:
         """Move dense vectors to disk-backed storage for RAM-constrained hosts."""
