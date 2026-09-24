@@ -92,6 +92,10 @@ class QdrantStore:
                     distance=qm.Distance.COSINE,
                     on_disk=True,
                 ),
+                # One unified schema, and creation is the only chance to declare it. The dense
+                # vector stays unnamed -- Qdrant addresses it as "" and the LlamaIndex store detects
+                # that and binds to LEGACY_UNNAMED_VECTOR, so nothing downstream needs to change --
+                # while the sparse vector is named because sparse vectors have no unnamed form.
                 sparse_vectors_config={
                     SPARSE_VECTOR_NAME: qm.SparseVectorParams(
                         index=qm.SparseIndexParams(on_disk=True),
@@ -106,52 +110,20 @@ class QdrantStore:
             )
         else:
             await self._ensure_vectors_on_disk()
-            await self._ensure_sparse_vectors()
             await self._drop_body_text_indexes()
         await self._ensure_payload_indexes()
 
-    async def _ensure_sparse_vectors(self) -> None:
-        """Append the sparse vector to a collection that predates it.
-
-        Additive and non-destructive: sparse vectors are a separate namespace from the dense
-        configuration, so update_collection adds the definition without touching the 168k dense
-        vectors already stored. Points carry no sparse values until
-        scripts/migrate_sparse_vectors.py backfills them, and a point with no sparse value is simply
-        absent from the sparse branch of a hybrid query rather than an error.
-
-        Raising here would take indexing down over a retrieval optimisation, so a failure is logged
-        and indexing continues dense-only -- the same posture as _ensure_vectors_on_disk.
-        """
-        try:
-            info = await self._client.get_collection(self._collection)
-            existing = info.config.params.sparse_vectors or {}
-            if SPARSE_VECTOR_NAME in existing:
-                return
-
-            await self._client.update_collection(
-                collection_name=self._collection,
-                sparse_vectors_config={
-                    SPARSE_VECTOR_NAME: qm.SparseVectorParams(
-                        index=qm.SparseIndexParams(on_disk=True),
-                    ),
-                },
-            )
-            logger.info(
-                "Added sparse vector '%s' (on_disk) to Qdrant collection %s; "
-                "existing points carry no sparse values until the backfill runs",
-                SPARSE_VECTOR_NAME,
-                self._collection,
-            )
-        except Exception:
-            logger.warning(
-                "Could not ensure sparse vector '%s' on collection %s; retrieval stays dense-only",
-                SPARSE_VECTOR_NAME,
-                self._collection,
-                exc_info=True,
-            )
-
     async def _ensure_vectors_on_disk(self) -> None:
-        """Move dense vectors to disk-backed storage for RAM-constrained hosts."""
+        """Move dense vectors to disk-backed storage for RAM-constrained hosts.
+
+        Note what is deliberately absent beside this: there is no sibling that adds the sparse
+        vector to an existing collection. Qdrant v1.13.4 refuses it --
+        ``PATCH /collections/{c} {"sparse_vectors": {...}}`` returns
+        ``400 Wrong input: Not existing vector name error`` -- because update_collection can only
+        modify sparse vectors a collection already declares. A collection therefore either has the
+        sparse vector from creation or needs rebuilding; an earlier version of this file carried an
+        additive path whose only possible outcome was a logged warning.
+        """
         try:
             info = await self._client.get_collection(self._collection)
             params = info.config.params.vectors

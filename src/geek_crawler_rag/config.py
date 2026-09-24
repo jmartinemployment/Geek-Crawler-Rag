@@ -17,13 +17,19 @@ class Settings(BaseSettings):
     qdrant_ad_templates_collection: str = "geek_ad_templates"
     qdrant_upsert_delay_seconds: float = 0.5
 
-    # Hybrid retrieval over the named sparse vector. Off by default, and deliberately a setting
-    # rather than a constant: turning it on requires the collection to carry the sparse vector AND
-    # its points to carry values (scripts/migrate_sparse_vectors.py). Flipping it before the
-    # backfill scores the sparse branch against vectors nothing wrote, and _query_hybrid converts
-    # any resulting error into chunks=[] on HTTP 200 -- an empty corpus the writer cannot tell from
-    # a real one. That is the failure this setting exists to keep out of the default path.
-    hybrid_retrieval_enabled: bool = False
+    # Hybrid retrieval over the named sparse vector.
+    #
+    # On. The precondition it guards is met by construction rather than by backfill: the collection
+    # is created with both vectors (QdrantStore.ensure_collection) and every chunk indexed into it
+    # gets SPLADE weights at write time, so there is no window in which the sparse branch queries
+    # values nothing wrote. That window is what this flag was false for.
+    #
+    # It stays a setting because the guarantee is per collection, not per deploy. Pointed at a
+    # collection created before the unified schema -- one with no "text-sparse" vector, or with the
+    # vector but unpopulated points -- a hybrid query errors, and _query_hybrid converts that into
+    # chunks=[] on HTTP 200, an empty corpus the writer cannot tell from a real one. Set
+    # HYBRID_RETRIEVAL_ENABLED=false to fall back to dense without a deploy.
+    hybrid_retrieval_enabled: bool = True
 
     # Sparse (SPLADE) model for the hybrid branch. One setting because three places have to agree:
     # llama_engine encodes queries with it, scripts/migrate_sparse_vectors.py encodes the backfill
