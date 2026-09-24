@@ -205,9 +205,14 @@ When it did run, the scheduler persisted its next due time in Mongo, took an ato
 smallest completed run whose crawl-level `ContentReadyAt` confirms every persisted page carries extracted
 content and which is not already indexed (`INDEX_SCHEDULER_INTERVAL_SECONDS`, 300s in production).
 
-Index jobs — scheduled or manual — use Mongo leases, heartbeats, and stale-job recovery. Failed jobs are
-**not** auto-retried in-process; they fail closed, and an operator or a new enqueue starts a fresh
-attempt. See [`plans/rules.md`](./plans/rules.md) §3a (**No Retries. No Fallbacks. No Crappy Code.**).
+Index jobs — scheduled or manual — use Mongo leases and heartbeats. There is **no** automatic
+stale-job recovery: `Indexer.start()` deliberately does not `claim_recoverable`, and with the
+scheduler off nothing re-drives a `pending` row, so a restart strands every queued job until an
+operator re-posts it. Failed jobs are **not** auto-retried in-process; they fail closed, and an
+operator or a new enqueue starts a fresh attempt. See
+[`plans/rules.md`](./plans/rules.md) §3a (**No Retries. No Fallbacks. No Crappy Code.**) and
+[`docs/index-job-recovery-after-restart.md`](./docs/index-job-recovery-after-restart.md) for the
+re-post procedure and the two states that look like success but are not.
 
 All corpus, query, and ad-template embeddings pass through one rolling
 token-per-minute limiter, sequentially partitioned by item and token count.
