@@ -34,6 +34,13 @@ Usage:
   uv run python scripts/migrate_sparse_vectors.py --apply                  # write
   uv run python scripts/migrate_sparse_vectors.py --apply --resume-from <id>
   uv run python scripts/migrate_sparse_vectors.py --url https://qdrant.example --api-key "$QDRANT_API_KEY" --apply
+
+Refuses to run at all while an index job is `running` or `pending`. An indexer writes the same
+points this migration writes and calls ensure_collection() at job start, so the two together are
+uncoordinated writers on one collection. The refusal covers dry runs as well as --apply: a dry run
+reads counts off a collection something else is still changing, and reporting those as fact is how
+a migration gets resumed from a stale offset. --ignore-running-jobs overrides it for an operator
+who knows the queue is stale -- a job left `running` by a killed container, say.
 """
 
 from __future__ import annotations
@@ -44,11 +51,13 @@ import sys
 import time
 
 from fastembed import SparseTextEmbedding
+from pymongo import MongoClient
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qm
 
 from geek_crawler_rag.config import Settings
 from geek_crawler_rag.qdrant_store import SPARSE_VECTOR_NAME
+from geek_crawler_rag.status_store import COLLECTION as INDEX_JOBS_COLLECTION
 
 #: Qdrant's own scroll ceiling is high, but 500 points of payload text plus a SPLADE forward pass is
 #: the part that has to fit in the VPS's RAM, so the batch is sized for the embedder, not the wire.
@@ -105,6 +114,98 @@ def preflight(client: QdrantClient, collection: str) -> int:
     return int(info.points_count or 0)
 
 
+#: Job states that hold, or are about to hold, the collection this script writes into. `pending`
+#: counts: index concurrency is 1, so a queued job starts the moment the current one ends, which
+#: can land in the middle of a migration that takes an hour.
+IN_FLIGHT_STATES = ("pending", "running")
+
+
+def read_in_flight_jobs(settings: Settings) -> tuple[bool, list[dict]]:
+    """Index jobs that are running or queued, as (check_succeeded, jobs).
+
+    `check_succeeded` is False when the question could not be answered at all. A Mongo that cannot
+    be reached has not told us the queue is idle, and that distinction is the whole point of the
+    guard -- an unreachable database must not read as "nothing is running". Never raises.
+    """
+    client: MongoClient | None = None
+    try:
+        client = MongoClient(settings.mongo_crawler_url, serverSelectionTimeoutMS=10_000)
+        jobs = list(
+            client[settings.mongo_db_name][INDEX_JOBS_COLLECTION].find(
+                {"state": {"$in": list(IN_FLIGHT_STATES)}},
+                {"_id": 0, "runId": 1, "state": 1, "pagesSeen": 1, "chunksUpserted": 1},
+            )
+        )
+        return True, jobs
+    except Exception as exc:
+        print(f"could not query {INDEX_JOBS_COLLECTION}: {exc}", file=sys.stderr)
+        return False, []
+    finally:
+        if client is not None:
+            client.close()
+
+
+def describe_jobs(jobs: list[dict]) -> list[str]:
+    """One aligned line per in-flight job, for an operator deciding whether to wait."""
+    lines = []
+    for job in jobs:
+        state = str(job.get("state") or "?")
+        run_id = str(job.get("runId") or "?")
+        seen = job.get("pagesSeen") or 0
+        chunks = job.get("chunksUpserted") or 0
+        lines.append(f"{state:<8} {run_id}  pagesSeen={seen} chunksUpserted={chunks}")
+    return sorted(lines)
+
+
+BANNER = "=" * 78
+
+
+def guard_verdict(
+    *, check_succeeded: bool, jobs: list[dict], override: bool
+) -> tuple[bool, str]:
+    """Whether this invocation may proceed, and the message explaining why.
+
+    Pure, so the policy is testable without a Mongo or a Qdrant. Three outcomes: an idle queue
+    proceeds, an in-flight queue is blocked, and a queue that could not be read is also blocked --
+    a database that did not answer has not said the queue is idle, and treating silence as
+    permission is the failure this guard exists to stop.
+    """
+    if check_succeeded and not jobs:
+        return True, "index queue: idle"
+
+    if not check_succeeded:
+        if override:
+            return True, "index queue: UNKNOWN -- proceeding on --ignore-running-jobs"
+        return False, (
+            f"{BANNER}\n"
+            "BLOCKED: could not read the index queue.\n"
+            "\n"
+            f"Nothing confirmed that {INDEX_JOBS_COLLECTION} is idle, and this migration writes\n"
+            "into the same Qdrant collection an ingestion pass writes into. Refusing rather than\n"
+            "assuming.\n"
+            "\n"
+            "Fix the Mongo connection, or pass --ignore-running-jobs if you know the queue is\n"
+            "stale.\n"
+            f"{BANNER}"
+        )
+
+    if override:
+        return True, (
+            f"index queue: {len(jobs)} job(s) in flight -- proceeding on --ignore-running-jobs"
+        )
+    return False, (
+        f"{BANNER}\n"
+        f"BLOCKED: a data ingestion pass is active ({len(jobs)} job(s) running or pending).\n"
+        "\n"
+        "Running this migration concurrently would put two uncoordinated writers on the same\n"
+        "points, and an indexer calls ensure_collection() at job start -- so the collection can\n"
+        "be rebuilt underneath a migration that is midway through it.\n"
+        "\n"
+        "Wait for the queue to drain, or pass --ignore-running-jobs if you know it is stale.\n"
+        f"{BANNER}"
+    )
+
+
 def main() -> int:
     settings = Settings()
     parser = argparse.ArgumentParser(description=__doc__)
@@ -116,11 +217,28 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=0, help="stop after this many points (0 = all)")
     parser.add_argument("--resume-from", default=None, help="scroll offset (point id) to resume at")
     parser.add_argument("--apply", action="store_true", help="write; omit for a dry run")
+    parser.add_argument(
+        "--ignore-running-jobs",
+        action="store_true",
+        help="run even while index jobs are queued or running (asserting the queue is stale)",
+    )
     args = parser.parse_args()
 
     if args.batch_size < 1:
         print("FAILED: --batch-size must be at least 1", file=sys.stderr)
         return 2
+
+    check_succeeded, in_flight = read_in_flight_jobs(settings)
+    may_proceed, verdict = guard_verdict(
+        check_succeeded=check_succeeded,
+        jobs=in_flight,
+        override=args.ignore_running_jobs,
+    )
+    if not may_proceed:
+        print(verdict, file=sys.stderr)
+        for line in describe_jobs(in_flight):
+            print(f"  {line}", file=sys.stderr)
+        return 1
 
     client = QdrantClient(url=args.url, api_key=args.api_key, timeout=120)
     total_points = preflight(client, args.collection)
@@ -131,6 +249,9 @@ def main() -> int:
     print(f"model:      {args.model}")
     print(f"batch:      {args.batch_size}")
     print(f"mode:       {mode}")
+    print(f"{verdict}")
+    for line in describe_jobs(in_flight):
+        print(f"  {line}")
     print()
 
     print(f"loading {args.model} (first run downloads the ONNX weights)...", flush=True)
