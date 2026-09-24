@@ -8,6 +8,7 @@ from typing import Any
 
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.http import models as qm
+from qdrant_client.http.exceptions import UnexpectedResponse
 
 from geek_crawler_rag.context_models import ManifestEntry
 
@@ -24,6 +25,25 @@ SPARSE_VECTOR_NAME = "text-sparse"
 
 def point_id(run_id: str, page_id: str, chunk_key: int | str) -> str:
     return str(uuid.uuid5(_POINT_NS, f"{run_id}:{page_id}:{chunk_key}"))
+
+
+def _is_missing_collection(exc: BaseException, collection: str) -> bool:
+    """True when `exc` is Qdrant saying `collection` is not there.
+
+    Status and message are both checked because neither is sufficient alone: the client raises
+    UnexpectedResponse with 404 for a dropped collection, but the wording of the body
+    ("Collection `x` doesn't exist!") has changed between server versions, and a transport wrapping
+    the error can lose the status while keeping the text.
+    """
+    if getattr(exc, "status_code", None) == 404:
+        return True
+    body = getattr(exc, "content", b"") or b""
+    if isinstance(body, bytes):
+        body = body.decode("utf-8", errors="replace")
+    lowered = f"{body} {exc}".lower()
+    return collection.lower() in lowered and (
+        "doesn't exist" in lowered or "does not exist" in lowered or "not found" in lowered
+    )
 
 
 async def find_existing_point_ids(
@@ -663,13 +683,32 @@ class QdrantStore:
         if not host:
             return None
 
-        points, _ = await self._client.scroll(
-            collection_name=self._collection,
-            scroll_filter=qm.Filter(
-                must=[qm.FieldCondition(key="host", match=qm.MatchValue(value=host))]
-            ),
-            limit=1,
-            with_payload=True,
-            with_vectors=False,
-        )
+        try:
+            points, _ = await self._client.scroll(
+                collection_name=self._collection,
+                scroll_filter=qm.Filter(
+                    must=[qm.FieldCondition(key="host", match=qm.MatchValue(value=host))]
+                ),
+                limit=1,
+                with_payload=True,
+                with_vectors=False,
+            )
+        except UnexpectedResponse as exc:
+            if _is_missing_collection(exc, self._collection):
+                # A dropped collection is not an error to the caller: with no index, no host is
+                # indexed, which is exactly what None already means here. Raising instead turned
+                # /v1/index/hosts into a 500 and every consumer of it into a 502 on
+                # 2026-09-24, when the collection was deleted out from under a running API.
+                logger.warning(
+                    "Collection %s is missing; reporting host=%s as unindexed",
+                    self._collection,
+                    host,
+                )
+                return None
+            logger.exception("Host index lookup failed for host=%s", host)
+            return None
+        except Exception:
+            logger.exception("Host index lookup failed for host=%s", host)
+            return None
+
         return points[0].payload if points else None
