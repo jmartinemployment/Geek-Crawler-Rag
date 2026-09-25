@@ -505,21 +505,25 @@ class IndexService:
                         self._sync_embedding_stats(status, embedding_baseline)
                         pending = []
                         # Persist mid-run so operators can see real progress.
+                        # _persist pushes the status webhook itself, so notifying
+                        # again here sent the same unchanged status twice per
+                        # batch -- two ~500ms round trips to GeekAPI inside a ~6s
+                        # cycle, which at batch=32 was a fifth of indexing wall
+                        # clock spent telling GeekAPI the same thing. The one case
+                        # it was not a duplicate is one where _persist had just
+                        # refused the write because the lease was lost, and a
+                        # status the store rejected is not one to push onward.
                         await self._persist(status)
                         if self._settings.qdrant_upsert_delay_seconds > 0:
                             await asyncio.sleep(
                                 self._settings.qdrant_upsert_delay_seconds
                             )
-                        if self._webhook is not None:
-                            await self._webhook.notify(status)
 
             if pending:
                 n = await self._llama.embed_and_upsert(pending)
                 status.chunks_upserted += n
                 self._sync_embedding_stats(status, embedding_baseline)
                 await self._persist(status)
-                if self._webhook is not None:
-                    await self._webhook.notify(status)
 
         except EmbeddingCircuitOpen as ex:
             self._sync_embedding_stats(status, embedding_baseline)

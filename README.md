@@ -230,10 +230,26 @@ HTTP 500 `server_error` instead of clean 429s — a 1,000,000 setting against a
 
 - `OPENAI_EMBEDDING_TOKENS_PER_MINUTE=400000` (40% of a 1,000,000 ceiling)
 - `OPENAI_EMBEDDING_MAX_BATCH_TOKENS=50000`
-- `EMBED_BATCH_SIZE=32`
+- `EMBED_BATCH_SIZE=128`
 - `OPENAI_EMBEDDING_MAX_RETRIES=0` (fail-closed by law; do not raise — [`plans/rules.md`](./plans/rules.md) §3a)
-- `QDRANT_UPSERT_DELAY_SECONDS=0.5`
+- `QDRANT_UPSERT_DELAY_SECONDS=0`
 - `INDEX_SCHEDULER_INTERVAL_SECONDS=300`
+
+**Why those last two changed, 2026-09-25.** Indexing was assumed CPU-bound on sparse
+encoding. Measured mid-run on the VPS it was not: the api container sat at **86% of one
+core** against a 3.0-core limit, Qdrant at 0.17%, Mongo at 0.6%, with 9 GB of the host's
+16 GB free and the embedding throttle at 32k tokens of its 400k window
+(`rateLimitRetries: 0`). Nothing was saturated — the indexer is **latency-bound on
+serialized round trips**, so raising the box's allocation would have bought nothing.
+
+What it was actually spending time on, per batch of 32: embed, upsert, Mongo persist,
+a 0.5s sleep, and the status webhook **twice**. Batch size 32 → 128 quarters the number
+of cycles, so it quarters that fixed cost per chunk; the sleep is gone; and the duplicate
+webhook was removed in `indexer.py` (`_persist` already notifies). The 0.5s sleep was
+backpressure from `a92def3`, sized for the old 8 GiB box where Qdrant's 3 GiB limit sat
+inside ~1 GiB of headroom — vectors are `on_disk` now and the headroom is ~9 GB, so the
+condition it guarded is no longer the live one. If Qdrant RSS climbs toward its limit
+during ingest again, restore the delay first.
 
 Re-running a failed job resumes rather than restarting: point IDs are
 deterministic, so chunks already committed to Qdrant are skipped. Identical
