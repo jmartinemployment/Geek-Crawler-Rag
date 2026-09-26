@@ -103,9 +103,15 @@ jobs:
           node-version: "24"
           cache: npm
       - run: npm ci
-      - name: Install deterministic browser
-        run: npx playwright install --with-deps chromium
-      - run: npm run test:ci:citation
+      # `npm test` (node --test on src/**/*.test.ts), not `test:ci:citation`: that script has never
+      # existed in content-creator-v2, so this job failed with "Missing script" on every run from
+      # 2026-09-11 onward and checked nothing. The creator's stake in the citation contract is
+      # hierarchy-match.test.ts, which consumes the server-resolved `toolsByHeading` -- exactly the
+      # structured-evidence hop this workflow guards.
+      #
+      # No playwright install: these are node:test units with no browser, so installing chromium
+      # spent CI minutes on nothing.
+      - run: npm test
 
   staging-citation-smoke:
     name: Staging citation smoke
