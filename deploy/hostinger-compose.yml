@@ -43,7 +43,7 @@ services:
       OPENAI_EMBEDDING_TRANSIENT_RETRIES: ${OPENAI_EMBEDDING_TRANSIENT_RETRIES:-2}
       OPENAI_EMBEDDING_RETRY_MAX_SECONDS: ${OPENAI_EMBEDDING_RETRY_MAX_SECONDS:-8}
       EMBEDDING_QUARANTINE_DIR: ${EMBEDDING_QUARANTINE_DIR:-/var/lib/geek-crawler-rag/embedding_quarantine}
-      EMBED_BATCH_SIZE: ${EMBED_BATCH_SIZE:-64}
+      EMBED_BATCH_SIZE: ${EMBED_BATCH_SIZE:-56}
       INDEX_SCHEDULER_ENABLED: ${INDEX_SCHEDULER_ENABLED:-true}
       INDEX_SCHEDULER_INTERVAL_SECONDS: ${INDEX_SCHEDULER_INTERVAL_SECONDS:-300}
       INDEX_SCHEDULER_POLL_SECONDS: ${INDEX_SCHEDULER_POLL_SECONDS:-60}
@@ -63,11 +63,24 @@ services:
     volumes:
       # Survives container recreate; inspect failed OpenAI batches here.
       - embedding_quarantine:/var/lib/geek-crawler-rag/embedding_quarantine
+      # The SPLADE weights (509MB) live here. Without a volume they are inside the
+      # container, so EVERY recreate re-downloads them from the HF hub before indexing
+      # can resume -- and a job claimed during that window hangs on a model that is not
+      # there yet. Named volume, so a recreate costs nothing.
+      - fastembed_cache:/tmp/fastembed_cache
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
       qdrant:
         condition: service_healthy
+    # 7g, not 6g. Measured, not estimated: batch 64 completed a 736-page / 27,393-chunk
+    # run on 2026-09-26 with a peak of 6.24 GiB -- 89% of a 6g limit would have been an OOM,
+    # and 128 WAS one (docker events: oom then die exitCode=137). Now at 56 for headroom;
+    # its own peak is still to be measured. Idle is ~0.94 GiB and the batch-dependent share
+    # scales close to linearly (~2.35 GiB total at 32, ~3.60 at 64), so 56 should land near
+    # ~3.3 GiB steady. Not 8g: api 7 + qdrant 3 + mongo 4 + caddy 0.25 already commits
+    # 14.25 of the host's 15 GiB, and these are ceilings, not reservations.
+    # (superseded estimate below, kept for the reasoning)
     # 7g, not 6g: EMBED_BATCH_SIZE=64 peaks near ~3.9 GiB (idle ~0.9 GiB plus a
     # batch-dependent share that scales roughly linearly -- ~1.5 GiB at 32). 128 blew
     # past 6 GiB and was OOM-killed on 2026-09-25, so the headroom is the point. Not 8g:
@@ -84,4 +97,5 @@ services:
 
 volumes:
   embedding_quarantine:
+  fastembed_cache:
   qdrant_data:
