@@ -35,6 +35,12 @@ Keep self-hosted Docker (matches “you own ops”). Make the collection **disk-
 Already hot-patched / in working tree; **commit + rebuild image** so it is not lost on recreate:
 - Mid-run Mongo persist of `pagesSeen` / `chunksUpserted` (`src/geek_crawler_rag/indexer.py`)
 - Retry OpenAI **5xx / connection / timeout** (`src/geek_crawler_rag/llama_engine.py`)
+  — **DONE 2026-09-26.** Blocked for weeks because it contradicted
+  `.cursor/rules/no-retries-no-fallbacks.mdc` (`alwaysApply: true`), which rejects
+  "retry on 502/500" by name. Resolved by amending §3a rather than smuggling it past the
+  rule: implemented in `LlamaIndexEngine._embed_batch`, bounded and logged, narrowed to
+  failures with no cause in this repo. 400 and 429 are still never retried. Read the
+  amendment in `plans/rules.md` §3a before touching this.
 - Skip Qdrant delete-by-runId when `attempt > 1` (deterministic point IDs)
 - Keep `nofile=65535`, **4 GiB swap**, `QDRANT_UPSERT_DELAY_SECONDS=0.5`, search threads **1**
 - Remove debug `_agent_dbg` instrumentation after verification

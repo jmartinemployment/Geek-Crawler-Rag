@@ -47,6 +47,43 @@ process, so compare `claimedAtUtc` against the app's start time (`/proc/1`):
 - `claimedAtUtc >= process start` → in the live worker's queue. Leave it alone.
 - `claimedAtUtc < process start` → the process that queued it is gone. Stranded.
 
+## A hung job is not a stranded job — do not re-post it
+
+Learned the hard way on 2026-09-25. A job can sit `running` while advancing nothing, and
+re-posting it makes things **worse**: `claim(force=True)` rewrites the Mongo row but does
+**not** cancel the running asyncio task. The zombie keeps holding
+`LlamaIndexEngine._embedding_call_lock`, which every embed call needs, so the new attempt
+sails through the resume-skip batches (skips need no embedding) and then blocks forever on
+a lock nobody will release. Two jobs, one lock, no progress, and nothing in the log
+because a lock acquisition prints nothing.
+
+**Tell them apart by the heartbeat, not the state.** A live job renews its lease every 60s.
+
+```bash
+# leaseUntil == claimedAtUtc + 900s exactly  =>  the heartbeat never ran  =>  hung
+```
+
+| Symptom | Fix |
+|---|---|
+| `pending`, no worker behind it | re-post (below) |
+| `running`, `leaseUntil` advancing, chunk count climbing | leave it alone |
+| `running`, `leaseUntil` frozen at `claimedAt + 900s` | **restart the process, then re-post** |
+
+Restart with `docker restart geek-crawler-rag-api-1`, **not** `docker compose up -d`: a
+restart keeps the container's filesystem and therefore the 509 MB SPLADE model in
+`/tmp/fastembed_cache`, which is not a volume and is re-downloaded on every recreate.
+
+And check `docker events` before theorising. An OOM kill looks exactly like a hang from
+the job's side — the queue dies with the process and the row is left `running`:
+
+```bash
+docker events --since '<ISO time>' --until "$(date -u +%Y-%m-%dT%H:%M:%S)" \
+  --filter container=geek-crawler-rag-api-1 --filter event=oom --filter event=die
+```
+
+`docker inspect` is **not** authoritative here: after the restart it reports
+`OOMKilled=false` even when the event log records `oom` then `die exitCode=137`.
+
 ## The procedure
 
 `scripts/list_unindexed_runs.py` does both halves. `scripts/` is not in the
@@ -65,6 +102,27 @@ ssh -i ~/.ssh/hostinger_rag_ed25519 root@<vps> \
 It classifies every content-ready run as `COMPLETE`, `QUEUED_LIVE` (leave alone),
 `NEVER_QUEUED` / `FAILED` / `STRANDED` (re-post), or `HELD_DEAD` (wait, then
 re-post) and re-posts only the middle group.
+
+`--skip-failed` leaves `FAILED` runs alone. Use it for anything unattended: a failed job
+may be quarantined, and [`embedding-circuit-recovery.md`](./embedding-circuit-recovery.md)
+says a person examines a quarantine before requeueing it. `NEVER_QUEUED` and `STRANDED`
+carry no such decision — nothing is waiting on a human — so those still go.
+
+### Unattended (installed on the VPS, 2026-09-25)
+
+`/docker/geek-crawler-rag/requeue-stranded.sh`, on a `*/30` crontab, logging to
+`/var/log/rag-requeue.log`. It runs the same script with `--requeue --skip-failed`, so it
+only ever *adds* to the queue and never stops, cancels or restarts anything. It fixes
+stranding; it does **not** rescue a hung job (see above), which is deliberate — detecting
+a hang reliably means auto-restarting the container, and a long resume-scan is
+indistinguishable from a hang for minutes at a time.
+
+```bash
+tail -40 /var/log/rag-requeue.log     # "re-postable: 0" repeated = nothing needed rescuing
+```
+
+Remove it with `crontab -e`. Note the copy at `/docker/geek-crawler-rag/` is a copy, not a
+symlink — update it when this script changes.
 
 By hand, the same call:
 

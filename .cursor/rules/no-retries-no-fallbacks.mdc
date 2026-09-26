@@ -9,16 +9,47 @@ Authoritative source: `plans/rules.md` §3a (Correctness — fail closed).
 
 ## Law
 
-- **No Retries** — Do not add or retain application-level retry loops, exponential backoff, or “try again later” wrappers around failures (HTTP 5xx, timeouts, Mongo, OpenAI, GeekAPI ingest). Fail on the first failure; return the real diagnostic error; fix the root cause.
+- **No Retries** — Do not add or retain application-level retry loops, exponential backoff, or “try again later” wrappers around failures (HTTP 5xx, timeouts, Mongo, OpenAI, GeekAPI ingest). Fail on the first failure; return the real diagnostic error; fix the root cause. **One amendment applies — see below; it covers only transport-level and provider-5xx failures on the corpus embed path, and nothing else.**
 - **No Fallbacks** — Do not turn a required-operation failure into apparent success (drop fields, skip persistence, swallow exceptions, best-effort success). Intentional product processing paths are allowed only when explicit, logged, and contract-preserving — never to hide API/storage failure.
 - **No Crappy Code** — Delete incorrect behavior instead of concealing it. Empty error bodies, diagnostic truncation, and silent catches are defects.
 
 ## Reject in plans and PRs
 
-- Proposals to “retry on 502/500”, “backoff and try again”, or soft-succeed after ingest/index failure.
+- Proposals to “retry on 502/500”, “backoff and try again”, or soft-succeed after ingest/index failure — **except** the amended embed path below, which is already implemented; do not re-propose it and do not revert it.
 - Silent degradation that reports success when a required step failed.
 
 ## Prefer
 
 - Fail closed with actionable diagnostics.
 - Root-cause fixes (limits, contracts, error mapping) — never band-aid retries.
+
+## Amendment — transport-level retry on the corpus embed path (Jeff, 2026-09-26)
+
+**One narrow exception, and it does not widen the law.** `LlamaIndexEngine._embed_batch`
+retries a bounded, logged number of times on failures whose cause is not in this
+repository: a connection that never opened, one that dropped mid-request, and a 5xx the
+provider raised on its own side.
+
+**Why this is not a band-aid.** "Fix the root cause" presumes a root cause here to fix.
+A dropped TCP connection has none — there is no limit to raise, contract to correct or
+error to map. On 2026-09-25 one `APIConnectionError` ended a 702-page run at chunk 8,609
+(`runId=73243bae`); the run was re-posted and completed unchanged, which is the proof
+that nothing needed fixing.
+
+**What is still rejected, unchanged:**
+
+- An empty-input or malformed **400** — that is a defect in what we sent.
+- A **429** — that is what `EmbeddingThrottle` exists to prevent. Retrying it hides a
+  throttle set too close to the account ceiling, the mistake that made OpenAI answer
+  with 500s and killed multi-hour runs.
+- Mongo, Qdrant and GeekAPI ingest failures — no retries anywhere.
+- Any retry that turns failure into apparent success.
+
+**Bounds that make it auditable.** Attempts are capped
+(`OPENAI_EMBEDDING_TRANSIENT_RETRIES`, default 2 retries = 3 attempts); each backoff is
+capped (`OPENAI_EMBEDDING_RETRY_MAX_SECONDS`); every attempt logs
+`embedding_transient_retry`, so a run that only finished because the network wobbled says
+so rather than looking clean. When attempts are spent the batch quarantines or the job
+fails with the real diagnostic, exactly as before. The OpenAI SDK's own retries stay at
+**0**, so there is exactly one retry mechanism and the attempt count is knowable.
+`OPENAI_EMBEDDING_TRANSIENT_RETRIES=0` restores the prior behaviour precisely.

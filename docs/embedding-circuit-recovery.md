@@ -62,7 +62,15 @@ Use the `requestId` to check [OpenAI status](https://status.openai.com/) and API
 | **Yes** | Delete/fix the issue (e.g. empty embed texts are skipped before OpenAI) → manual `POST /v1/index` |
 | **No** | Usable data exists → keep points, report, do not requeue |
 
-`OPENAI_EMBEDDING_MAX_RETRIES=0` — no in-process backoff loop.
+`OPENAI_EMBEDDING_MAX_RETRIES=0` — the OpenAI SDK never retries, so exactly one
+mechanism owns retrying.
+
+**Amended 2026-09-26.** That one mechanism is `LlamaIndexEngine._embed_batch`: a bounded,
+logged retry for failures with no cause in this repository (connection refused, dropped
+mid-request, provider 5xx). Default 2 retries; each logs `embedding_transient_retry`. A
+quarantine therefore now means the failure survived every attempt. An empty-input 400 is
+still never retried, and `OPENAI_EMBEDDING_TRANSIENT_RETRIES=0` restores the old
+behaviour exactly. See `plans/rules.md` §3a.
 
 On `attempt > 1`, indexer skips delete-by-runId at start; upserts overwrite deterministic point IDs.
 

@@ -55,6 +55,21 @@ Fail any change that:
 Applies to Geek-Crawler-Rag and sibling Geek-Crawler-v2 work.
 
 - **No Retries** — Do not add or retain application-level retry loops, exponential backoff, or “try again later” wrappers around failures, including HTTP 5xx responses, timeouts, Mongo failures, OpenAI failures, and GeekAPI `pages/batch` or `links/batch` ingest failures. Fail the operation on its first failure, return the real diagnostic error, and fix the root cause.
+
+  **Amended 2026-09-26 (Jeff), once and narrowly.** `LlamaIndexEngine._embed_batch` may
+  retry a bounded, logged number of times when the failure has no cause in this
+  repository — a connection that never opened, one that dropped, or a 5xx the provider
+  raised itself. "Fix the root cause" presumes there is one; a dropped TCP connection has
+  none. On 2026-09-25 a single `APIConnectionError` ended a 702-page run at chunk 8,609
+  (`runId=73243bae`), and the re-post completed unchanged — nothing needed fixing.
+  Unchanged: an empty-input or malformed **400** (our defect), a **429** (the throttle's
+  job, and retrying it hides a throttle set too near the account ceiling), every Mongo,
+  Qdrant and GeekAPI ingest failure, and any retry that manufactures apparent success.
+  Bounded by `OPENAI_EMBEDDING_TRANSIENT_RETRIES` (default 2) and
+  `OPENAI_EMBEDDING_RETRY_MAX_SECONDS`; each attempt logs `embedding_transient_retry`;
+  the terminal behaviour — quarantine or a failed job carrying the real error — is
+  untouched. The SDK's own retries remain **0**, so one mechanism owns retrying and the
+  attempt count stays knowable. Set the count to 0 to restore the prior behaviour exactly.
 - **No Fallbacks** — Do not turn a required-operation failure into apparent success by dropping fields, skipping persistence, swallowing exceptions, or continuing on a best-effort basis. Intentional product processing paths, such as selecting Playwright when static HTML is not viable, are permitted only when explicit, logged, and contract-preserving. They must never hide API or storage failure.
 - **No Crappy Code** — Delete incorrect behavior instead of concealing it. Empty error responses, diagnostic truncation, silent catches, and fatal failures without actionable server-side detail are defects. Fix the behavior and preserve enough safe diagnostic context to identify the cause.
 

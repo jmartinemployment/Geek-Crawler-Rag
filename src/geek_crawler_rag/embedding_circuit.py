@@ -1,9 +1,13 @@
 """Quarantine for non-retryable embed failures (HTTP 500 and empty-input 400).
 
-Fail-closed design (OPENAI_EMBEDDING_MAX_RETRIES=0):
-  HTTP 500 from OpenAI is treated as a failure signal (not transient).
-  No in-process retry loop; the batch immediately quarantines and job fails.
-  Retries are manual, operator-driven after examining the quarantine.
+Fail-closed design (OPENAI_EMBEDDING_MAX_RETRIES=0 at the SDK level):
+  HTTP 500 from OpenAI quarantines and fails the job -- but only after
+  LlamaIndexEngine._embed_batch has spent its bounded transient-retry budget
+  (OPENAI_EMBEDDING_TRANSIENT_RETRIES, default 2), per the plans/rules.md §3a
+  amendment of 2026-09-26. A 500 that persists across attempts is a failure
+  signal, not a blip; one that clears on retry never reaches here.
+  Beyond that budget there is no retry loop, and recovery stays manual and
+  operator-driven after examining the quarantine.
 
 Empty-input HTTP 400:
   -> quarantine dump -> EmbeddingCircuitOpen -> job FAILED, points kept

@@ -236,6 +236,16 @@ async def main() -> int:
         default=50_000,
         help="Skip runs larger than this, matching the scheduler's safety cap.",
     )
+    parser.add_argument(
+        "--skip-failed",
+        action="store_true",
+        help=(
+            "Leave FAILED runs alone. Use this for unattended runs: a failed job may be "
+            "quarantined, and docs/embedding-circuit-recovery.md says an operator examines a "
+            "quarantine before requeueing it. Stranded and never-queued runs carry no such "
+            "decision -- nothing is waiting on a human to look at them -- so those still go."
+        ),
+    )
     args = parser.parse_args()
 
     settings = get_settings()
@@ -291,9 +301,11 @@ async def main() -> int:
             f"{row['crawlType']:<13} {row['state']:<12} {row['reason']}"
         )
 
-    repostable = [r for r in rows if r["state"] in REPOSTABLE and r["pages"] > 0]
-    oversized = [r for r in rows if r["state"] in REPOSTABLE and r["pages"] > args.max_pages]
-    empty = [r for r in rows if r["state"] in REPOSTABLE and r["pages"] <= 0]
+    allowed = tuple(s for s in REPOSTABLE if not (args.skip_failed and s == FAILED))
+    skipped_failed = [r for r in rows if r["state"] == FAILED and args.skip_failed]
+    repostable = [r for r in rows if r["state"] in allowed and r["pages"] > 0]
+    oversized = [r for r in rows if r["state"] in allowed and r["pages"] > args.max_pages]
+    empty = [r for r in rows if r["state"] in allowed and r["pages"] <= 0]
     held = [r for r in rows if r["state"] == HELD_DEAD]
     repostable = [r for r in repostable if r["pages"] <= args.max_pages]
 
@@ -301,6 +313,12 @@ async def main() -> int:
     print(f"re-postable: {len(repostable)}  held: {len(held)}  "
           f"oversized: {len(oversized)}  zero-page: {len(empty)}  "
           f"total pages to index: {sum(r['pages'] for r in repostable)}")
+
+    if skipped_failed:
+        print()
+        print(f"{len(skipped_failed)} FAILED run(s) left alone (--skip-failed); examine before requeueing:")
+        for row in skipped_failed:
+            print(f"  {row['runId']}  {row['reason']}")
 
     if held:
         print()

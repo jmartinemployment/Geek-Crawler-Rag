@@ -230,12 +230,29 @@ HTTP 500 `server_error` instead of clean 429s — a 1,000,000 setting against a
 
 - `OPENAI_EMBEDDING_TOKENS_PER_MINUTE=400000` (40% of a 1,000,000 ceiling)
 - `OPENAI_EMBEDDING_MAX_BATCH_TOKENS=50000`
-- `EMBED_BATCH_SIZE=128`
-- `OPENAI_EMBEDDING_MAX_RETRIES=0` (fail-closed by law; do not raise — [`plans/rules.md`](./plans/rules.md) §3a)
-- `QDRANT_UPSERT_DELAY_SECONDS=0`
+- `EMBED_BATCH_SIZE=64`
+- `OPENAI_EMBEDDING_MAX_RETRIES=0` (the SDK never retries — one mechanism owns retrying)
+- `OPENAI_EMBEDDING_TRANSIENT_RETRIES=2` (bounded, logged; §3a amendment 2026-09-26)
+- `OPENAI_EMBEDDING_RETRY_MAX_SECONDS=8`
+- `QDRANT_UPSERT_DELAY_SECONDS=0.5`
 - `INDEX_SCHEDULER_INTERVAL_SECONDS=300`
 
-**Why those last two changed, 2026-09-25.** Indexing was assumed CPU-bound on sparse
+**`EMBED_BATCH_SIZE=128` OOM-killed the container — do not set it there again.** On
+2026-09-25, 32 → 128 took the api container from a steady 2.4 GiB to past its **6 GiB**
+limit in about two minutes: `docker events` recorded `oom` then `die exitCode=137`, and
+each kill emptied the in-memory index queue and orphaned the `running` row, which reads
+as a hang rather than a kill. Note `docker inspect` reported `OOMKilled=false` afterwards
+— it reflects the state after the restart, so the event log is the authority, not
+`inspect`. 64 with `mem_limit: 8g` is the supported setting; treat 128 as known-bad at
+6 GiB. Idle is ~0.9 GiB, so the batch-dependent share is roughly linear: ~1.5 GiB at 32,
+~3 GiB at 64.
+
+**Retry policy, one place.** The SDK's `max_retries` stays 0; the only retry is
+`LlamaIndexEngine._embed_batch`, bounded and logged, for failures with no cause in this
+repo. See [`plans/rules.md`](./plans/rules.md) §3a — a 400 and a 429 are still never
+retried.
+
+**Why the delay and batch size were revisited, 2026-09-25.** Indexing was assumed CPU-bound on sparse
 encoding. Measured mid-run on the VPS it was not: the api container sat at **86% of one
 core** against a 3.0-core limit, Qdrant at 0.17%, Mongo at 0.6%, with 9 GB of the host's
 16 GB free and the embedding throttle at 32k tokens of its 400k window
