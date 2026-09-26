@@ -100,9 +100,15 @@ class IndexService:
             return loaded
         return self._statuses.get(run_id)
 
-    async def enqueue(self, run_id: str) -> IndexStatusResponse:
-        status, _ = await self._enqueue(run_id, trigger="manual", force=True)
-        return status
+    async def enqueue(self, run_id: str) -> tuple[IndexStatusResponse, bool]:
+        """Claim and queue a run. Returns the status and whether THIS call queued it.
+
+        The flag is returned rather than dropped because a refusal is indistinguishable
+        from success in the status alone: a row already pending/running with a live lease
+        comes back unchanged, so a caller that only reads the status believes it queued
+        something it did not.
+        """
+        return await self._enqueue(run_id, trigger="manual", force=True)
 
     async def enqueue_scheduled(self, run_id: str) -> bool:
         _, accepted = await self._enqueue(run_id, trigger="scheduled", force=False)

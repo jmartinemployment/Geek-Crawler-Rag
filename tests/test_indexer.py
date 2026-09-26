@@ -374,10 +374,15 @@ async def test_enqueue_dedupes_pending():
     store = MagicMock()
     settings = Settings(openai_api_key="test")
     svc = IndexService(mongo, store, settings, llama=_llama_mock())
-    first = await svc.enqueue("same")
-    second = await svc.enqueue("same")
+    first, first_accepted = await svc.enqueue("same")
+    second, second_accepted = await svc.enqueue("same")
     assert first is second
     assert svc._queue.qsize() == 1
+    # The point of the flag: the second call was REFUSED, and says so. Before this it
+    # returned the same status with no way to tell, so a caller believed it had queued a
+    # second run.
+    assert first_accepted is True
+    assert second_accepted is False
 
 
 @pytest.mark.asyncio

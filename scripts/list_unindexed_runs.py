@@ -210,7 +210,14 @@ def post_index(run_id: str, *, base_url: str, api_key: str) -> str:
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
             body = json.load(response)
-        return f"accepted state={body.get('state')} attempt={body.get('attempt')}"
+        # `accepted` is authoritative as of 2026-09-26. Before it existed, a refused claim
+        # returned 200 with the stale row and the only tell was that `attempt` had not
+        # incremented -- which this script could not check, having no before-value. It is
+        # read defensively (default True) so the script still works against an older
+        # deployment that does not send the field.
+        accepted = body.get("accepted", True)
+        verdict = "accepted" if accepted else "REFUSED (a live lease holds it; nothing queued)"
+        return f"{verdict} state={body.get('state')} attempt={body.get('attempt')}"
     except urllib.error.HTTPError as err:
         detail = err.read().decode("utf-8", "replace")[:200]
         return f"HTTP {err.code}: {detail}"
@@ -340,9 +347,18 @@ async def main() -> int:
 
     print()
     print(f"Re-posting {len(repostable)} run(s), smallest first:")
+    refused = 0
     for row in repostable:
         outcome = post_index(row["runId"], base_url=args.base_url, api_key=api_key)
+        if "REFUSED" in outcome:
+            refused += 1
         print(f"  {row['runId']}  pages={row['pages']:>5}  -> {outcome}")
+
+    if refused:
+        print()
+        print(f"{refused} of {len(repostable)} post(s) were REFUSED and queued nothing. "
+              "A live lease still holds those runs; re-run once it lapses.")
+        return 1
 
     return 0
 

@@ -73,6 +73,7 @@ from geek_crawler_rag.models import (
     HostIndexResult,
     IndexRunRequest,
     IndexSchedulerStatus,
+    IndexEnqueueResponse,
     IndexStatusResponse,
     PageTextResponse,
     ProducerCapabilities,
@@ -281,13 +282,27 @@ async def capabilities() -> ProducerCapabilities:
 
 @app.post(
     "/v1/index",
-    response_model=IndexStatusResponse,
+    response_model=IndexEnqueueResponse,
     response_model_by_alias=True,
     dependencies=[Depends(require_api_key)],
 )
-async def start_index(body: IndexRunRequest) -> IndexStatusResponse:
-    """Enqueue a full-run English index (idempotent rebuild per runId)."""
-    return await state.indexer.enqueue(body.run_id)
+async def start_index(body: IndexRunRequest) -> IndexEnqueueResponse:
+    """Enqueue a full-run English index (idempotent rebuild per runId).
+
+    Answers with `accepted` so a refusal cannot pass for success. A run already
+    pending/running under a live lease is refused, and that is correct -- but it used to
+    look identical to a fresh claim.
+    """
+    status, accepted = await state.indexer.enqueue(body.run_id)
+    if not accepted:
+        logger.warning(
+            "Index enqueue REFUSED for runId=%s: state=%s already holds the lease, "
+            "nothing was queued (attempt stays %s)",
+            status.run_id,
+            status.state,
+            status.attempt,
+        )
+    return IndexEnqueueResponse(**status.model_dump(), accepted=accepted)
 
 
 @app.get(

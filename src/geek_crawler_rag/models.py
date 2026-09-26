@@ -51,6 +51,24 @@ class IndexStatusResponse(BaseModel):
     model_config = {"populate_by_name": True, "ser_json_by_alias": True}
 
 
+class IndexEnqueueResponse(IndexStatusResponse):
+    """The POST /v1/index answer: the job's status, plus whether this call queued it.
+
+    Separate from IndexStatusResponse because that model is what gets persisted to
+    `rag_index_jobs`, and "was this particular call accepted" is not a property of a
+    stored job -- it belongs to one request.
+
+    Why it exists at all: claim(force=True) will not take a row that is already
+    pending/running with a live lease, but `_enqueue` discarded its accepted flag, so a
+    refused claim returned **HTTP 200 carrying the stale row** and queued nothing. Callers
+    could not tell a fresh claim from a refusal, and on 2026-09-26 a re-post that looked
+    successful (200, state=pending) had in fact done nothing -- the only tell was that
+    `attempt` had not incremented. `accepted` is now stated rather than inferred.
+    """
+
+    accepted: bool = True
+
+
 class IndexSchedulerStatus(BaseModel):
     enabled: bool
     interval_seconds: int = Field(..., alias="intervalSeconds")
