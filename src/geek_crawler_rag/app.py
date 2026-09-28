@@ -246,11 +246,23 @@ async def health() -> JSONResponse:
     except Exception as ex:
         logger.warning("Mongo health check failed", exc_info=ex)
         errors.append("mongo unavailable")
+    collection_present: bool | None = None
     try:
         qdrant_ok = await state.store.ping()
     except Exception as ex:
         logger.warning("Qdrant health check failed", exc_info=ex)
         errors.append("qdrant unavailable")
+    if qdrant_ok:
+        # Reachable is not the same as present. Startup calls ensure_collection, so a missing
+        # collection here means something dropped it under a running process — which happened
+        # on 2026-09-24 — and every query now returns nothing while rag_index_jobs still
+        # reports runs complete with their old chunk counts.
+        collection_present = await state.store.collection_present()
+        if collection_present is False:
+            errors.append(
+                f"qdrant collection {state.settings.qdrant_collection} is MISSING — "
+                "the corpus is empty and every query will return nothing; re-index is required"
+            )
     if mongo_ok:
         try:
             scheduler_status = (await state.scheduler.status()).model_dump(
@@ -260,11 +272,17 @@ async def health() -> JSONResponse:
             logger.warning("Scheduler health check failed", exc_info=ex)
             errors.append("scheduler unavailable")
 
+    # `status` stays a reachability verdict and a missing collection does not flip it, on
+    # purpose. The container healthcheck urlopen()s this endpoint, so 503 marks the container
+    # unhealthy — and the thing that recreates the collection is an index job served by this
+    # same container. Failing health would block the only path that heals it. The condition
+    # travels in `errors`, which is the field for exactly this.
     healthy = mongo_ok and qdrant_ok
     body = {
         "status": "ok" if healthy else "degraded",
         "mongo": mongo_ok,
         "qdrant": qdrant_ok,
+        "qdrantCollection": collection_present,
         "engine": "llamaindex",
         "features": ["hybrid", "graph", "ad-templates", "pages"],
         "embeddingThrottle": state.llama.embedding_stats(),

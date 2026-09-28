@@ -99,8 +99,38 @@ class QdrantStore:
         )
 
     async def ping(self) -> bool:
+        """Qdrant is reachable. Says nothing about whether OUR collection is there."""
         await self._client.get_collections()
         return True
+
+    async def collection_present(self) -> bool | None:
+        """Whether this store's collection exists. None when the question can't be answered.
+
+        Reachability and presence are different facts and `ping` only answers the first, so a
+        dropped `geek_crawler_chunks` reported `qdrant: true, status: ok` -- the most damaging
+        state in the system looking healthy. It is not hypothetical: the collection was deleted
+        out from under a running API on 2026-09-24.
+
+        It matters more now, not less. Until 2026-09-28 a missing collection was at least loud
+        by accident, because every purge raised a 500 that GeekAPI turned into a 502.
+        `delete_by_run_id` now correctly treats it as a satisfied delete -- there are no vectors
+        for the run, which is what the caller asked for -- so the accidental alarm is gone and
+        this is what replaces it.
+
+        Silence here would be the worse failure: nothing tells a reader the corpus is empty,
+        while `rag_index_jobs` still reports runs `complete` with their old chunk counts and
+        every query returns nothing.
+
+        None rather than False on error, because "I could not tell" is not "it is missing", and
+        a transport blip must not be reported as a dropped collection.
+        """
+        try:
+            return await self._client.collection_exists(self._collection)
+        except Exception:
+            logger.warning(
+                "Could not determine whether collection %s exists", self._collection
+            )
+            return None
 
     async def ensure_collection(self) -> None:
         exists = await self._client.collection_exists(self._collection)
