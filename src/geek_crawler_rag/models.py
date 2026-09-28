@@ -70,6 +70,17 @@ class IndexEnqueueResponse(IndexStatusResponse):
 
 
 class IndexSchedulerStatus(BaseModel):
+    """Scheduler cadence, and whether an operator has paused it.
+
+    ``enabled`` and ``paused`` answer different questions and have different
+    owners. ``enabled`` is configuration -- ``INDEX_SCHEDULER_ENABLED`` -- and
+    ``scheduler_status`` re-syncs the stored value to the env var on every read,
+    so nothing at runtime can hold a change to it. ``paused`` is the operator's,
+    lives only in Mongo, and no config read touches it. Writing a pause into
+    ``enabled`` would therefore be reverted by the next status call, which is
+    why this is a separate field rather than a reused one.
+    """
+
     enabled: bool
     interval_seconds: int = Field(..., alias="intervalSeconds")
     next_run_at_utc: datetime | None = Field(None, alias="nextRunAtUtc")
@@ -77,8 +88,42 @@ class IndexSchedulerStatus(BaseModel):
     last_run_id: str | None = Field(None, alias="lastRunId")
     last_error: str | None = Field(None, alias="lastError")
     last_selection_reason: str | None = Field(None, alias="lastSelectionReason")
+    paused: bool = False
+    paused_at_utc: datetime | None = Field(None, alias="pausedAtUtc")
+    paused_reason: str | None = Field(None, alias="pausedReason")
 
     model_config = {"populate_by_name": True, "ser_json_by_alias": True}
+
+
+class IndexKillRequest(BaseModel):
+    """Why this job is being killed. Recorded as the job's error."""
+
+    reason: str = Field(..., min_length=1, max_length=500)
+
+    model_config = {"populate_by_name": True}
+
+
+class IndexKillResponse(BaseModel):
+    """The job's status plus what the kill actually did.
+
+    ``outcome`` is carried explicitly because the status alone cannot distinguish a kill
+    from a no-op, and because ``stopping`` is not ``failed`` yet -- a running job stops at
+    its next checkpoint, so a caller that read only ``state`` would believe a still-running
+    job was already dead.
+    """
+
+    outcome: str
+    status: IndexStatusResponse | None = None
+
+    model_config = {"populate_by_name": True, "ser_json_by_alias": True}
+
+
+class SchedulerPauseRequest(BaseModel):
+    """Why the scheduler is being paused, so the next operator is not guessing."""
+
+    reason: str = Field(..., min_length=1, max_length=500)
+
+    model_config = {"populate_by_name": True}
 
 
 class QueryRequest(BaseModel):

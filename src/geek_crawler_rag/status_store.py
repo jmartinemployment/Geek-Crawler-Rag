@@ -294,6 +294,9 @@ class IndexStatusStore:
                         "enabled": enabled,
                         "intervalSeconds": interval_seconds,
                         "nextRunAtUtc": now,
+                        "paused": False,
+                        "pausedAtUtc": None,
+                        "pausedReason": None,
                     }
                 },
                 upsert=True,
@@ -303,6 +306,9 @@ class IndexStatusStore:
             bool(doc.get("enabled")) != enabled
             or int(doc.get("intervalSeconds") or 0) != interval_seconds
         ):
+            # Config wins for enabled/interval, and only for those two. `paused` is
+            # deliberately absent from this $set: it is operator state, and re-syncing it
+            # from config would silently un-pause the scheduler on the next status read.
             await self._scheduler.update_one(
                 {"_id": SCHEDULER_ID},
                 {
@@ -328,12 +334,18 @@ class IndexStatusStore:
             enabled=enabled, interval_seconds=interval_seconds
         )
         now = datetime.now(timezone.utc)
-        if not enabled or (status.next_run_at_utc and status.next_run_at_utc > now):
+        if not enabled or status.paused:
             return False
+        if status.next_run_at_utc and status.next_run_at_utc > now:
+            return False
+        # `paused` is in the filter as well as the check above, and that is the half
+        # that enforces it: the read and the claim are two round trips, so a pause
+        # landing between them would otherwise still let this tick enqueue a run.
         doc = await self._scheduler.find_one_and_update(
             {
                 "_id": SCHEDULER_ID,
                 "enabled": True,
+                "paused": {"$ne": True},
                 "nextRunAtUtc": {"$lte": now},
                 "$or": lease_expired_or_missing(now),
             },
@@ -346,6 +358,51 @@ class IndexStatusStore:
             return_document=ReturnDocument.AFTER,
         )
         return doc is not None
+
+    async def set_scheduler_paused(
+        self,
+        *,
+        paused: bool,
+        reason: str | None,
+        enabled: bool,
+        interval_seconds: int,
+    ) -> IndexSchedulerStatus:
+        """Pause or resume scheduled enqueues, durably.
+
+        Pausing stops the scheduler claiming its next due tick. It does not touch a job
+        already queued or running: those hold their own leases and finish on their own,
+        which is the point -- pausing the feed is what an operator wants mid-incident, and
+        killing live work is what they do not.
+
+        The state lives in Mongo rather than in the process, so it survives the container
+        recreation that a deploy performs. A pause held only in memory would be lifted by
+        the very restart an operator paused in order to make safe.
+
+        Resuming does not run a tick immediately: `nextRunAtUtc` is left exactly as it was,
+        so the cadence picks up where it left off instead of firing on resume.
+        """
+        now = datetime.now(timezone.utc)
+        update: dict[str, Any] = {"paused": paused}
+        if paused:
+            update["pausedAtUtc"] = now
+            update["pausedReason"] = reason
+        else:
+            update["pausedAtUtc"] = None
+            update["pausedReason"] = None
+        # Ensures the document exists before the $set, so a pause on a scheduler that has
+        # never ticked is recorded rather than silently matching nothing.
+        await self.scheduler_status(
+            enabled=enabled, interval_seconds=interval_seconds
+        )
+        await self._scheduler.update_one({"_id": SCHEDULER_ID}, {"$set": update})
+        logger.warning(
+            "Index scheduler %s by operator%s",
+            "PAUSED" if paused else "RESUMED",
+            f": {reason}" if paused and reason else "",
+        )
+        return await self.scheduler_status(
+            enabled=enabled, interval_seconds=interval_seconds
+        )
 
     async def complete_scheduler_tick(
         self,
@@ -410,6 +467,9 @@ def _scheduler_from_doc(
         last_run_id=doc.get("lastRunId"),
         last_error=doc.get("lastError"),
         last_selection_reason=doc.get("lastSelectionReason"),
+        paused=bool(doc.get("paused", False)),
+        paused_at_utc=_as_utc(doc.get("pausedAtUtc")),
+        paused_reason=doc.get("pausedReason"),
     )
 
 

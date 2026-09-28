@@ -249,27 +249,66 @@ class QdrantStore:
         owner_id: str = "system:crawler",
         visibility: str = "service",
     ) -> None:
-        await self._client.delete(
-            collection_name=self._collection,
-            points_selector=qm.FilterSelector(
-                filter=qm.Filter(
-                    must=[
-                        qm.FieldCondition(
-                            key="runId",
-                            match=qm.MatchValue(value=run_id),
-                        ),
-                        qm.FieldCondition(
-                            key="ownerId", match=qm.MatchValue(value=owner_id)
-                        ),
-                        qm.FieldCondition(
-                            key="visibility",
-                            match=qm.MatchValue(value=visibility),
-                        ),
-                    ]
+        """Delete every point for one run. A missing collection is success; nothing else is.
+
+        Two absences look alike and are not:
+
+        * **No points match the filter.** Already success -- a Qdrant filter delete that
+          matches nothing is not an error. This never needed fixing, and believing it did
+          is what made the 2026-09-24 diagnosis wrong: eleven runs were reported failed and
+          "there are no points for this run" was blamed, but that case returns 204 today
+          and did then.
+        * **No collection at all.** This is what actually raised. `geek_crawler_chunks` was
+          dropped out from under a running API on 2026-09-24; every purge then 500ed, which
+          GeekAPI turned into a 502 on the PATCH that was publishing a *different*,
+          perfectly good run. With no collection there are no vectors for this run, which
+          is precisely the state the caller asked for, so it is success.
+
+        `find_host_index_payload` already reached that conclusion for the same incident.
+        This is the same judgement on the write path.
+
+        Everything else re-raises, and that distinction is the whole point. On a read, fail
+        closed means answering "not indexed"; on a delete it means reporting failure --
+        because a caller told a purge succeeded when it did not will go on to delete the
+        pages those surviving vectors cite, and orphaned vectors are citable: every
+        retrieval is filtered by a single runId, and `/v1/index/hosts` resolves that runId
+        by scrolling Qdrant on host alone. A stale run's points can therefore be selected
+        as a host's grounding evidence.
+        """
+        try:
+            await self._client.delete(
+                collection_name=self._collection,
+                points_selector=qm.FilterSelector(
+                    filter=qm.Filter(
+                        must=[
+                            qm.FieldCondition(
+                                key="runId",
+                                match=qm.MatchValue(value=run_id),
+                            ),
+                            qm.FieldCondition(
+                                key="ownerId", match=qm.MatchValue(value=owner_id)
+                            ),
+                            qm.FieldCondition(
+                                key="visibility",
+                                match=qm.MatchValue(value=visibility),
+                            ),
+                        ]
+                    )
+                ),
+                wait=True,
+            )
+        except Exception as exc:
+            # Broad, then narrowed by _is_missing_collection, because the error arrives as
+            # UnexpectedResponse(404) from the client and as a message-only error through a
+            # transport that wraps it -- the same two shapes that helper already tests for.
+            if _is_missing_collection(exc, self._collection):
+                logger.warning(
+                    "Collection %s is missing; runId=%s has no points to purge",
+                    self._collection,
+                    run_id,
                 )
-            ),
-            wait=True,
-        )
+                return
+            raise
         logger.info("Deleted Qdrant points for runId=%s", run_id)
 
     async def delete_by_page_id(

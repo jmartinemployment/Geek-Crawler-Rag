@@ -69,6 +69,29 @@ class IndexScheduler:
             interval_seconds=self._settings.index_scheduler_interval_seconds,
         )
 
+    async def pause(self, reason: str) -> IndexSchedulerStatus:
+        """Stop claiming due ticks until resumed. Running work is left alone.
+
+        The loop task keeps running while paused; it is `claim_scheduler_due` that
+        refuses. Stopping the task instead would make resume depend on a restart, and a
+        restart is what empties the in-process queue.
+        """
+        return await self._status_store.set_scheduler_paused(
+            paused=True,
+            reason=reason,
+            enabled=self._settings.index_scheduler_enabled,
+            interval_seconds=self._settings.index_scheduler_interval_seconds,
+        )
+
+    async def resume(self) -> IndexSchedulerStatus:
+        """Allow due ticks again, on the existing cadence."""
+        return await self._status_store.set_scheduler_paused(
+            paused=False,
+            reason=None,
+            enabled=self._settings.index_scheduler_enabled,
+            interval_seconds=self._settings.index_scheduler_interval_seconds,
+        )
+
     async def _loop(self) -> None:
         while not self._stop.is_set():
             try:

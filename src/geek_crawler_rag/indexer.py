@@ -36,6 +36,26 @@ class LeaseLostError(RuntimeError):
     """The worker no longer owns the Mongo index-job lease."""
 
 
+class JobKilled(RuntimeError):
+    """An operator killed this one job. Raised at a checkpoint inside the run.
+
+    Deliberately not an ``asyncio.CancelledError`` and deliberately not raised by
+    cancelling the run's task. ``_worker_loop`` marks a cancelled job failed and then
+    *re-raises*, which ends the worker task -- correct for shutdown, where everything is
+    stopping, and catastrophic for a per-job kill, where cancelling one job would take
+    the worker down and strand every job queued behind it.
+
+    So the kill is cooperative: a flag is set, ``_index_run`` raises this at its next
+    checkpoint, and the worker fails that job and carries on to the next one. The cost is
+    latency -- the kill lands at the next page or batch boundary, not mid-request -- which
+    is a bounded wait and is reported as such rather than dressed up as instant.
+    """
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
 class NodeUpserter(Protocol):
     async def embed_and_upsert(self, nodes: list[TextNode]) -> int: ...
 
@@ -58,6 +78,9 @@ class IndexService:
         self._webhook = webhook
         self._statuses: dict[str, IndexStatusResponse] = {}
         self._queue: asyncio.Queue[str] = asyncio.Queue()
+        # runId -> operator reason. An asyncio.Queue cannot have entries removed, so a
+        # queued job is killed by flagging it here and skipping it on dequeue.
+        self._killed: dict[str, str] = {}
         self._worker_task: asyncio.Task[None] | None = None
         self._lock = asyncio.Lock()
         self._enqueue_lock = asyncio.Lock()
@@ -99,6 +122,78 @@ class IndexService:
                 self._statuses[run_id] = loaded
             return loaded
         return self._statuses.get(run_id)
+
+    def _raise_if_killed(self, run_id: str) -> None:
+        """Checkpoint. Raises JobKilled when an operator has killed this run."""
+        reason = self._killed.get(run_id)
+        if reason is not None:
+            raise JobKilled(reason)
+
+    async def kill(
+        self, run_id: str, *, reason: str
+    ) -> tuple[IndexStatusResponse | None, str]:
+        """Kill one index job. Returns its status and what actually happened.
+
+        The outcome is returned rather than inferred from the status, for the same reason
+        ``enqueue`` returns ``accepted``: the caller cannot otherwise tell a kill from a
+        no-op. Four outcomes, and each is a different HTTP answer:
+
+        * ``absent`` -- no job row for this run. Nothing was killed.
+        * ``already_terminal`` -- complete, failed or skipped already. Nothing was killed,
+          and reporting success here would be exactly the silent substitution the rules
+          forbid: the operator would believe they stopped something that had already
+          finished, and for a ``complete`` run they would believe an index was stopped
+          that is in fact live and citable.
+        * ``dequeued`` -- was queued and had not started. Terminal immediately, and the
+          worker will skip it when it reaches it. No vectors were written, so there is no
+          partial index.
+        * ``stopping`` -- is running. The flag is set and the run raises at its next page
+          or batch boundary. **Not terminal yet** when this returns, which is why the word
+          is "stopping" and not "killed".
+
+        Vectors already upserted are kept, as they are on quarantine. Killing a job is not
+        a decision to destroy the partial index it built -- that is
+        ``DELETE /v1/index/runs/{run_id}``, and conflating the two would make "stop this"
+        silently mean "and throw away the work".
+        """
+        run_id = run_id.strip()
+        if not run_id:
+            raise ValueError("runId is required")
+
+        status = await self.get_status(run_id)
+        if status is None:
+            return None, "absent"
+        if status.state in (
+            IndexState.COMPLETE,
+            IndexState.FAILED,
+            IndexState.SKIPPED,
+        ):
+            return status, "already_terminal"
+
+        self._killed[run_id] = reason
+
+        if status.state == IndexState.RUNNING:
+            logger.warning(
+                "Index job kill requested for runId=%s (running, %s chunks so far): %s",
+                run_id,
+                status.chunks_upserted,
+                reason,
+            )
+            return status, "stopping"
+
+        # Pending: it never started, so nothing is mid-flight to unwind. Record the
+        # terminal state now rather than waiting for the worker to reach it -- a kill that
+        # leaves the row `pending` until some unrelated job ahead of it finishes is the
+        # "pending forever" state the job rules exist to rule out.
+        await self._fail_quarantined(
+            status, error=f"Killed by operator before it started: {reason}"
+        )
+        logger.warning(
+            "Index job killed for runId=%s (was queued, never started): %s",
+            run_id,
+            reason,
+        )
+        return status, "dequeued"
 
     async def enqueue(self, run_id: str) -> tuple[IndexStatusResponse, bool]:
         """Claim and queue a run. Returns the status and whether THIS call queued it.
@@ -157,6 +252,12 @@ class IndexService:
                     trigger=trigger,
                 )
 
+            # A re-post is a deliberate "run this", so it clears any kill flag left from an
+            # earlier one. Without this, killing a run once would silently kill every
+            # re-post of it for the life of the process -- the flag outliving the job it
+            # was set for.
+            self._killed.pop(run_id, None)
+
             self._statuses[run_id] = status
             await self._persist(status)
             await self._queue.put(run_id)
@@ -188,8 +289,39 @@ class IndexService:
         while True:
             run_id = await self._queue.get()
             try:
+                if run_id in self._killed:
+                    # Killed while it waited its turn. kill() already recorded the terminal
+                    # state, so there is nothing to write here -- just do not run it.
+                    logger.info(
+                        "Skipping killed index job runId=%s: %s",
+                        run_id,
+                        self._killed.pop(run_id),
+                    )
+                    continue
                 async with self._lock:
                     await self._run_claimed_job(run_id)
+            except JobKilled as killed:
+                # That job dies, this worker does not. No re-raise: the whole point of a
+                # per-job kill is that the jobs behind it still run.
+                status = self._statuses.get(run_id)
+                if status and status.state not in (
+                    IndexState.COMPLETE,
+                    IndexState.FAILED,
+                    IndexState.SKIPPED,
+                ):
+                    await self._fail_quarantined(
+                        status,
+                        error=(
+                            f"Killed by operator mid-run: {killed.reason}. "
+                            f"{status.chunks_upserted} already upserted points preserved."
+                        ),
+                    )
+                logger.warning(
+                    "Index job killed mid-run runId=%s after %s chunks: %s",
+                    run_id,
+                    status.chunks_upserted if status else "?",
+                    killed.reason,
+                )
             except LeaseLostError:
                 logger.error(
                     "Stopped stale index worker after lease loss runId=%s",
@@ -216,6 +348,7 @@ class IndexService:
                         error="Unhandled indexer exception",
                     )
             finally:
+                self._killed.pop(run_id, None)
                 if self._status_store is not None:
                     try:
                         await self._status_store.release(
@@ -381,6 +514,7 @@ class IndexService:
             status.pages_skipped_empty += 1
 
     async def _index_run(self, run_id: str) -> None:
+        self._raise_if_killed(run_id)
         status = self._statuses.get(run_id) or IndexStatusResponse(
             run_id=run_id, state=IndexState.PENDING
         )
@@ -469,6 +603,7 @@ class IndexService:
                 run_id, batch_size=self._settings.page_batch_size
             ):
                 for page in pages:
+                    self._raise_if_killed(run_id)
                     status.pages_seen += 1
                     reject = classify_unusable_page(
                         url=page.url,
@@ -506,6 +641,7 @@ class IndexService:
                     status.pages_english += 1
                     pending.extend(nodes)
                     if len(pending) >= self._settings.embed_batch_size:
+                        self._raise_if_killed(run_id)
                         n = await self._llama.embed_and_upsert(pending)
                         status.chunks_upserted += n
                         self._sync_embedding_stats(status, embedding_baseline)
@@ -526,6 +662,7 @@ class IndexService:
                             )
 
             if pending:
+                self._raise_if_killed(run_id)
                 n = await self._llama.embed_and_upsert(pending)
                 status.chunks_upserted += n
                 self._sync_embedding_stats(status, embedding_baseline)
@@ -551,6 +688,13 @@ class IndexService:
                 ),
             )
             return
+        except JobKilled:
+            # Must precede `except Exception`: JobKilled is a RuntimeError, so the broad
+            # handler below would otherwise catch it, record it as an index failure and
+            # swallow it -- the worker would never learn the job was killed, and the
+            # operator's reason would be replaced by a generic one.
+            self._sync_embedding_stats(status, embedding_baseline)
+            raise
         except Exception as ex:
             self._sync_embedding_stats(status, embedding_baseline)
             logger.exception("Index failed for runId=%s: %s", run_id, ex)

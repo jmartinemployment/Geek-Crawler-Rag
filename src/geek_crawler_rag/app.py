@@ -71,6 +71,8 @@ from geek_crawler_rag.models import (
     HostIndexRequest,
     HostIndexResponse,
     HostIndexResult,
+    IndexKillRequest,
+    IndexKillResponse,
     IndexRunRequest,
     IndexSchedulerStatus,
     IndexEnqueueResponse,
@@ -79,6 +81,7 @@ from geek_crawler_rag.models import (
     ProducerCapabilities,
     QueryRequest,
     QueryResponse,
+    SchedulerPauseRequest,
 )
 from geek_crawler_rag.mongo import MongoCorpus
 from geek_crawler_rag.qdrant_store import QdrantStore
@@ -318,6 +321,54 @@ async def index_status(run_id: str) -> IndexStatusResponse:
     return status_row
 
 
+@app.post(
+    "/v1/index/{run_id}/kill",
+    response_model=IndexKillResponse,
+    response_model_by_alias=True,
+    dependencies=[Depends(require_api_key)],
+)
+async def kill_index_job(run_id: str, body: IndexKillRequest) -> IndexKillResponse:
+    """Kill one index job, leaving every other job running.
+
+    Until now the only way to stop an index job was to stop the process, which took every
+    queued job with it: on 2026-09-28 stopping one run killed fourteen, thirteen of which
+    had not started. This kills exactly one.
+
+    ``outcome`` says what happened, and the status code follows it:
+
+    * ``dequeued`` -- 200. It was queued and never started; it is ``failed`` now and the
+      worker will skip it. No vectors were written.
+    * ``stopping`` -- 200. It is running. The run stops at its next page or embed-batch
+      boundary, so it is **not** terminal when this returns; poll
+      ``GET /v1/index/{run_id}`` for ``failed``. Latency is one page or one batch, not
+      instant, because the kill is cooperative rather than a task cancellation -- see
+      ``JobKilled``.
+    * ``already_terminal`` -- 409. It had already finished. Nothing was killed, and
+      answering 200 would tell an operator they stopped a run that in the ``complete``
+      case is live and citable.
+    * ``absent`` -- 404. No job row for this run.
+
+    Points already upserted are kept, exactly as on quarantine. Discarding a partial index
+    is ``DELETE /v1/index/runs/{run_id}``, deliberately a separate call: "stop this" must
+    not silently also mean "destroy what it built".
+    """
+    status_row, outcome = await state.indexer.kill(run_id, reason=body.reason)
+    if outcome == "absent":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No index job for runId={run_id}",
+        )
+    if outcome == "already_terminal":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Index job for runId={run_id} is already "
+                f"{status_row.state if status_row else 'terminal'}; nothing was killed."
+            ),
+        )
+    return IndexKillResponse(outcome=outcome, status=status_row)
+
+
 @app.get(
     "/v1/index-scheduler",
     response_model=IndexSchedulerStatus,
@@ -325,8 +376,52 @@ async def index_status(run_id: str) -> IndexStatusResponse:
     dependencies=[Depends(require_api_key)],
 )
 async def index_scheduler_status() -> IndexSchedulerStatus:
-    """Return persisted scheduler cadence and most recent enqueue."""
+    """Return persisted scheduler cadence, most recent enqueue, and pause state."""
     return await state.scheduler.status()
+
+
+@app.post(
+    "/v1/index-scheduler/pause",
+    response_model=IndexSchedulerStatus,
+    response_model_by_alias=True,
+    dependencies=[Depends(require_api_key)],
+)
+async def pause_index_scheduler(body: SchedulerPauseRequest) -> IndexSchedulerStatus:
+    """Stop the scheduler enqueuing new runs, until an explicit resume.
+
+    What this does and does not stop, because the difference is the whole point:
+
+    * Stopped -- the scheduler claiming its next due tick, so no *further* run is
+      enqueued. Durable in Mongo, so a deploy that recreates the container does not
+      lift it.
+    * Not stopped -- the job already running, and anything already in the worker
+      queue. Those hold their own leases and finish. Pausing the feed is the safe
+      operation; killing live indexing is not, and is what recreating the container
+      already does by accident.
+    * Also not stopped -- `POST /v1/index`. A manual enqueue is someone deciding to
+      index one run right now, and this pauses the automatic feed, not the operator.
+      Read the name narrowly: it is the scheduler that is paused, not indexing.
+
+    A reason is required. A pause with no reason is a pause the next operator cannot
+    judge, and the state is durable enough to outlive whoever set it.
+    """
+    return await state.scheduler.pause(body.reason)
+
+
+@app.post(
+    "/v1/index-scheduler/resume",
+    response_model=IndexSchedulerStatus,
+    response_model_by_alias=True,
+    dependencies=[Depends(require_api_key)],
+)
+async def resume_index_scheduler() -> IndexSchedulerStatus:
+    """Let the scheduler claim due ticks again, on its existing cadence.
+
+    `nextRunAtUtc` is untouched, so resuming does not itself trigger an enqueue --
+    a resume that fired a tick immediately would make "unpause" and "index now"
+    the same button, and they are not.
+    """
+    return await state.scheduler.resume()
 
 
 @app.post(
@@ -626,7 +721,14 @@ async def delete_run_index(run_id: str) -> None:
 
     Called by GeekAPI as the first step of a run delete: vectors go before the
     pages they cite, so retrieval can never return a chunk whose source no
-    longer exists. Deleting an already-absent run is a no-op, not an error.
+    longer exists.
+
+    Absence is a no-op in all three of its forms, and each is enforced rather than
+    asserted: no points for the run (a filter delete matching nothing succeeds), no
+    collection at all (`delete_by_run_id` catches it), and no job row
+    (`status_store.delete` returns False rather than raising). A real failure -- an
+    unreachable Qdrant, a timeout -- still raises and still becomes a non-2xx, because
+    GeekAPI deletes the cited pages once this returns success.
 
     The job row goes with them. Purging vectors while leaving it behind meant
     GET /v1/index/{runId} kept reporting ``complete`` with the page and chunk
