@@ -47,19 +47,14 @@ class Settings(BaseSettings):
     # plans/embedding-cache-and-duplicate-results.md.
     openai_embedding_tokens_per_minute: int = 400_000
     openai_embedding_max_batch_tokens: int = 50_000
-    # Zero at the SDK level, deliberately: the OpenAI client itself never retries, so
-    # this service has exactly ONE retry mechanism and it is the explicit, logged one in
-    # LlamaIndexEngine._embed_batch. Two would make the real attempt count unknowable.
+    # Zero, and there is no second mechanism. The SDK does not retry and neither does
+    # this service: an embed call is made once. The transient-retry setting that used to
+    # sit here was removed on 2026-09-28 along with the loop it fed -- it made a failed
+    # attempt invisible when the next one succeeded, and it re-sent tokens the account
+    # may already have been billed for. The root cause of the failures it was added for
+    # was found on 2026-09-10 and fixed by keeping the throttle well under the account
+    # ceiling (openai_embedding_tokens_per_minute, above).
     openai_embedding_max_retries: int = 0
-    # §3a amendment (Jeff, 2026-09-26): a bounded, logged retry for transport-level and
-    # 5xx failures on the corpus embed path. A dropped TCP connection has no root cause
-    # in this codebase to fix, and nothing is learned by failing a 702-page run at chunk
-    # 8,609 over one -- runId=73243bae, 2026-09-25. This is a count of RETRIES, so 2
-    # means 3 attempts; 0 restores the strict fail-on-first-failure behaviour exactly.
-    openai_embedding_transient_retries: int = 2
-    # Cap on a single backoff sleep. Declared but wired to nothing from the reverted
-    # Phase 0 hot-patch until this amendment; now live.
-    openai_embedding_retry_max_seconds: float = 8.0
     embedding_quarantine_dir: str = (
         "/var/lib/geek-crawler-rag/embedding_quarantine"
     )

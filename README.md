@@ -231,9 +231,7 @@ HTTP 500 `server_error` instead of clean 429s — a 1,000,000 setting against a
 - `OPENAI_EMBEDDING_TOKENS_PER_MINUTE=400000` (40% of a 1,000,000 ceiling)
 - `OPENAI_EMBEDDING_MAX_BATCH_TOKENS=50000`
 - `EMBED_BATCH_SIZE=64`
-- `OPENAI_EMBEDDING_MAX_RETRIES=0` (the SDK never retries — one mechanism owns retrying)
-- `OPENAI_EMBEDDING_TRANSIENT_RETRIES=2` (bounded, logged; §3a amendment 2026-09-26)
-- `OPENAI_EMBEDDING_RETRY_MAX_SECONDS=8`
+- `OPENAI_EMBEDDING_MAX_RETRIES=0` (nothing retries an embed call — see below)
 - `QDRANT_UPSERT_DELAY_SECONDS=0.5`
 - `INDEX_SCHEDULER_INTERVAL_SECONDS=300`
 

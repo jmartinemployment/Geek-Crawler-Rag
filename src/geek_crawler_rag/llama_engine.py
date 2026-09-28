@@ -36,7 +36,6 @@ from geek_crawler_rag.embedding_sanitize import (
 )
 from geek_crawler_rag.embedding_throttle import (
     EmbeddingBatch,
-    EmbeddingRetryExhausted,
     EmbeddingThrottle,
     embedding_token_count,
     partition_embedding_batches,
@@ -295,107 +294,57 @@ class LlamaIndexEngine:
             embeddings.extend(await self._embed_batch(batch, batch_meta))
         return embeddings
 
-    @staticmethod
-    def _transient_embedding_error(exc: BaseException) -> str | None:
-        """Name the transient failure class, or None when the failure is ours to fix.
-
-        The exclusions are the point. An empty-input 400 is a real defect in what we
-        sent. A 429 is what EmbeddingThrottle exists to prevent, and retrying it would
-        paper over a throttle set too close to the account ceiling -- the specific
-        mistake that made OpenAI answer with 500s and killed multi-hour runs (README,
-        "Keep the throttle well under the account ceiling"). What is left is a
-        connection that never opened, one that dropped, and a server that failed on its
-        own side: none of which has a cause in this repository.
-        """
-        if isinstance(exc, APITimeoutError):
-            return "timeout"
-        if isinstance(exc, APIConnectionError):
-            return "connection"
-        if isinstance(exc, InternalServerError):
-            return "server_5xx"
-        status = getattr(exc, "status_code", None)
-        if isinstance(status, int) and 500 <= status < 600:
-            return f"http_{status}"
-        return None
-
     async def _embed_batch(
         self, batch: EmbeddingBatch, batch_meta: list[Any] | None
     ) -> list[list[float]]:
-        """One embed call, with a bounded retry on transport and 5xx failures.
+        """One embed call. One attempt. It fails or it does not.
 
-        §3a amendment, decided by Jeff on 2026-09-26. The rule's reasoning -- fail on
-        the first failure and fix the root cause -- holds for a request we malformed. It
-        does not hold for a TCP connection that dropped: there is nothing here to fix,
-        and nothing is learned by failing a 702-page run at chunk 8,609 over one, which
-        is what APIConnectionError did to runId=73243bae on 2026-09-25.
+        There was a bounded retry here on transport and 5xx failures, removed 2026-09-28.
+        Three things were wrong with it.
 
-        This is not a fallback. It substitutes no data, soft-succeeds nowhere, and
-        lowers nothing about what counts as success. When the attempts are spent the
-        batch quarantines or the job fails exactly as it did before, carrying the real
-        diagnostic error. Every attempt is logged, so a run that only finished because
-        the network wobbled says so instead of looking clean.
+        It was a fallback, and its own docstring argued that it was not -- which is the
+        tell. A retry that succeeds on its second attempt makes the first failure
+        invisible; the run then looks clean and nothing says the network wobbled.
 
-        Setting OPENAI_EMBEDDING_TRANSIENT_RETRIES=0 restores the previous behaviour
-        precisely -- one attempt, no waiting -- so the amendment can be switched off
-        without reverting code.
+        Its justification was already obsolete when it was written. The premise was
+        "'fix the root cause' presumes there is one", but the root cause of the
+        embedding failures had been found on 2026-09-10 and fixed: the throttle was set
+        to exactly the account's token ceiling, and lowering it to 40% produced a
+        96-minute run with zero errors. The retry was added sixteen days later on the
+        strength of a single APIConnectionError.
 
-        The backoff sleeps outside the lock on purpose: holding the shared embedding
-        lock through a wait would stall every other caller behind a delay not theirs.
-        That exact shape -- a coroutine parked inside the lock -- is what deadlocked
-        indexing on 2026-09-25.
+        And it cost money unauditably. A retry re-sends the same tokens, and the client
+        cannot tell a connection that dropped before OpenAI processed the batch from one
+        that dropped after -- so a retry may pay twice for one batch with no way to
+        detect which happened.
+
+        What replaces it is what was always here: the failure is real, it is reported,
+        and recovery is a deliberate re-post (`scripts/trigger_manual_index.py`,
+        `scripts/list_unindexed_runs.py`). Keep the throttle well under the account
+        ceiling; that is the fix.
         """
-        attempts = max(0, self._settings.openai_embedding_transient_retries) + 1
-        for attempt in range(1, attempts + 1):
-            backoff: float | None = None
-            async with self._embedding_call_lock:
-                await self._embedding_throttle.acquire(batch.token_count)
-                try:
-                    return await self._embed_model.aget_text_embedding_batch(
-                        batch.texts
-                    )
-                except EmbeddingCircuitOpen:
-                    raise
-                except Exception as exc:
-                    transient = self._transient_embedding_error(exc)
-                    if transient is None or attempt >= attempts:
-                        code = should_quarantine_embedding_error(exc)
-                        if code is None and isinstance(exc, InternalServerError):
-                            code = int(getattr(exc, "status_code", 0) or 500)
-                        if code is not None:
-                            raise open_embedding_circuit(
-                                texts=batch.texts,
-                                metadata_list=batch_meta,
-                                quarantine_dir=self._settings.embedding_quarantine_dir,
-                                model=self._settings.openai_embedding_model,
-                                token_count=batch.token_count,
-                                status_code=code,
-                                exc_type=type(exc).__name__,
-                                exc=exc,
-                            ) from exc
-                        raise
-                    backoff = min(
-                        float(self._settings.openai_embedding_retry_max_seconds),
-                        float(2 ** (attempt - 1)),
-                    )
-                    logger.warning(
-                        "embedding_transient_retry attempt=%s/%s class=%s reason=%s "
-                        "batchTokens=%s backoffSeconds=%.1f",
-                        attempt,
-                        attempts,
-                        type(exc).__name__,
-                        transient,
-                        batch.token_count,
-                        backoff,
-                    )
-            if backoff is None:
-                raise EmbeddingRetryExhausted(
-                    "embed retry left the lock with neither a result nor a backoff"
-                )
-            if backoff > 0:
-                await asyncio.sleep(backoff)
-        raise EmbeddingRetryExhausted(
-            f"embedding retries exhausted after {attempts} attempt(s) without raising"
-        )
+        async with self._embedding_call_lock:
+            await self._embedding_throttle.acquire(batch.token_count)
+            try:
+                return await self._embed_model.aget_text_embedding_batch(batch.texts)
+            except EmbeddingCircuitOpen:
+                raise
+            except Exception as exc:
+                code = should_quarantine_embedding_error(exc)
+                if code is None and isinstance(exc, InternalServerError):
+                    code = int(getattr(exc, "status_code", 0) or 500)
+                if code is not None:
+                    raise open_embedding_circuit(
+                        texts=batch.texts,
+                        metadata_list=batch_meta,
+                        quarantine_dir=self._settings.embedding_quarantine_dir,
+                        model=self._settings.openai_embedding_model,
+                        token_count=batch.token_count,
+                        status_code=code,
+                        exc_type=type(exc).__name__,
+                        exc=exc,
+                    ) from exc
+                raise
 
     async def embed_query(self, text: str) -> list[float]:
         text = sanitize_embedding_text(text)

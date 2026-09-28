@@ -21,16 +21,6 @@ class EmbeddingBatch:
     token_count: int
 
 
-class EmbeddingRetryExhausted(RuntimeError):
-    """Raised when a bounded transient retry runs out of attempts without a result.
-
-    Was a dead legacy stub from the reverted Phase 0 hot-patch. Live again under the
-    §3a amendment (2026-09-26): LlamaIndexEngine._embed_batch raises it only as a guard on
-    its own control flow -- a real exhausted retry re-raises the underlying OpenAI
-    error or quarantines the batch, so the caller still sees the true diagnostic.
-    """
-
-
 class EmbeddingThrottle:
     """Strict rolling-window token limiter shared by all embedding calls."""
 
