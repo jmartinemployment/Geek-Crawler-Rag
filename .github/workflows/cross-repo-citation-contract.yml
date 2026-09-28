@@ -89,6 +89,63 @@ jobs:
           --filter
           "FullyQualifiedName~RagClientContractTests|FullyQualifiedName~GeekCrawlerE2ETests"
 
+  ingest-limits-agree:
+    name: Ingest limits agree
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Geek-Crawler-v2
+        uses: actions/checkout@v5
+        with:
+          repository: jmartinemployment/Geek-Crawler-v2
+          token: ${{ secrets.CROSS_REPO_TOKEN || github.token }}
+          path: Geek-Crawler-v2
+      - name: Check out GeekBackend
+        uses: actions/checkout@v5
+        with:
+          repository: jmartinemployment/GeekBackend
+          token: ${{ secrets.CROSS_REPO_TOKEN || github.token }}
+          path: GeekBackend
+      # Two numbers in two repositories that have to be equal, and nothing in either build can
+      # see the other. The crawler refuses a batch above its constant; GeekAPI rejects one above
+      # its own with a 400 the crawler treats as fatal. Whichever is lower silently becomes the
+      # real ceiling, and if the crawler's is the higher one every large batch fails at the
+      # boundary.
+      #
+      # This is the only place both repositories exist at once, which is what makes it the place
+      # the check belongs. A unit test in either repo can only pin its own half -- which both now
+      # do -- and two tests passing separately is exactly the state the numbers drift in.
+      - name: Compare crawler and server ingest limits
+        shell: bash
+        run: |
+          set -euo pipefail
+          ts_num() {
+            grep -oE "export const $1 = [0-9_]+" Geek-Crawler-v2/src/storage/ingest-limits.ts \
+              | grep -oE '[0-9_]+$' | tr -d '_'
+          }
+          cs_num() {
+            grep -oE "public const int $1 = [0-9_]+" \
+              GeekBackend/GeekAPI/Services/GeekCrawler/GeekCrawlerIngestLimits.cs \
+              | grep -oE '[0-9_]+$' | tr -d '_'
+          }
+          status=0
+          while read -r ts cs label; do
+            a="$(ts_num "$ts" || true)"
+            b="$(cs_num "$cs" || true)"
+            if [[ -z "$a" || -z "$b" ]]; then
+              echo "::error::could not read $label — crawler='$a' server='$b'. If a constant was renamed, update this check with it."
+              status=1
+            elif [[ "$a" != "$b" ]]; then
+              echo "::error::$label disagree — Geek-Crawler-v2 $ts=$a but GeekBackend $cs=$b. The lower number is the real ceiling; raise both together."
+              status=1
+            else
+              echo "$label agree: $a"
+            fi
+          done <<'PAIRS'
+          MAX_LINKS_PER_BATCH MaxLinksPerBatch links-per-batch
+          MAX_PAGES_PER_BATCH MaxPagesPerBatch pages-per-batch
+          PAIRS
+          exit "$status"
+
   creator-deterministic:
     name: Creator deterministic
     runs-on: ubuntu-latest
