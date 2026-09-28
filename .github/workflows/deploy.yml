@@ -15,12 +15,22 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     steps:
+      # No ssh-keyscan. Every ssh call below passes StrictHostKeyChecking=no, so known_hosts is
+      # never consulted -- the scan could fail the deploy but could not affect it. It did exactly
+      # that on 2026-09-28: keyscan exited non-zero, it was the last command in this block so its
+      # status became the step's, `2>/dev/null` hid the reason, and the deploy died before touching
+      # the box. "Build and push image" was green, so the change looked shipped while the container
+      # still ran the image from two days earlier.
+      #
+      # Removed rather than made non-fatal, because a keyscan nothing reads is read as evidence that
+      # the host key is verified here. It is not: StrictHostKeyChecking=no trusts whatever answers.
+      # Pinning the key in a secret and dropping that flag is the fix if this ever needs to be
+      # verified for real; leaving a scan in place is not that fix and disguises its absence.
       - name: Install SSH key
         run: |
           mkdir -p ~/.ssh
           printf '%s\n' "${{ secrets.HOSTINGER_SSH_KEY }}" > ~/.ssh/hostinger_key
           chmod 600 ~/.ssh/hostinger_key
-          ssh-keyscan -H 2.24.101.90 >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: Deploy
         run: |

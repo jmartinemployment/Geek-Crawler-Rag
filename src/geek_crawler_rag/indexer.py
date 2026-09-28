@@ -195,6 +195,12 @@ class IndexService:
         )
         return status, "dequeued"
 
+    async def intake_pause_reason(self) -> str | None:
+        """The operator's reason if new index jobs are being refused, else None."""
+        if self._status_store is None:
+            return None
+        return await self._status_store.intake_pause_reason()
+
     async def enqueue(self, run_id: str) -> tuple[IndexStatusResponse, bool]:
         """Claim and queue a run. Returns the status and whether THIS call queued it.
 
@@ -206,6 +212,17 @@ class IndexService:
         return await self._enqueue(run_id, trigger="manual", force=True)
 
     async def enqueue_scheduled(self, run_id: str) -> bool:
+        # The scheduler has its own pause, but intake is the wider gate and must hold for
+        # every path. Refusing here rather than in the route means no caller can enqueue
+        # around it -- a gate only one of two entrances honours is not a gate.
+        reason = await self.intake_pause_reason()
+        if reason is not None:
+            logger.warning(
+                "Refused scheduled index enqueue for runId=%s: intake paused (%s)",
+                run_id,
+                reason,
+            )
+            return False
         _, accepted = await self._enqueue(run_id, trigger="scheduled", force=False)
         return accepted
 

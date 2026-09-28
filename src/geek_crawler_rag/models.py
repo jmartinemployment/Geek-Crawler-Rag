@@ -118,6 +118,23 @@ class IndexKillResponse(BaseModel):
     model_config = {"populate_by_name": True, "ser_json_by_alias": True}
 
 
+class IndexIntakePauseRequest(BaseModel):
+    """Why new index jobs are being refused."""
+
+    reason: str = Field(..., min_length=1, max_length=500)
+
+    model_config = {"populate_by_name": True}
+
+
+class IndexIntakeStatus(BaseModel):
+    """Whether new index jobs are being accepted, and why not."""
+
+    paused: bool
+    paused_reason: str | None = Field(None, alias="pausedReason")
+
+    model_config = {"populate_by_name": True, "ser_json_by_alias": True}
+
+
 class SchedulerPauseRequest(BaseModel):
     """Why the scheduler is being paused, so the next operator is not guessing."""
 

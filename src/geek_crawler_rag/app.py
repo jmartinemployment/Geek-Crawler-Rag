@@ -71,6 +71,8 @@ from geek_crawler_rag.models import (
     HostIndexRequest,
     HostIndexResponse,
     HostIndexResult,
+    IndexIntakePauseRequest,
+    IndexIntakeStatus,
     IndexKillRequest,
     IndexKillResponse,
     IndexRunRequest,
@@ -296,6 +298,32 @@ async def start_index(body: IndexRunRequest) -> IndexEnqueueResponse:
     pending/running under a live lease is refused, and that is correct -- but it used to
     look identical to a fresh claim.
     """
+    # The gate, before the claim. A paused intake must leave no job row at all: creating one
+    # and refusing to run it would be a job that never reaches a terminal state, which is
+    # exactly what the job rules forbid.
+    #
+    # 503 rather than a quiet 200: GeekAPI's EnqueueIndexAsync fails closed on a non-2xx --
+    # it returns null and logs -- so the crawl still closes healthy and the loss is visible.
+    # Answering 200 with accepted=false would be read as "queued" by anything that checks
+    # only the status code, and the run would be silently unindexed.
+    intake_paused = await state.indexer.intake_pause_reason()
+    if intake_paused is not None:
+        logger.warning(
+            "Refused index enqueue for runId=%s: intake paused (%s)",
+            body.run_id,
+            intake_paused,
+        )
+        raise HTTPException(
+            # 503 literal: the name `status` is shadowed by this function's local
+            # `status, accepted = ...` unpack, so fastapi.status is unreachable here.
+            status_code=503,
+            detail=(
+                f"Index intake is paused: {intake_paused}. "
+                f"Nothing was queued for runId={body.run_id}. "
+                "Resume with POST /v1/index-intake/resume, then re-post this run."
+            ),
+        )
+
     status, accepted = await state.indexer.enqueue(body.run_id)
     if not accepted:
         logger.warning(
@@ -367,6 +395,69 @@ async def kill_index_job(run_id: str, body: IndexKillRequest) -> IndexKillRespon
             ),
         )
     return IndexKillResponse(outcome=outcome, status=status_row)
+
+
+@app.get(
+    "/v1/index-intake",
+    response_model=IndexIntakeStatus,
+    response_model_by_alias=True,
+    dependencies=[Depends(require_api_key)],
+)
+async def index_intake_status() -> IndexIntakeStatus:
+    """Whether new index jobs are being accepted, and the reason if not."""
+    reason = await state.indexer.intake_pause_reason()
+    return IndexIntakeStatus(paused=reason is not None, paused_reason=reason)
+
+
+@app.post(
+    "/v1/index-intake/pause",
+    response_model=IndexIntakeStatus,
+    response_model_by_alias=True,
+    dependencies=[Depends(require_api_key)],
+)
+async def pause_index_intake(body: IndexIntakePauseRequest) -> IndexIntakeStatus:
+    """Refuse all new index jobs until resumed. The emergency brake.
+
+    This is the one that stops the traffic that actually floods the queue. Every job in
+    flight on 2026-09-28 was ``trigger=manual`` -- GeekAPI posting a run as each crawl
+    committed -- so the scheduler pause, which deliberately leaves ``POST /v1/index``
+    working, would have stopped none of them.
+
+    Paused intake refuses **both** entrances: the manual/GeekAPI route and the scheduler's
+    own enqueue. No job row is created for a refused run, so nothing is left ``pending``
+    with no worker that will ever take it.
+
+    The trade, stated rather than discovered later: GeekAPI's ``EnqueueIndexAsync`` fails
+    closed on the 503, so crawls will keep completing **unindexed** while this is on, each
+    one logging the refusal. Those runs need a deliberate re-post afterwards -- nothing
+    re-drives them, by design.
+
+    It does not stop work already queued or running. That is
+    ``POST /v1/index/{runId}/kill``, one job at a time.
+    """
+    paused, reason = await state.status_store.set_intake_paused(
+        paused=True, reason=body.reason
+    )
+    return IndexIntakeStatus(paused=paused, paused_reason=reason)
+
+
+@app.post(
+    "/v1/index-intake/resume",
+    response_model=IndexIntakeStatus,
+    response_model_by_alias=True,
+    dependencies=[Depends(require_api_key)],
+)
+async def resume_index_intake() -> IndexIntakeStatus:
+    """Accept new index jobs again.
+
+    Runs refused while paused are **not** replayed -- no row was created for them, and
+    nothing re-drives a run this service never accepted. Re-post them deliberately, or use
+    ``scripts/list_unindexed_runs.py`` to find content-ready runs with no job.
+    """
+    paused, reason = await state.status_store.set_intake_paused(
+        paused=False, reason=None
+    )
+    return IndexIntakeStatus(paused=paused, paused_reason=reason)
 
 
 @app.get(

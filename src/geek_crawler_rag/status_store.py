@@ -24,6 +24,8 @@ logger = logging.getLogger(__name__)
 COLLECTION = "rag_index_jobs"
 SCHEDULER_COLLECTION = "rag_index_scheduler"
 SCHEDULER_ID = "index-scheduler"
+INTAKE_COLLECTION = "rag_index_intake"
+INTAKE_ID = "index-intake"
 
 
 def lease_expired_or_missing(now: datetime) -> list[dict[str, Any]]:
@@ -42,6 +44,7 @@ class IndexStatusStore:
     def __init__(self, db: AsyncIOMotorDatabase) -> None:
         self._col = db[COLLECTION]
         self._scheduler = db[SCHEDULER_COLLECTION]
+        self._intake = db[INTAKE_COLLECTION]
 
     async def ensure_indexes(self) -> None:
         await self._col.create_index(
@@ -280,6 +283,53 @@ class IndexStatusStore:
             {"_id": 1},
         )
         return doc is not None
+
+    async def intake_pause_reason(self) -> str | None:
+        """The operator's reason if index intake is paused, else None.
+
+        Separate state from the scheduler pause, because they stop different things and an
+        operator needs both independently. The scheduler pause stops automatic *selection*
+        of runs and deliberately leaves ``POST /v1/index`` working. This stops runs being
+        accepted at all, including the ones GeekAPI posts on every crawl commit -- which is
+        the traffic that actually fills the queue: all fifteen jobs in flight on 2026-09-28
+        were ``trigger=manual`` from GeekAPI, and a scheduler pause would have stopped none
+        of them.
+        """
+        doc = await self._intake.find_one({"_id": INTAKE_ID})
+        if doc is None or not doc.get("paused"):
+            return None
+        return str(doc.get("pausedReason") or "no reason recorded")
+
+    async def set_intake_paused(
+        self, *, paused: bool, reason: str | None
+    ) -> tuple[bool, str | None]:
+        """Pause or resume acceptance of new index jobs. Returns (paused, reason).
+
+        Durable, so a deploy that recreates the container does not lift it -- the same
+        reasoning as the scheduler pause, and the reason it is in Mongo rather than in the
+        process.
+
+        This does not touch a job that is already queued or running; those are stopped one
+        at a time with ``POST /v1/index/{runId}/kill``, or together by stopping the worker.
+        It closes the door, it does not clear the room.
+        """
+        now = datetime.now(timezone.utc)
+        update: dict[str, Any] = {"paused": paused}
+        if paused:
+            update["pausedAtUtc"] = now
+            update["pausedReason"] = reason
+        else:
+            update["pausedAtUtc"] = None
+            update["pausedReason"] = None
+        await self._intake.update_one(
+            {"_id": INTAKE_ID}, {"$set": update}, upsert=True
+        )
+        logger.warning(
+            "Index intake %s by operator%s",
+            "PAUSED" if paused else "RESUMED",
+            f": {reason}" if paused and reason else "",
+        )
+        return paused, (reason if paused else None)
 
     async def scheduler_status(
         self, *, enabled: bool, interval_seconds: int

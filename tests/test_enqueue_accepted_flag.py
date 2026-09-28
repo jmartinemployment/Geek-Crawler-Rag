@@ -10,16 +10,46 @@ These pin the flag so nobody has to infer it again.
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from fastapi import HTTPException
 
 from geek_crawler_rag.app import start_index, state
 from geek_crawler_rag.models import IndexRunRequest, IndexState, IndexStatusResponse
 
 
-def _wire(monkeypatch, status: IndexStatusResponse, accepted: bool) -> MagicMock:
+def _wire(
+    monkeypatch,
+    status: IndexStatusResponse,
+    accepted: bool,
+    *,
+    intake_pause_reason: str | None = None,
+) -> MagicMock:
     indexer = MagicMock()
     indexer.enqueue = AsyncMock(return_value=(status, accepted))
+    # The route checks intake before claiming, so this has to be awaitable here; open by
+    # default, because these cases are about the accepted flag and not about the gate.
+    indexer.intake_pause_reason = AsyncMock(return_value=intake_pause_reason)
     monkeypatch.setattr(state, "indexer", indexer, raising=False)
     return indexer
+
+
+@pytest.mark.asyncio
+async def test_a_paused_intake_refuses_rather_than_reporting_not_accepted(monkeypatch):
+    """503 and no claim -- not a 200 carrying accepted=false.
+
+    A 200 would be read as "queued" by anything checking only the status code, and the run
+    would go silently unindexed. GeekAPI's EnqueueIndexAsync fails closed on a non-2xx, so
+    the refusal is what makes the loss visible.
+    """
+    fresh = IndexStatusResponse(runId="blocked-run", state=IndexState.PENDING, attempt=1)
+    indexer = _wire(monkeypatch, fresh, accepted=True, intake_pause_reason="re-crawling")
+
+    with pytest.raises(HTTPException) as caught:
+        await start_index(IndexRunRequest(runId="blocked-run"))
+
+    assert caught.value.status_code == 503
+    assert "re-crawling" in str(caught.value.detail)
+    # No row created for a run that was never accepted.
+    indexer.enqueue.assert_not_awaited()
 
 
 @pytest.mark.asyncio
