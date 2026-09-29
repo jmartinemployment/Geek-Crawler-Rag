@@ -182,9 +182,24 @@ class QueryService:
             _rerank_document(c["payload"], request, collapse_parents=collapse_parents)
             for c in pool
         ]
-        ranked = await self._reranker.rerank(
+        rerank_outcome = await self._reranker.rerank(
             request.need, rerank_docs, top_n=len(pool)
         )
+        if rerank_outcome.failed:
+            # The reranker was enabled, was asked, and could not answer. Ordering
+            # the pool by position instead would hand back a differently-ranked
+            # answer that looks the same as a ranked one, and rerank order decides
+            # which chunks reach the model as evidence. Same shape as the
+            # retrieval failure above: say error, return nothing.
+            warning = f"Rerank failed for runId={request.run_id}; no ranking produced."
+            logger.error(warning)
+            return QueryResponse(
+                run_id=request.run_id,
+                chunks=[],
+                warning=warning,
+                retrieval="error",
+            )
+        ranked = rerank_outcome.order
         selected = _select_ranked_candidates(
             pool,
             ranked,
@@ -232,7 +247,7 @@ class QueryService:
                     ],
                     dense_score=_as_float(cand.get("dense_score")),
                     rerank_score=float(rerank_score)
-                    if self._reranker.enabled
+                    if rerank_outcome.ranked
                     else None,
                     lexical_score=None,
                     source_digest=payload.get("sourceDigest"),
@@ -246,9 +261,11 @@ class QueryService:
                 )
             )
 
+        # Keyed on what this call produced, not on whether a reranker is
+        # configured. enabled says a reranker exists; ranked says it ran.
         retrieval = (
             "llamaindex-hybrid+rerank"
-            if self._reranker.enabled
+            if rerank_outcome.ranked
             else "llamaindex-hybrid"
         )
         warning = None

@@ -3,11 +3,40 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class RerankOutcome:
+    """What one rerank call produced, and whether a reranker produced it.
+
+    order is best-first (original_index, score).
+
+    ranked separates two things the caller previously could not tell apart.
+    Scores from Cohere and positional scores standing in for them are both
+    floats in the same shape, so a caller reading order alone cannot know
+    whether relevance was measured or assumed.
+
+    failed says the reranker was asked and could not answer. That is distinct
+    from being switched off: a disabled reranker is a configured choice and
+    positional order is its documented behaviour, while a failed one broke a
+    promise the pipeline made, and rule 2 does not permit papering over that
+    with invented scores.
+    """
+
+    order: list[tuple[int, float]]
+    ranked: bool
+    failed: bool
+
+
+def _positional(documents: list[str], top_n: int) -> list[tuple[int, float]]:
+    """Input order with descending scores. Only legitimate when disabled."""
+    return [(i, float(len(documents) - i)) for i in range(top_n)]
 
 
 class Reranker:
@@ -34,16 +63,22 @@ class Reranker:
         documents: list[str],
         *,
         top_n: int,
-    ) -> list[tuple[int, float]]:
-        """Return (original_index, relevance_score) sorted best-first.
+    ) -> RerankOutcome:
+        """Rank documents against the query, saying what actually happened.
 
-        On disable/failure, returns identity order with descending synthetic scores.
+        Disabled returns positional order marked unranked. A failure returns no
+        order at all and is marked failed, because the alternative - returning
+        positional scores that look like measured ones - changes which chunks
+        reach the model as grounding evidence with nothing in the answer saying
+        the ranking was never performed.
         """
         if not documents:
-            return []
+            return RerankOutcome(order=[], ranked=False, failed=False)
         top_n = max(1, min(top_n, len(documents)))
         if not self._enabled:
-            return [(i, float(len(documents) - i)) for i in range(top_n)]
+            return RerankOutcome(
+                order=_positional(documents, top_n), ranked=False, failed=False
+            )
 
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
@@ -63,8 +98,8 @@ class Reranker:
                 resp.raise_for_status()
                 data: dict[str, Any] = resp.json()
         except Exception:
-            logger.exception("Cohere rerank failed; using dense/hybrid order")
-            return [(i, float(len(documents) - i)) for i in range(top_n)]
+            logger.exception("Cohere rerank failed for query of %d documents", len(documents))
+            return RerankOutcome(order=[], ranked=False, failed=True)
 
         results = data.get("results") or []
         out: list[tuple[int, float]] = []
@@ -76,5 +111,10 @@ class Reranker:
                 continue
             out.append((idx, score))
         if not out:
-            return [(i, float(len(documents) - i)) for i in range(top_n)]
-        return out[:top_n]
+            # The call succeeded and returned nothing usable. Same class of
+            # outcome as a transport failure: asked, and no ranking came back.
+            logger.error(
+                "Cohere rerank returned %d result row(s), none parseable", len(results)
+            )
+            return RerankOutcome(order=[], ranked=False, failed=True)
+        return RerankOutcome(order=out[:top_n], ranked=True, failed=False)

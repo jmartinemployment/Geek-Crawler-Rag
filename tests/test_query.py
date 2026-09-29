@@ -16,7 +16,7 @@ from geek_crawler_rag.query import (
     _select_ranked_candidates,
     _should_collapse_parents,
 )
-from geek_crawler_rag.rerank import Reranker
+from geek_crawler_rag.rerank import Reranker, RerankOutcome
 
 
 def _child_node(
@@ -208,10 +208,14 @@ async def test_query_hybrid_collapses_sibling_parents_and_backfills():
 
     reranker = MagicMock()
     reranker.enabled = True
+    # ranked=True: this stub stands in for a reranker that answered. The order it
+    # returns is positional only because the test asserts pool size, not ordering.
     reranker.rerank = AsyncMock(
-        side_effect=lambda _need, documents, top_n: [
-            (i, float(len(documents) - i)) for i in range(top_n)
-        ]
+        side_effect=lambda _need, documents, top_n: RerankOutcome(
+            order=[(i, float(len(documents) - i)) for i in range(top_n)],
+            ranked=True,
+            failed=False,
+        )
     )
 
     settings = Settings(openai_api_key="test", hybrid_dense_limit=10, rerank_pool_size=10)
@@ -298,9 +302,11 @@ async def test_query_hybrid_reranks_full_pool_even_when_topk_smaller():
     reranker = MagicMock()
     reranker.enabled = True
     reranker.rerank = AsyncMock(
-        side_effect=lambda _need, documents, top_n: [
-            (i, float(len(documents) - i)) for i in range(top_n)
-        ]
+        side_effect=lambda _need, documents, top_n: RerankOutcome(
+            order=[(i, float(len(documents) - i)) for i in range(top_n)],
+            ranked=True,
+            failed=False,
+        )
     )
 
     settings = Settings(openai_api_key="test", hybrid_dense_limit=10, rerank_pool_size=10)
