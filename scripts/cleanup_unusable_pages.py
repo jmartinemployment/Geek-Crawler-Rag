@@ -44,6 +44,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from pymongo import MongoClient  # noqa: E402
+from pymongo.errors import OperationFailure  # noqa: E402
 
 from geek_crawler_rag.unusable import classify_from_mongo_doc  # noqa: E402
 
@@ -163,6 +164,98 @@ def _delete_ids(
         counts.deleted_pages += n
 
 
+def _run_fast_steps(
+    pages,
+    links,
+    fast_steps: list[tuple[str, dict[str, Any], str | None]],
+    *,
+    write: bool,
+    limit: int | None,
+    batch_size: int,
+    counts: CleanupCounts,
+    delete_links: bool,
+) -> None:
+    """The field-based delete steps, and the dry run that sizes them.
+
+    Extracted from cleanup() so it can be tested without a MongoClient. The two defects
+    below were both invisible for the same reason: reaching this loop required a live
+    database, so nothing exercised it.
+    """
+    if not write:
+        # A dry run COUNTS. It does not walk one batch and extrapolate.
+        #
+        # The previous shape ran the same loop as --write and broke after the first batch,
+        # while _delete_ids had already added that batch to deleted_pages. So at
+        # batch_size 500 the report read deleted_pages=500 per step whether the true figure
+        # was 500 or 50,000 -- the number an operator sizes a mass delete from was silently
+        # capped at the batch size.
+        #
+        # It also could not reach the last step. The outer loop breaks once
+        # deleted_pages >= limit, and this script's own documented example is
+        # `--dry-run --limit 500` with batch_size defaulting to 500, so the first step filled
+        # the budget and http_error never ran -- printing no reason_http_error line at all,
+        # which reads as "there are none".
+        for label, q, _hint in fast_steps:
+            matched = pages.count_documents(q)
+            counts.scanned += matched
+            counts.by_reason[label] += matched
+            counts.deleted_pages += matched
+            print(f"would-delete fast label={label} matched={matched}", flush=True)
+
+        # Stated rather than left to be discovered: the steps overlap, so a row carrying
+        # both a FailureReason and a 403 is counted in two of them. The per-label figures
+        # are exact; this is the true row count.
+        distinct = pages.count_documents({"$or": [q for _label, q, _h in fast_steps]})
+        print(
+            f"would-delete fast DISTINCT rows across all steps={distinct} "
+            "(the per-label numbers above overlap)",
+            flush=True,
+        )
+        return
+
+    for label, q, hint in fast_steps:
+        if limit is not None and counts.deleted_pages >= limit:
+            break
+        while True:
+            if limit is not None and counts.deleted_pages >= limit:
+                break
+            take = batch_size
+            if limit is not None:
+                take = min(batch_size, limit - counts.deleted_pages)
+            cursor = pages.find(q, {"_id": 1, "Id": 1}).limit(take)
+            if hint:
+                cursor = cursor.hint(hint)
+            # The hint is applied above but validated HERE. cursor.hint() only sets an
+            # option on a local pymongo Cursor and never contacts the server, so the
+            # try/except that used to wrap it could not fire. Mongo raises OperationFailure
+            # on first iteration, for an index that does not exist -- and neither
+            # FailureReason_1 nor RobotsAllowed_1 is created by any code in any repo, so on a
+            # database where they were not made by hand this killed the whole run on step one
+            # while the author's WARN message was unreachable.
+            try:
+                batch = list(cursor)
+            except OperationFailure as exc:
+                print(
+                    f"WARN hint {hint} unusable ({exc}); retrying {label} unhinted",
+                    flush=True,
+                )
+                batch = list(pages.find(q, {"_id": 1, "Id": 1}).limit(take))
+            if not batch:
+                break
+            for _doc in batch:
+                counts.scanned += 1
+                counts.by_reason[label] += 1
+            _delete_ids(
+                pages, links, batch, write=write, counts=counts, delete_links=delete_links
+            )
+            print(
+                f"progress fast label={label} scanned={counts.scanned} "
+                f"deleted_pages={counts.deleted_pages} deleted_links={counts.deleted_links} "
+                f"reasons={dict(counts.by_reason)}",
+                flush=True,
+            )
+
+
 def cleanup(
     *,
     mongo_url: str,
@@ -235,38 +328,16 @@ def cleanup(
             None,
         ),
     ]
-    for label, q, hint in fast_steps:
-        if limit is not None and counts.deleted_pages >= limit:
-            break
-        while True:
-            if limit is not None and counts.deleted_pages >= limit:
-                break
-            take = batch_size
-            if limit is not None:
-                take = min(batch_size, limit - counts.deleted_pages)
-            cursor = pages.find(q, {"_id": 1, "Id": 1}).limit(take)
-            if hint:
-                try:
-                    cursor = cursor.hint(hint)
-                except Exception as exc:
-                    print(f"WARN hint {hint} skipped: {exc}", flush=True)
-            batch = list(cursor)
-            if not batch:
-                break
-            for doc in batch:
-                counts.scanned += 1
-                counts.by_reason[label] += 1
-            _delete_ids(
-                pages, links, batch, write=write, counts=counts, delete_links=delete_links
-            )
-            print(
-                f"progress fast label={label} scanned={counts.scanned} "
-                f"deleted_pages={counts.deleted_pages} deleted_links={counts.deleted_links} "
-                f"reasons={dict(counts.by_reason)}",
-                flush=True,
-            )
-            if not write:
-                break
+    _run_fast_steps(
+        pages,
+        links,
+        fast_steps,
+        write=write,
+        limit=limit,
+        batch_size=batch_size,
+        counts=counts,
+        delete_links=delete_links,
+    )
 
     # --- Locale scan over the remaining pages ---
     if not skip_locale_scan and (limit is None or counts.deleted_pages < limit):
