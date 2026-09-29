@@ -15,7 +15,13 @@ class Settings(BaseSettings):
     qdrant_api_key: str | None = None
     qdrant_collection: str = "geek_crawler_chunks"
     qdrant_ad_templates_collection: str = "geek_ad_templates"
-    qdrant_upsert_delay_seconds: float = 0.5
+    # Zero. This fired after every flush, and at batch 64 on a large run that is
+    # tens of minutes of pure sleeping for nothing measured: the VPS profile put
+    # the api container at 86% of ONE core against a 3.0-core limit with Qdrant
+    # at 0.17%, so Qdrant was never the thing needing to be slowed down. The
+    # guard in indexer.py stays, so this remains an escape hatch if Qdrant ever
+    # does need backpressure - it just is not paid by default any more.
+    qdrant_upsert_delay_seconds: float = 0.0
 
     # Hybrid retrieval over the named sparse vector.
     #
@@ -70,7 +76,16 @@ class Settings(BaseSettings):
     parent_chunk_overlap_tokens: int = 80
 
     page_batch_size: int = 25
-    embed_batch_size: int = 32
+    # 64, and the same 64 in deploy/hostinger-compose.yml. This was 32 here, 56 in
+    # compose and 64 in the README - three answers to one question. 64 is the one
+    # the container is sized for ("EMBED_BATCH_SIZE=64 peaks near ~3.9 GiB"), and
+    # 128 was OOM-killed, so that is the ceiling rather than a target.
+    #
+    # It drives three things at once: the indexer's flush threshold, the OpenAI
+    # batch cap, and the Qdrant batch. Every per-flush cost - a Qdrant retrieve, a
+    # collection_exists round trip, the upsert, a Mongo write - is paid half as
+    # often at 64 as at 32.
+    embed_batch_size: int = 64
 
     # Durable smallest-first indexing scheduler.
     index_scheduler_enabled: bool = True

@@ -281,7 +281,17 @@ class IndexService:
             logger.info("Enqueued index job for runId=%s trigger=%s", run_id, trigger)
             return status, True
 
-    async def _persist(self, status: IndexStatusResponse) -> bool:
+    async def _persist(
+        self, status: IndexStatusResponse, *, notify: bool = True
+    ) -> bool:
+        """Write the status, and optionally push it to GeekAPI.
+
+        notify=False writes the durable record without the webhook. Mid-run
+        flushes use it: the POST is ~500ms, it fired on every flush, and the
+        status it carries is a progress counter rather than a state change. The
+        record in Mongo is still current either way, so nothing is lost but the
+        push cadence. Every terminal state notifies.
+        """
         if self._status_store is not None:
             try:
                 saved = await self._status_store.save(status, owner=self.owner)
@@ -297,7 +307,7 @@ class IndexService:
                     "Failed to persist index status for runId=%s", status.run_id
                 )
                 return False
-        if self._webhook is not None:
+        if notify and self._webhook is not None:
             await self._webhook.notify(status)
         return True
 
@@ -619,6 +629,16 @@ class IndexService:
         pending: list[TextNode] = []
         entity_cache: dict[str, object] = {}
 
+        # Per-stage wall clock. There were no timings anywhere in the index path,
+        # so "where do the minutes go" could only be guessed at. These are cheap
+        # counters and one log line, and they are what makes a change to this
+        # pipeline measurable instead of asserted.
+        stage_chunk_seconds = 0.0
+        stage_embed_seconds = 0.0
+        stage_persist_seconds = 0.0
+        flushes = 0
+        run_started = time.perf_counter()
+
         try:
             async for pages in self._mongo.iter_pages(
                 run_id, batch_size=self._settings.page_batch_size
@@ -645,6 +665,7 @@ class IndexService:
                             host=host_key, crawl_type=run.crawl_type
                         )
                     entity = entity_cache[host_key]
+                    _chunk_started = time.perf_counter()
                     nodes, skip = page_to_nodes(
                         page=page,
                         run_id=run_id,
@@ -652,6 +673,7 @@ class IndexService:
                         entity=entity,  # type: ignore[arg-type]
                         settings=self._settings,
                     )
+                    stage_chunk_seconds += time.perf_counter() - _chunk_started
                     if skip == "empty":
                         self._skip_unusable(page, "extract_empty", status)
                         continue
@@ -663,7 +685,10 @@ class IndexService:
                     pending.extend(nodes)
                     if len(pending) >= self._settings.embed_batch_size:
                         self._raise_if_killed(run_id)
+                        _t = time.perf_counter()
                         n = await self._llama.embed_and_upsert(pending)
+                        stage_embed_seconds += time.perf_counter() - _t
+                        flushes += 1
                         status.chunks_upserted += n
                         self._sync_embedding_stats(status, embedding_baseline)
                         pending = []
@@ -676,7 +701,11 @@ class IndexService:
                         # it was not a duplicate is one where _persist had just
                         # refused the write because the lease was lost, and a
                         # status the store rejected is not one to push onward.
-                        await self._persist(status)
+                        _t = time.perf_counter()
+                        # notify=False: the webhook is ~500ms and this status is a
+                        # counter, not a transition. Mongo still has it.
+                        await self._persist(status, notify=False)
+                        stage_persist_seconds += time.perf_counter() - _t
                         if self._settings.qdrant_upsert_delay_seconds > 0:
                             await asyncio.sleep(
                                 self._settings.qdrant_upsert_delay_seconds
@@ -746,6 +775,17 @@ class IndexService:
         status.state = IndexState.COMPLETE
         self._sync_embedding_stats(status, embedding_baseline)
         status.finished_at_utc = utc_now()
+        logger.info(
+            "Index timing runId=%s totalSeconds=%.1f chunkSeconds=%.1f "
+            "embedSeconds=%.1f persistSeconds=%.1f flushes=%s batchSize=%s",
+            run_id,
+            time.perf_counter() - run_started,
+            stage_chunk_seconds,
+            stage_embed_seconds,
+            stage_persist_seconds,
+            flushes,
+            self._settings.embed_batch_size,
+        )
         logger.info(
             "Index complete for runId=%s chunksUpserted=%s pagesEnglish=%s "
             "skippedUnusable=%s skippedLang=%s skippedEmpty=%s",

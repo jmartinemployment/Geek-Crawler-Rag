@@ -63,6 +63,14 @@ def page_to_nodes(
     if not units:
         return [], "empty"
 
+    # Once per page, not once per node. This hashes the whole page body, and it
+    # used to sit inside _node(), which the loop below calls for every chunk -- so
+    # a page producing fifty chunks hashed the entire page fifty times, on the
+    # event loop, for a value that is per page by definition.
+    source_digest = hashlib.sha256(
+        (page.content_html or page.html or "").encode("utf-8")
+    ).hexdigest()
+
     nodes: list[TextNode] = []
     seen_parents: set[int] = set()
     crawl_norm = (crawl_type or "").strip().lower()
@@ -89,6 +97,7 @@ def page_to_nodes(
             nodes.append(
                 _node(
                     run_id=run_id,
+                    source_digest=source_digest,
                     crawl_type=crawl_type,
                     host=host,
                     page=page,
@@ -118,6 +127,7 @@ def page_to_nodes(
         nodes.append(
             _node(
                 run_id=run_id,
+                source_digest=source_digest,
                 crawl_type=crawl_type,
                 host=host,
                 page=page,
@@ -150,6 +160,7 @@ def page_to_nodes(
 def _node(
     *,
     run_id: str,
+    source_digest: str,
     crawl_type: str,
     host: str,
     page: CrawlPage,
@@ -203,9 +214,7 @@ def _node(
         "isEvergreen": evergreen,
         "lastCrawled": page.crawled_at,
         "anchors": anchors,
-        "sourceDigest": hashlib.sha256(
-            (page.content_html or page.html or "").encode("utf-8")
-        ).hexdigest(),
+        "sourceDigest": source_digest,
         "sourceRights": resolve_source_rights(
             host=host,
             consented_hosts=tuple(
