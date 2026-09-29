@@ -75,7 +75,7 @@ jobs:
           dotnet test GeekBackend.Tests/GeekBackend.Tests.csproj
           --configuration Release
           --filter
-          "FullyQualifiedName~HttpGeekCrawlerRagClientTests|FullyQualifiedName~GccV2GeekCrawlerResearchResolverTests"
+          "FullyQualifiedName~HttpGeekCrawlerRagClientTests|FullyQualifiedName~GccV2GeekCrawlerResearchResolverTests|FullyQualifiedName~RagIndexStatusWebhookContractTests"
       - name: Run deterministic cross-service protocol tests
         working-directory: GeekBackend
         run: >-
@@ -140,6 +140,50 @@ jobs:
           MAX_PAGES_PER_BATCH MaxPagesPerBatch pages-per-batch
           PAIRS
           exit "$status"
+
+  webhook-contract-agrees:
+    name: Index-status webhook contract agrees
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Geek-Crawler-Rag
+        uses: actions/checkout@v5
+        with:
+          path: Geek-Crawler-Rag
+      - name: Check out GeekBackend
+        uses: actions/checkout@v5
+        with:
+          repository: jmartinemployment/GeekBackend
+          token: ${{ secrets.CROSS_REPO_TOKEN || github.token }}
+          path: GeekBackend
+      # The same shape of problem as ingest-limits-agree, and here for the same reason. The RAG
+      # posts index status to GeekAPI, which binds it by name over JSON -- so a field the sender
+      # adds is bound by nothing and System.Text.Json discards it without an error, a log, or a
+      # default worth reading. Five fields sat in that state until 2026-09-29, and the expensive
+      # one was pagesSkippedUnusable: GeekAPI bound both benign skip reasons and dropped the one
+      # that says the crawl stored pages it should not have, so a corpus gutted by 4xx error
+      # bodies reported identically to a clean one.
+      #
+      # Each repo has a unit test pinning its own half against its own copy of the contract --
+      # tests/test_index_status_webhook_contract.py and RagIndexStatusWebhookContractTests.cs.
+      # Two tests passing separately against two files is exactly the state those files drift in,
+      # so the copies have to be compared somewhere both repos exist. This is that place.
+      - name: Diff the two copies of the wire contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          a=Geek-Crawler-Rag/contracts/rag-index-status/webhook.v1.json
+          b=GeekBackend/contracts/rag-index-status/webhook.v1.json
+          for f in "$a" "$b"; do
+            if [[ ! -f "$f" ]]; then
+              echo "::error::$f is missing. Both repositories must commit the index-status webhook contract; the unit test in each repo reads its own copy and cannot see the other."
+              exit 1
+            fi
+          done
+          if ! diff -u "$a" "$b"; then
+            echo "::error::The two copies of the index-status webhook contract differ. Geek-Crawler-Rag is the sender and owns this file; copy it to GeekBackend unchanged, then bind any new field in RagIndexStatusWebhookRequest."
+            exit 1
+          fi
+          echo "Contract copies are byte-identical."
 
   creator-deterministic:
     name: Creator deterministic
