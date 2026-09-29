@@ -59,7 +59,10 @@ def _node_meta(node: TextNode) -> dict[str, Any]:
 class LlamaIndexEngine:
     """Ingest/query via LlamaIndex; FastAPI keeps HTTP contracts."""
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, *, vector_cache: Any = None) -> None:
+        # Optional: set by app startup once Mongo is up. None means no
+        # cross-run reuse, which is exactly the behaviour before it existed.
+        self._vector_cache = vector_cache
         if not settings.openai_api_key:
             raise ValueError("OPENAI_API_KEY is required for LlamaIndex embeddings")
         self._settings = settings
@@ -229,14 +232,75 @@ class LlamaIndexEngine:
                 )
 
         if embeddings is None:
-            embeddings = await self.embed_texts(
-                texts,
-                metadata_list=[_node_meta(n) for n in keep],
-            )
+            # The branch is here rather than inside the helper so the no-cache
+            # path is the same call it always was.
+            if self._vector_cache is None:
+                embeddings = await self.embed_texts(
+                    texts, metadata_list=[_node_meta(n) for n in keep]
+                )
+            else:
+                embeddings = await self._embed_with_cache(texts, keep)
         for node, emb in zip(keep, embeddings, strict=True):
             node.embedding = emb
         await self._vector_store.async_add(keep)
         return len(keep)
+
+    def set_vector_cache(self, cache: Any) -> None:
+        """Attach the cross-run cache. Separate from the constructor because the
+        engine is built before Mongo is known to be reachable."""
+        self._vector_cache = cache
+
+    async def _embed_with_cache(
+        self, texts: list[str], keep: list[TextNode]
+    ) -> list[list[float]]:
+        """Embed only what is not already known, from any previous run.
+
+        The per-flush dedupe above collapses repeats inside one batch. This
+        reaches across batches, pages and runs: a re-crawl of a site produces
+        chunks byte-identical to the last crawl's, and those were embedded again
+        every time because the point id carries the runId.
+
+        Order is preserved by construction - cached and freshly embedded vectors
+        are recombined against the original `texts` list, so a node never
+        receives another node's vector.
+        """
+        cache = self._vector_cache
+        cached = await cache.get_many(texts)
+        missing = [t for t in dict.fromkeys(texts) if t not in cached]
+
+        fresh: dict[str, list[float]] = {}
+        if missing:
+            meta_by_text: dict[str, dict[str, Any] | None] = {}
+            for node, text in zip(keep, texts, strict=True):
+                meta_by_text.setdefault(text, _node_meta(node))
+            vectors = await self.embed_texts(
+                missing, metadata_list=[meta_by_text.get(t) for t in missing]
+            )
+            # embed_texts sanitizes and may drop empties, so a length mismatch
+            # means the mapping cannot be trusted. Fall back rather than risk
+            # pairing a vector with the wrong node.
+            if len(vectors) != len(missing):
+                logger.warning(
+                    "vector_cache_length_mismatch got=%s want=%s; embedding uncached",
+                    len(vectors),
+                    len(missing),
+                )
+                return await self.embed_texts(
+                    texts, metadata_list=[_node_meta(n) for n in keep]
+                )
+            fresh = dict(zip(missing, vectors, strict=True))
+            await cache.put_many(fresh)
+
+        if cached:
+            logger.info(
+                "vector_cache_reused=%s embedded=%s of=%s",
+                len(cached),
+                len(missing),
+                len(dict.fromkeys(texts)),
+            )
+
+        combined = {**cached, **fresh}
+        return [combined[t] for t in texts]
 
     async def embed_texts(
         self,

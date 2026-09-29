@@ -90,6 +90,7 @@ from geek_crawler_rag.qdrant_store import QdrantStore
 from geek_crawler_rag.query import QueryService
 from geek_crawler_rag.rerank import Reranker
 from geek_crawler_rag.scheduler import IndexScheduler
+from geek_crawler_rag.vector_cache import VectorCache
 from geek_crawler_rag.status_store import IndexStatusStore
 from geek_crawler_rag.webhook import IndexStatusWebhook
 
@@ -139,6 +140,15 @@ async def lifespan(_app: FastAPI):
         vector_size=settings.embedding_dimensions,
     )
     state.llama = LlamaIndexEngine(settings)
+    # Cross-run embedding reuse. Wired after Mongo because the cache lives
+    # there; absent it, indexing behaves exactly as it did before.
+    vector_cache = VectorCache(
+        state.mongo.db,
+        model=settings.openai_embedding_model,
+        dimensions=settings.embedding_dimensions,
+    )
+    await vector_cache.ensure_indexes()
+    state.llama.set_vector_cache(vector_cache)
     status_store = IndexStatusStore(state.mongo.db)
     state.status_store = status_store
     state.webhook = IndexStatusWebhook(

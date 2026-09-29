@@ -63,6 +63,9 @@ async def test_embed_and_upsert_skips_already_committed(monkeypatch):
     engine._settings = MagicMock(qdrant_collection="coll")
     engine._aclient = MagicMock()
     engine._vector_store = MagicMock()
+    # No cross-run cache in these tests: they assert the resume skip and the
+    # per-flush dedupe, and a MagicMock here would be awaited as if it were one.
+    engine._vector_cache = None
     engine._vector_store.async_add = AsyncMock()
     embedded: list[list[str]] = []
 
@@ -99,6 +102,9 @@ async def test_embed_and_upsert_no_openai_call_when_all_present(monkeypatch):
     engine._settings = MagicMock(qdrant_collection="coll")
     engine._aclient = MagicMock()
     engine._vector_store = MagicMock()
+    # No cross-run cache in these tests: they assert the resume skip and the
+    # per-flush dedupe, and a MagicMock here would be awaited as if it were one.
+    engine._vector_cache = None
     engine._vector_store.async_add = AsyncMock()
     engine.embed_texts = AsyncMock(side_effect=AssertionError("must not embed"))
 
@@ -132,6 +138,9 @@ async def test_embed_cache_sends_each_distinct_string_once(monkeypatch):
     engine._settings = MagicMock(qdrant_collection="coll")
     engine._aclient = MagicMock()
     engine._vector_store = MagicMock()
+    # No cross-run cache in these tests: they assert the resume skip and the
+    # per-flush dedupe, and a MagicMock here would be awaited as if it were one.
+    engine._vector_cache = None
     engine._vector_store.async_add = AsyncMock()
     engine.embed_texts = fake_embed_texts
 
@@ -170,6 +179,9 @@ async def test_embed_cache_falls_back_on_length_mismatch(monkeypatch):
     engine._settings = MagicMock(qdrant_collection="coll")
     engine._aclient = MagicMock()
     engine._vector_store = MagicMock()
+    # No cross-run cache in these tests: they assert the resume skip and the
+    # per-flush dedupe, and a MagicMock here would be awaited as if it were one.
+    engine._vector_cache = None
     engine._vector_store.async_add = AsyncMock()
     engine.embed_texts = flaky_embed_texts
 
