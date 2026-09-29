@@ -236,9 +236,25 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--db", default="geek_crawler")
     parser.add_argument("--run-id", default=None)
     parser.add_argument("--limit", type=int, default=None)
+    # Clamped below 1 rather than accepted: pymongo treats Cursor.limit(0) as NO limit
+    # ("A limit of 0 is equivalent to no limit"), so --batch-size 0 turned a bounded batch
+    # into the entire matching set and bypassed --limit with it. A negative value reduced
+    # every pass to one row instead.
     parser.add_argument("--batch-size", type=int, default=500)
-    parser.add_argument("--write", action="store_true")
-    parser.add_argument("--dry-run", action="store_true")
+    # --write and --dry-run are mutually exclusive, and that is enforced rather than
+    # documented. --dry-run was declared here and read nowhere: `write` came from
+    # args.write alone, so `--write --dry-run` deleted. On the one script in this repo that
+    # issues delete_many against crawl_pages -- and whose docstring is a memorial to 5,274
+    # pages lost to a filter nobody expected -- the guard that exists to prevent exactly
+    # that had no code behind it. argparse now refuses the combination outright, so the
+    # failure is a usage error before any connection is opened.
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument("--write", action="store_true")
+    mode_group.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Report only, delete nothing. The default; cannot be combined with --write.",
+    )
     parser.add_argument(
         "--skip-locale-scan",
         action="store_true",
@@ -250,7 +266,16 @@ def main(argv: list[str] | None = None) -> int:
         help="Delete pages only (faster). Orphan crawl_links can be purged later.",
     )
     args = parser.parse_args(argv)
-    write = bool(args.write)
+    if args.batch_size < 1:
+        parser.error(
+            f"--batch-size must be at least 1 (got {args.batch_size}); "
+            "0 means 'no limit' to pymongo and would submit the whole matching set as one "
+            "delete"
+        )
+    # args.dry_run is read here. It cannot be true alongside --write, so this only ever
+    # reinforces the default -- but it is read, so a future reader can see that it does
+    # something, and a regression that stops honouring it fails the test that pins it.
+    write = bool(args.write) and not args.dry_run
     mode = "WRITE" if write else "DRY-RUN"
     print(
         f"cleanup_unusable_pages mode={mode} run_id={args.run_id or '*'} "
