@@ -57,6 +57,46 @@ def test_batch_size_below_one_is_refused(bad):
     assert exc.value.code == 2
 
 
+@pytest.mark.parametrize("bad", ["0", "-1", "-500"])
+def test_limit_below_one_is_refused(bad):
+    """`--limit 0` was accepted, did nothing, and reported itself as unlimited.
+
+    Every budget check reads `counts.budget_used >= limit`, which is true at 0 before any
+    step runs -- so the run deleted nothing. Then the banner printed `limit=*`, because
+    `args.limit or '*'` renders 0 as the unlimited marker. An operator who typed 0 by mistake
+    saw the line that means "no limit, delete everything matching" above a run that touched
+    nothing, and the two readings are opposite.
+    """
+    with pytest.raises(SystemExit) as exc:
+        main(["--write", "--limit", bad])
+    assert exc.value.code == 2
+
+
+def test_a_real_limit_is_printed_as_itself(monkeypatch, capsys):
+    monkeypatch.setattr(_module, "cleanup", lambda **kw: _module.CleanupCounts())
+    assert main(["--dry-run", "--limit", "500"]) == 0
+    assert "limit=500" in capsys.readouterr().out
+
+
+def test_no_limit_is_printed_as_the_unlimited_marker(monkeypatch, capsys):
+    monkeypatch.setattr(_module, "cleanup", lambda **kw: _module.CleanupCounts())
+    assert main(["--dry-run"]) == 0
+    assert "limit=*" in capsys.readouterr().out
+
+
+def test_limit_of_one_reaches_cleanup(monkeypatch):
+    # The boundary, as with --batch-size: 1 is a legitimate "delete exactly one row".
+    seen: dict[str, object] = {}
+
+    def fake_cleanup(**kwargs):
+        seen.update(kwargs)
+        return _module.CleanupCounts()
+
+    monkeypatch.setattr(_module, "cleanup", fake_cleanup)
+    assert main(["--write", "--limit", "1"]) == 0
+    assert seen["limit"] == 1
+
+
 def test_batch_size_of_one_is_allowed_past_parsing(monkeypatch):
     # 1 is the boundary and must not be rejected. cleanup() is stubbed so this proves the
     # parse succeeded without opening a connection -- the earlier version of this test let

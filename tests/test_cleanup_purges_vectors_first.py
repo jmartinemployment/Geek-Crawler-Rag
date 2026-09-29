@@ -126,7 +126,11 @@ def test_dry_run_purges_nothing(monkeypatch):
 
     assert log == []
     assert counts.purged_vector_pages == 0
-    assert counts.deleted_pages == 3  # counted as would-delete, nothing removed
+    # would_delete, not deleted_pages. A dry run removes nothing, so the key that means
+    # "removed" must stay at 0 -- one label carrying both meanings is what an operator had to
+    # interpret before a mass delete.
+    assert counts.would_delete == 3
+    assert counts.deleted_pages == 0
 
 
 def test_purged_count_is_reported(monkeypatch):
