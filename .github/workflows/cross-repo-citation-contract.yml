@@ -60,17 +60,12 @@ jobs:
           repository: jmartinemployment/GeekBackend
           token: ${{ secrets.CROSS_REPO_TOKEN || github.token }}
           path: GeekBackend
-      - name: Check out pinned Geek-SEO dependency
-        uses: actions/checkout@v5
-        with:
-          repository: jmartinemployment/Geek-SEO
-          token: ${{ secrets.CROSS_REPO_TOKEN || github.token }}
-          path: Geek-SEO
-      - name: Select Backend-pinned Geek-SEO revision
-        run: |
-          revision="$(cat GeekBackend/Geek-SEO.commit)"
-          git -C Geek-SEO fetch origin "$revision" --depth=1
-          git -C Geek-SEO checkout --detach "$revision"
+      # No Geek-SEO checkout. GeekBackend deleted the Geek-SEO layer and its
+      # Geek-SEO.commit pin in 69de427 ("the Geek-SEO layer is gone for good",
+      # 2026-09-29), so `cat GeekBackend/Geek-SEO.commit` fails and took this job
+      # with it before a single test ran. GeekBackend has no ProjectReference
+      # outside its own repo -- it builds and tests standalone -- so the checkout
+      # was only ever feeding that pin.
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.x"
