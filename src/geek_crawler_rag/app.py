@@ -87,6 +87,7 @@ from geek_crawler_rag.models import (
 )
 from geek_crawler_rag.mongo import MongoCorpus
 from geek_crawler_rag.qdrant_store import QdrantStore
+from geek_crawler_rag.unusable import classify_unusable_page
 from geek_crawler_rag.query import QueryService
 from geek_crawler_rag.rerank import Reranker
 from geek_crawler_rag.scheduler import IndexScheduler
@@ -596,13 +597,55 @@ async def get_page_text(
     page_id: str,
     run_id: Annotated[str, ApiQuery(alias="runId", min_length=1)],
 ) -> PageTextResponse:
-    """Return the page's plaintext projection for citation reads (404 if empty)."""
+    """Return the page's plaintext projection for citation reads (404 if empty or unusable).
+
+    This is the read side of citation verification: GeekAPI's
+    `GccV2PartnerExtractionVerify.VerifyAgainstLibraryAsync` fetches text here and matches a
+    model's quote against it, then stamps the citation verified.
+
+    So an unusable page must 404 here, not just be excluded at index time. Until 2026-09-29
+    the only checks were "does the page exist, does the run match, is the text non-empty" --
+    and a 4xx error page passes all three. Its body ("Sorry, we could not find that page")
+    clears every prose floor the pipeline has, so a page indexed before the reject gate
+    existed could be retrieved by /v1/query, quoted, confirmed against this endpoint, and
+    stamped QuoteVerified=true on a citation to a URL the server said it did not serve.
+
+    Index-time rejection does not cover it, for two reasons: points already in Qdrant carry
+    no status in their payload, so retrieval cannot filter them out; and this endpoint reads
+    Mongo directly, so it never consults the index at all.
+
+    `classify_unusable_page` is the one classifier, reused rather than re-deriving a status
+    check here -- the whole defect it now closes was two readers of one field disagreeing.
+    """
     page = await state.mongo.get_page(page_id)
     text = derive_plaintext_from_blocks(page.blocks) if page is not None else ""
     if page is None or page.run_id != run_id or not text:
         raise HTTPException(
             status_code=404,
             detail="No text for the authorized page.",
+        )
+    reject = classify_unusable_page(
+        url=page.url,
+        final_url=page.final_url,
+        failure_reason=page.failure_reason,
+        robots_allowed=page.robots_allowed,
+        blocks=page.blocks,
+        status_code=page.status_code,
+    )
+    if reject is not None and reject != "no_content":
+        # no_content is excluded: an empty body is already covered by `not text` above, and
+        # this service re-adjudicating "readable" is what destroyed 5,274 pages on
+        # 2026-09-18. What is refused here is a page the CRAWLER's own signals condemn.
+        logger.warning(
+            "Refusing citation read for unusable page pageId=%s runId=%s reason=%s status=%s",
+            page.id,
+            page.run_id,
+            reject,
+            page.status_code,
+        )
+        raise HTTPException(
+            status_code=404,
+            detail=f"Page is not citable ({reject}).",
         )
     return PageTextResponse(
         page_id=page.id,
@@ -621,14 +664,47 @@ async def get_page_text(
     response_model_by_alias=True,
     dependencies=[Depends(require_api_key)],
 )
-async def get_page_text_by_url(run_id: str, url: str) -> PageTextResponse:
-    """Lookup a page's plaintext projection by runId + Url/FinalUrl."""
+async def get_page_text_by_url(
+    run_id: Annotated[str, ApiQuery(alias="runId", min_length=1)],
+    url: Annotated[str, ApiQuery(min_length=1)],
+) -> PageTextResponse:
+    """Lookup a page's plaintext projection by runId + Url/FinalUrl.
+
+    `runId` is aliased, matching the sibling handler and README.md. It was a bare `run_id`,
+    so the documented `GET /v1/pages?runId=...&url=...` answered 422 -- the endpoint could
+    not be called the way its own contract specifies. Nothing noticed because GeekAPI only
+    ever calls the by-id form (HttpGeekCrawlerRagClient) and so does
+    scripts/staging_citation_smoke.py, which is also why the missing status gate below
+    survived here: this adapter has never been exercised in production.
+
+    Same unusable-page refusal as the by-id handler, for the same reason.
+    """
     page = await state.mongo.get_page_by_url(run_id=run_id, url=url)
     text = derive_plaintext_from_blocks(page.blocks) if page is not None else ""
     if page is None or not text:
         raise HTTPException(
             status_code=404,
             detail=f"No text for runId={run_id} url={url}",
+        )
+    reject = classify_unusable_page(
+        url=page.url,
+        final_url=page.final_url,
+        failure_reason=page.failure_reason,
+        robots_allowed=page.robots_allowed,
+        blocks=page.blocks,
+        status_code=page.status_code,
+    )
+    if reject is not None and reject != "no_content":
+        logger.warning(
+            "Refusing citation read for unusable page pageId=%s runId=%s reason=%s status=%s",
+            page.id,
+            page.run_id,
+            reject,
+            page.status_code,
+        )
+        raise HTTPException(
+            status_code=404,
+            detail=f"Page is not citable ({reject}).",
         )
     return PageTextResponse(
         page_id=page.id,
