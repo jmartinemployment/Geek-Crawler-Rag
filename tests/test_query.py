@@ -393,3 +393,37 @@ def test_select_ranked_candidates_fills_top_k_with_distinct_text():
              for c, _ in selected]
     assert len(selected) == 8, "dedup starved the result below top_k"
     assert len(set(texts)) == 8, "returned duplicate text"
+
+
+@pytest.mark.asyncio
+async def test_a_broken_lexical_search_is_an_error_not_a_dense_only_answer():
+    """A failed text scroll must not quietly downgrade hybrid retrieval.
+
+    search_text used to catch its own exception and return [], so the lexical
+    half disappeared, the query carried on with dense hits alone, and the
+    response still reported retrieval as hybrid. The caller could not tell a run
+    with no lexical matches from one whose lexical search broke.
+    """
+    store = MagicMock()
+    store.search_text = AsyncMock(side_effect=RuntimeError("scroll failed"))
+
+    node = _child_node(
+        node_id="p1",
+        parent_text="parent section about pricing plans",
+        child_text="child text about pricing",
+    )
+    llama = MagicMock()
+    llama.dense_query = AsyncMock(return_value=[NodeWithScore(node=node, score=0.9)])
+
+    settings = Settings(openai_api_key="test", hybrid_dense_limit=5, rerank_pool_size=5)
+    svc = QueryService(store, settings, llama=llama, reranker=Reranker(None, enabled=False))
+
+    resp = await svc.query(QueryRequest(need="pricing plans", runId="r1", topK=3))
+
+    # The clean failure state QueryService already had for retrieval errors.
+    assert resp.retrieval == "error"
+    assert resp.chunks == []
+    assert resp.warning is not None
+    # Dense hits existed. Returning them under a hybrid label is exactly what
+    # this prevents: the answer would look complete and be half-sourced.
+    assert "error" in (resp.warning or "").lower()

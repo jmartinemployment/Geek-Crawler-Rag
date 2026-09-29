@@ -7,7 +7,10 @@ Mirrors Geek-Crawler-v2 locale-path rules and reject taxonomy
 from __future__ import annotations
 
 from typing import Any
+import logging
 from urllib.parse import urlparse
+
+logger = logging.getLogger(__name__)
 
 KEEP_REGION = frozenset({"us"})
 DROP_REGION = frozenset({
@@ -90,7 +93,13 @@ def should_exclude_locale_path(url: str) -> bool:
         if primary == "en":
             return False
         return primary in NON_ENGLISH_LOCALE
-    except Exception:
+    except (ValueError, TypeError, AttributeError):
+        # Narrowed from Exception: the only failures reachable here are a URL
+        # that will not parse or a value that is not a string. False keeps the
+        # page, which is the conservative answer for a locale filter - an
+        # unparseable URL is not evidence of a foreign locale - but it is logged
+        # so a run that quietly kept malformed URLs leaves a trace.
+        logger.debug("Locale check skipped, unparseable url=%r", url)
         return False
 
 

@@ -730,8 +730,15 @@ class QdrantStore:
                 )
             return scored
         except Exception:
+            # Re-raised, not turned into []. An empty scroll result and a broken
+            # scroll are different answers, and returning [] made them one: the
+            # query lost its lexical half, carried on with dense hits alone, and
+            # still reported retrieval as hybrid. QueryService already converts a
+            # retrieval exception into retrieval="error" with a stated warning,
+            # so the clean failure state exists - swallowing here is what kept
+            # the boundary from ever seeing it.
             logger.exception("Text search scroll failed for runId=%s", run_id)
-            return []
+            raise
 
     async def find_host_index_payload(self, host: str) -> dict[str, Any] | None:
         """
@@ -777,6 +784,11 @@ class QdrantStore:
             logger.exception("Host index lookup failed for host=%s", host)
             return None
         except Exception:
+            # Same clean "not indexed" state as the missing-collection case, and
+            # for the same reason: the caller withholds this host as grounding
+            # rather than reaching for something else, and raising here is what
+            # turned /v1/index/hosts into a 500 and every consumer into a 502 on
+            # 2026-09-24. Asserted by test_any_other_failure_also_fails_closed.
             logger.exception("Host index lookup failed for host=%s", host)
             return None
 

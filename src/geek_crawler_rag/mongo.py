@@ -262,8 +262,14 @@ class MongoCorpus:
         try:
             entities = await self._load_entities()
         except Exception:
+            # Not a fallback path: this value is computed unconditionally above
+            # and is also the legitimate answer when no entity matches. What is
+            # worth saying is that the collection did not load, so a failed load
+            # is not read as a host that simply has no entity.
             logger.exception(
-                "Failed loading entities collection; using crawlType fallback"
+                "Entities collection did not load for host=%s; "
+                "answering from crawlType only",
+                host_n,
             )
             return fallback
 

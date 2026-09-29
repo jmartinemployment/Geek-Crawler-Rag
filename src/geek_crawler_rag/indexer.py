@@ -438,7 +438,11 @@ class IndexService:
                 except (asyncio.CancelledError, LeaseLostError):
                     pass
                 except Exception:
-                    pass
+                    # Cleanup after cancellation: the run's outcome is already
+                    # decided, so this cannot change it. Logged rather than
+                    # passed, because a bare pass discards whatever the index
+                    # task was failing with and leaves nothing to find later.
+                    logger.exception("Error while cancelling index task tasks")
 
     async def _heartbeat_loop(self, run_id: str) -> None:
         last_success = time.monotonic()
