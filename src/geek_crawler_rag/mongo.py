@@ -78,6 +78,9 @@ class CrawlPage:
     crawled_at: str | None = None
     failure_reason: str | None = None
     robots_allowed: bool | None = None
+    # The response status the crawler recorded. 0 means the row predates the
+    # field; it is not an error and must not be read as one.
+    status_code: int | None = None
 
 
 class MongoCorpus:
@@ -235,6 +238,7 @@ class MongoCorpus:
             "CrawledAtUtc": 1,
             "FailureReason": 1,
             "RobotsAllowed": 1,
+            "StatusCode": 1,
             "_id": 0,
         }
         cursor = (
@@ -324,6 +328,7 @@ class MongoCorpus:
             "CrawledAtUtc": 1,
             "FailureReason": 1,
             "RobotsAllowed": 1,
+            "StatusCode": 1,
             "_id": 0,
         }
         doc = await self._db["crawl_pages"].find_one({"Id": page_id}, projection)
@@ -352,6 +357,7 @@ class MongoCorpus:
             "CrawledAtUtc": 1,
             "FailureReason": 1,
             "RobotsAllowed": 1,
+            "StatusCode": 1,
             "_id": 0,
         }
         doc = await self._db["crawl_pages"].find_one(
@@ -407,6 +413,8 @@ def _page_from_doc(doc: dict[str, Any], run_id: str) -> CrawlPage:
     )
     robots = doc.get("RobotsAllowed")
     robots_allowed = robots if isinstance(robots, bool) else None
+    status = doc.get("StatusCode")
+    status_code = status if isinstance(status, int) else None
     return CrawlPage(
         id=str(doc.get("Id") or ""),
         run_id=str(doc.get("RunId") or run_id),
@@ -422,4 +430,5 @@ def _page_from_doc(doc: dict[str, Any], run_id: str) -> CrawlPage:
         crawled_at=crawled_at,
         failure_reason=failure_reason,
         robots_allowed=robots_allowed,
+        status_code=status_code,
     )

@@ -541,7 +541,7 @@ class IndexService:
         status.pages_skipped_unusable += 1
         if reason == "non_english":
             status.pages_skipped_lang += 1
-        elif reason not in ("locale", "failure"):
+        elif reason not in ("locale", "failure", "http_error"):
             status.pages_skipped_empty += 1
 
     async def _index_run(self, run_id: str) -> None:
@@ -651,6 +651,7 @@ class IndexService:
                         final_url=page.final_url,
                         failure_reason=page.failure_reason,
                         robots_allowed=page.robots_allowed,
+                        status_code=page.status_code,
                         blocks=page.blocks,
                     )
                     if reject:

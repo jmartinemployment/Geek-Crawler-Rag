@@ -4,6 +4,7 @@
 Deletes on crawler-owned rejects only:
   - locale URL paths
   - FailureReason / robots-denied / challenge
+  - a 4xx or 5xx response, which is the server's error page and not content
 
 **A page with no corpus body is NOT deleted here.** `classify_from_mongo_doc`
 reports it as `no_content` and this script passes over it, deliberately: a page
@@ -133,6 +134,13 @@ def cleanup(
     fast_steps: list[tuple[str, dict[str, Any], str | None]] = [
         ("failure", scoped({"FailureReason": {"$gt": ""}}), "FailureReason_1"),
         ("failure", scoped({"RobotsAllowed": False}), "RobotsAllowed_1"),
+        # A 4xx or 5xx body is the server's error page, not the site's content.
+        # Rows written before the crawler gated on status: nothing anywhere
+        # looked at it, and a branded 404 clears every prose floor the pipeline
+        # has, so it was stored, chunked and embedded under a URL that does not
+        # exist. $gte:400 leaves 0 alone, which is the default for a row written
+        # without the field rather than evidence of an error.
+        ("http_error", scoped({"StatusCode": {"$gte": 400}}), None),
     ]
     for label, q, hint in fast_steps:
         if limit is not None and counts.deleted_pages >= limit:

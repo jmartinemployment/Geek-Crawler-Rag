@@ -50,6 +50,7 @@ NON_ENGLISH_LOCALE = frozenset({
 DELETE_SKIP_REASONS = frozenset({
     "locale",
     "failure",
+    "http_error",
     "extract_empty",
     "extract_error",
     "fetch_error",
@@ -62,6 +63,7 @@ DELETE_SKIP_REASONS = frozenset({
 CORPUS_SKIP_REASONS = frozenset({
     "locale",
     "failure",
+    "http_error",
     "extract_empty",
     "extract_error",
     "non_english",
@@ -109,6 +111,7 @@ def classify_unusable_page(
     final_url: str = "",
     failure_reason: str | None = None,
     robots_allowed: bool | None = None,
+    status_code: int | None = None,
     blocks: list[Any] | None = None,
 ) -> str | None:
     """Return delete reason or None if the page may stay in the corpus.
@@ -119,6 +122,19 @@ def classify_unusable_page(
     page_url = final_url or url
     if should_exclude_locale_path(page_url) or should_exclude_locale_path(url):
         return "locale"
+
+    # A 4xx or 5xx body is the server's error page, not the site's content.
+    # This is not this service re-adjudicating what is corpus: the crawler owns
+    # that decision and now makes it at the source. What reaches here is rows
+    # written before it did, when nothing anywhere looked at the status. A
+    # branded 404 carries nav, an apology and suggested links, which clears
+    # every prose floor the pipeline has, so it was extracted, chunked and
+    # embedded under the URL that did not exist.
+    #
+    # 0 is kept deliberately. It is the default for a row written without the
+    # field, and absence of a status is not evidence of an error.
+    if isinstance(status_code, int) and status_code >= 400:
+        return "http_error"
 
     if robots_allowed is False:
         return "failure"
@@ -136,10 +152,12 @@ def classify_from_mongo_doc(doc: dict[str, Any]) -> str | None:
     raw = doc.get("Blocks")
     if raw is None:
         raw = doc.get("blocks")
+    status = doc.get("StatusCode")
     return classify_unusable_page(
         url=str(doc.get("Url") or ""),
         final_url=str(doc.get("FinalUrl") or ""),
         failure_reason=doc.get("FailureReason"),
         robots_allowed=doc.get("RobotsAllowed"),
+        status_code=status if isinstance(status, int) else None,
         blocks=raw if isinstance(raw, list) else None,
     )
