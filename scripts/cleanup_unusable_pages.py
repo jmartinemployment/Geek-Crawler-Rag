@@ -140,7 +140,36 @@ def cleanup(
         # has, so it was stored, chunked and embedded under a URL that does not
         # exist. $gte:400 leaves 0 alone, which is the default for a row written
         # without the field rather than evidence of an error.
-        ("http_error", scoped({"StatusCode": {"$gte": 400}}), None),
+        # Matched by $expr, not {"$gte": 400}. GeekAPI stores StatusCode as a STRING, and
+        # MongoDB brackets comparisons by BSON type, so a numeric $gte never compares
+        # against "404" -- the previous filter returned 0 on a store that held them and
+        # reported that indistinguishably from "there were none". $toInt handles both the
+        # string shape and a native number, so this keeps working when the encoding is
+        # fixed. Non-numeric values are left alone rather than erroring the pipeline: an
+        # unreadable status is not evidence of an error page.
+        (
+            "http_error",
+            scoped(
+                {
+                    "$expr": {
+                        "$let": {
+                            "vars": {
+                                "code": {
+                                    "$convert": {
+                                        "input": "$StatusCode",
+                                        "to": "int",
+                                        "onError": 0,
+                                        "onNull": 0,
+                                    }
+                                }
+                            },
+                            "in": {"$gte": ["$$code", 400]},
+                        }
+                    }
+                }
+            ),
+            None,
+        ),
     ]
     for label, q, hint in fast_steps:
         if limit is not None and counts.deleted_pages >= limit:

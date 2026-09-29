@@ -152,12 +152,18 @@ def classify_from_mongo_doc(doc: dict[str, Any]) -> str | None:
     raw = doc.get("Blocks")
     if raw is None:
         raw = doc.get("blocks")
-    status = doc.get("StatusCode")
+    # Same coercions as MongoCorpus._page_from_doc, imported rather than re-implemented.
+    # GeekAPI stores these as strings ("404", "t"), so an isinstance check against int/bool
+    # is False for every real value -- which is why this branch and the robots branch below
+    # were both silently inert. Two readers of one encoding, disagreeing, is the drift
+    # CLAUDE.md names.
+    from geek_crawler_rag.mongo import _as_bool, _as_int
+
     return classify_unusable_page(
         url=str(doc.get("Url") or ""),
         final_url=str(doc.get("FinalUrl") or ""),
         failure_reason=doc.get("FailureReason"),
-        robots_allowed=doc.get("RobotsAllowed"),
-        status_code=status if isinstance(status, int) else None,
+        robots_allowed=_as_bool(doc.get("RobotsAllowed")),
+        status_code=_as_int(doc.get("StatusCode")),
         blocks=raw if isinstance(raw, list) else None,
     )

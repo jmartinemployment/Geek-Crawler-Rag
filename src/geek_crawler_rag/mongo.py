@@ -380,6 +380,77 @@ class MongoCorpus:
         return int(link_res.deleted_count)
 
 
+def _as_int(value: Any) -> int | None:
+    """An int from either shape GeekAPI writes, or None when it is not readable.
+
+    GeekAPI's Mongo class map stores this field as a STRING -- `LegacyStringInt32Serializer`
+    does `WriteString(...)` -- so `StatusCode` arrives as "404", not 404. Measured
+    2026-09-29: 4,144 of 4,144 `crawl_pages` rows hold it as a string.
+
+    The previous read was `status if isinstance(status, int) else None`, which is False for
+    every real value, so the http_error rejection gate could never fire and a 404 body was
+    chunked, embedded and quotable under a URL the server said it did not serve. The same
+    mistake is why the robots gate below has never fired either.
+
+    Both shapes are accepted rather than only the string, because the encoding is a legacy
+    artefact being removed: when it goes, this keeps working instead of inverting the bug.
+    A value that is neither is returned as None and logged -- "I could not read it" is not
+    "it was 200", and silently defaulting is what made this invisible the first time.
+
+    `bool` is excluded explicitly: it is a subclass of int in Python, so True would
+    otherwise sail through as 1.
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            return int(text)
+        except ValueError:
+            logger.warning("Unreadable StatusCode value %r; treating as unknown", value)
+            return None
+    if value is not None:
+        logger.warning("Unreadable StatusCode value %r; treating as unknown", value)
+    return None
+
+
+def _as_bool(value: Any) -> bool | None:
+    """A bool from either shape GeekAPI writes, or None when it is not readable.
+
+    `LegacyStringBooleanSerializer` writes "t"/"f", so `RobotsAllowed` arrives as "t" and
+    `isinstance(value, bool)` is False for it. Measured 2026-09-29: all 4,144 rows hold "t",
+    so `if robots_allowed is False` in unusable.py has never once matched.
+
+    Reviving it changes nothing today -- zero rows hold a denied value, because the crawler
+    rejects robots-denied URLs before it saves and passes `robotsAllowed: true` literally --
+    but a gate that cannot fire is not a gate, and the next producer will not have that
+    property.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in ("t", "true", "1", "y", "yes"):
+            return True
+        if text in ("f", "false", "0", "n", "no"):
+            return False
+        if not text:
+            return None
+        logger.warning("Unreadable RobotsAllowed value %r; treating as unknown", value)
+        return None
+    if isinstance(value, int):
+        return bool(value)
+    if value is not None:
+        logger.warning("Unreadable RobotsAllowed value %r; treating as unknown", value)
+    return None
+
+
 def _page_from_doc(doc: dict[str, Any], run_id: str) -> CrawlPage:
     html = doc.get("Html")
     if html is not None and not isinstance(html, str):
@@ -411,10 +482,8 @@ def _page_from_doc(doc: dict[str, Any], run_id: str) -> CrawlPage:
     failure_reason = (
         failure.strip() if isinstance(failure, str) and failure.strip() else None
     )
-    robots = doc.get("RobotsAllowed")
-    robots_allowed = robots if isinstance(robots, bool) else None
-    status = doc.get("StatusCode")
-    status_code = status if isinstance(status, int) else None
+    robots_allowed = _as_bool(doc.get("RobotsAllowed"))
+    status_code = _as_int(doc.get("StatusCode"))
     return CrawlPage(
         id=str(doc.get("Id") or ""),
         run_id=str(doc.get("RunId") or run_id),
