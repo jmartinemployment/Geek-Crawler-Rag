@@ -13,9 +13,16 @@ re-adjudicating the crawler's decision is what destroyed 5,274 pages and their
 Qdrant points on 2026-09-18. Widening the filter to `no_content` re-arms exactly
 that path.
 
-Also deletes crawl_links for removed PageIds.
+Deletes in this order, and the order is the point: each page's Qdrant points first, then
+crawl_links for its PageId, then the page. An orphaned vector is worse than an undeleted
+page -- retrieval reads chunk text from the Qdrant payload and filters on runId, which a
+surviving point still carries, so the prose stays quotable while /v1/pages 404s for the
+deleted row and citation_verify drops every quote from it. If the purge fails, nothing
+below it runs.
 
-Dry-run by default; pass --write to delete.
+Dry-run by default; pass --write to delete. --dry-run and --write are mutually exclusive
+and argparse enforces it: --dry-run used to be declared and read nowhere, so
+`--write --dry-run` deleted.
 
 Usage:
   uv run python scripts/cleanup_unusable_pages.py --dry-run --limit 500
@@ -25,6 +32,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import asyncio
 import os
 import sys
 from collections import Counter
@@ -45,6 +53,7 @@ class CleanupCounts:
     scanned: int = 0
     deleted_pages: int = 0
     deleted_links: int = 0
+    purged_vector_pages: int = 0
     by_reason: Counter[str] = field(default_factory=Counter)
 
     def as_dict(self) -> dict[str, Any]:
@@ -52,6 +61,7 @@ class CleanupCounts:
             "scanned": self.scanned,
             "deleted_pages": self.deleted_pages,
             "deleted_links": self.deleted_links,
+            "purged_vector_pages": self.purged_vector_pages,
         }
         for k, v in sorted(self.by_reason.items()):
             out[f"reason_{k}"] = v
@@ -71,6 +81,58 @@ PROJECTION = {
 }
 
 
+def _purge_vectors(page_ids: list[str], *, counts: CleanupCounts) -> None:
+    """Delete each page's Qdrant points. Raises if it cannot, so nothing is deleted after.
+
+    Vectors go before rows, which is the ordering this repo states in writing -- see
+    scripts/check_orphaned_crawl_data.py: "Delete vectors for a run with
+    DELETE /v1/index/runs/{runId} before its rows, so a surviving point can never outlive
+    the page it cites." This script deleted crawl_pages and crawl_links and touched Qdrant
+    not at all, which was survivable only while its filters matched nothing. They match now.
+
+    An orphaned point is worse than an undeleted page. Retrieval reads chunk text straight
+    from the Qdrant payload and filters on runId, which the point still carries, so the
+    prose stays retrievable and quotable -- while /v1/pages 404s for the deleted row, so
+    citation_verify drops every quote from it. The generator would be fed the text and be
+    unable to cite anything from it.
+
+    Reuses QdrantStore.delete_by_page_id -- it already existed with no production caller --
+    rather than rebuilding the filter here. Two implementations of one delete is the drift
+    CLAUDE.md names, and this one has to agree with the indexer about ownerId/visibility.
+    asyncio.run per batch because that method is async and this script is sync pymongo;
+    a fresh loop per batch is cheap next to the deletes themselves.
+
+    No exception is swallowed. If Qdrant refuses, the caller must not proceed to the row
+    delete, because that is precisely how the orphan is created.
+    """
+    if not page_ids:
+        return
+
+    from geek_crawler_rag.config import get_settings
+    from geek_crawler_rag.qdrant_store import QdrantStore
+
+    settings = get_settings()
+
+    async def run() -> None:
+        store = QdrantStore(
+            settings.qdrant_url,
+            collection=settings.qdrant_collection,
+            api_key=settings.qdrant_api_key,
+        )
+        try:
+            for page_id in page_ids:
+                await store.delete_by_page_id(
+                    page_id,
+                    owner_id=settings.crawler_owner_id,
+                    visibility=settings.crawler_visibility,
+                )
+        finally:
+            await store.close()
+
+    asyncio.run(run())
+    counts.purged_vector_pages += len(page_ids)
+
+
 def _delete_ids(
     pages,
     links,
@@ -86,6 +148,8 @@ def _delete_ids(
     page_ids = [d["Id"] for d in docs if d.get("Id") is not None]
     n = len(oids) if oids else len(page_ids)
     if write:
+        # Vectors first. If this raises, nothing below runs and no row is orphaned.
+        _purge_vectors([str(pid) for pid in page_ids], counts=counts)
         if delete_links and page_ids:
             link_res = links.delete_many({"PageId": {"$in": page_ids}})
             counts.deleted_links += int(link_res.deleted_count)
