@@ -514,9 +514,11 @@ class IndexService:
         status.state = IndexState.FAILED
         status.error = error
         status.finished_at_utc = utc_now()
+        # _persist notifies. Notifying again here sent every quarantined failure twice, and the
+        # second one fired even when _persist had returned False because the store rejected the
+        # write -- pushing a status the store refused. Same defect as the mid-run flush site,
+        # fixed the same way.
         await self._persist(status)
-        if self._webhook is not None:
-            await self._webhook.notify(status)
 
     async def _delete_run_points(self, run_id: str) -> None:
         await self._store.delete_by_run_id(

@@ -5,7 +5,15 @@ Standalone **Python** retrieval product for the Geek-Crawler Mongo corpus.
 (parent/child chunks, hybrid BM25 RRF, optional Cohere rerank).
 
 See [`architecture.md`](./architecture.md) and [`plans/geek-crawler-rag.md`](./plans/geek-crawler-rag.md).
-Historical Phase U generate contract fixture (models only; no `/v1/generate` endpoint): [`contracts/phase-u/generate.section.v1.json`](./contracts/phase-u/generate.section.v1.json).
+`contracts/` holds cross-repo wire contracts, both live and historical:
+
+- **Live, CI-enforced** — [`contracts/rag-index-status/webhook.v1.json`](./contracts/rag-index-status/webhook.v1.json):
+  every field the index-status webhook posts to GeekAPI. GeekBackend keeps a copy whose `fields`
+  map must match; a test on each side pins its own half and `webhook-contract-agrees` compares the
+  two. It exists because five fields were posted on every webhook and bound by nothing, so a corpus
+  gutted by 4xx error pages reported identically to a clean one.
+- **Historical** — [`contracts/phase-u/generate.section.v1.json`](./contracts/phase-u/generate.section.v1.json):
+  Phase U generate fixture, models only. There is no `/v1/generate` endpoint and never will be.
 
 ## Product overview
 

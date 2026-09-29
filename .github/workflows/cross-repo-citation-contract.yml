@@ -69,13 +69,39 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.x"
+      # A --filter term that matches nothing is indistinguishable from one that matches many:
+      # the terms are ORed per test, and `dotnet test` exits 0 on "No test matches the given
+      # testcase filter". Measured on SDK 10.0.107: 3 terms -> 33 passed exit 0; third term
+      # renamed to a class that does not exist -> 29 passed exit 0. TreatNoTestsAsError does not
+      # help -- it needs a runsettings file and is whole-run, not per-term.
+      #
+      # This matters more than it looks. GeekBackend's only workflow runs on a schedule and is
+      # filtered to Playwright, so these classes execute here and nowhere else. A silent zero
+      # match means the receiver half of the webhook contract stops being checked at all.
+      - name: Assert the contract test classes still exist
+        working-directory: GeekBackend
+        shell: bash
+        run: |
+          set -euo pipefail
+          listed="$(dotnet test GeekBackend.Tests/GeekBackend.Tests.csproj \
+            --configuration Release --list-tests --nologo)"
+          status=0
+          for cls in HttpGeekCrawlerRagClientTests GccV2GeekCrawlerResearchResolverTests \
+                     RagIndexStatusWebhookContractTests PatchRagIndexStatusHopTests; do
+            if ! grep -q "$cls" <<<"$listed"; then
+              echo "::error::$cls matches no test in GeekBackend.Tests. It was renamed, moved or \
+          deleted, and the --filter below would have passed silently."
+              status=1
+            fi
+          done
+          exit "$status"
       - name: Run deterministic RAG contract tests
         working-directory: GeekBackend
         run: >-
           dotnet test GeekBackend.Tests/GeekBackend.Tests.csproj
           --configuration Release
           --filter
-          "FullyQualifiedName~HttpGeekCrawlerRagClientTests|FullyQualifiedName~GccV2GeekCrawlerResearchResolverTests|FullyQualifiedName~RagIndexStatusWebhookContractTests"
+          "FullyQualifiedName~HttpGeekCrawlerRagClientTests|FullyQualifiedName~GccV2GeekCrawlerResearchResolverTests|FullyQualifiedName~RagIndexStatusWebhookContractTests|FullyQualifiedName~PatchRagIndexStatusHopTests"
       - name: Run deterministic cross-service protocol tests
         working-directory: GeekBackend
         run: >-
@@ -167,23 +193,21 @@ jobs:
       # tests/test_index_status_webhook_contract.py and RagIndexStatusWebhookContractTests.cs.
       # Two tests passing separately against two files is exactly the state those files drift in,
       # so the copies have to be compared somewhere both repos exist. This is that place.
-      - name: Diff the two copies of the wire contract
+      # Only the `fields` map is compared. A byte diff also failed on a prose edit, so improving a
+      # comment in one repo reddened the other's main for no behavioural reason.
+      #
+      # Merge order is mandatory and one-directional: GeekBackend has no PR CI, so land its copy
+      # plus the DTO binding FIRST, then this repo. Either order leaves a window where main here is
+      # red (push + the 06:17 cron) until both sides have merged. That is the unpinned cross-repo
+      # dependency e8fa9ce warned about -- accepted here because the alternative is no cross-repo
+      # check at all, but it is the reason the per-repo tests also pin their own half.
+      - name: Compare the two copies of the wire contract
         shell: bash
         run: |
           set -euo pipefail
-          a=Geek-Crawler-Rag/contracts/rag-index-status/webhook.v1.json
-          b=GeekBackend/contracts/rag-index-status/webhook.v1.json
-          for f in "$a" "$b"; do
-            if [[ ! -f "$f" ]]; then
-              echo "::error::$f is missing. Both repositories must commit the index-status webhook contract; the unit test in each repo reads its own copy and cannot see the other."
-              exit 1
-            fi
-          done
-          if ! diff -u "$a" "$b"; then
-            echo "::error::The two copies of the index-status webhook contract differ. Geek-Crawler-Rag is the sender and owns this file; copy it to GeekBackend unchanged, then bind any new field in RagIndexStatusWebhookRequest."
-            exit 1
-          fi
-          echo "Contract copies are byte-identical."
+          python3 Geek-Crawler-Rag/scripts/compare_webhook_contract.py \
+            Geek-Crawler-Rag/contracts/rag-index-status/webhook.v1.json \
+            GeekBackend/contracts/rag-index-status/webhook.v1.json
 
   creator-deterministic:
     name: Creator deterministic

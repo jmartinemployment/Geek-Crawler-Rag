@@ -499,8 +499,13 @@ def _from_doc(doc: dict[str, Any]) -> IndexStatusResponse:
         ),
         embedding_wait_seconds=float(doc.get("embeddingWaitSeconds") or 0.0),
         error=doc.get("error"),
-        started_at_utc=doc.get("startedAtUtc"),
-        finished_at_utc=doc.get("finishedAtUtc"),
+        # Through _as_utc, as _scheduler_from_doc already does. Motor returns naive datetimes,
+        # so a rehydrated status carried tz-naive timestamps where a freshly built one is aware.
+        # finishedAtUtc is the key GeekAPI's out-of-order guard compares, and a naive value
+        # serialises with no offset for C# to read in the server's local zone -- which lets a
+        # stale terminal status overwrite a newer one.
+        started_at_utc=_as_utc(doc.get("startedAtUtc")),
+        finished_at_utc=_as_utc(doc.get("finishedAtUtc")),
     )
 
 

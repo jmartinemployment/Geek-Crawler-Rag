@@ -1,8 +1,8 @@
 {
-  "$comment": "Wire contract for POST /api/geek-crawler/internal/rag/index-status. The RAG is the sender and this file is generated from its IndexStatusResponse model; GeekBackend keeps a byte-identical copy at GeekBackend/contracts/rag-index-status/webhook.v1.json and a test asserting its DTO binds every field here. Neither repo can see the other's types at compile time, so this file is the only thing standing between them. It exists because on 2026-09-29 five fields were found to be sent on every webhook and bound by nothing: pagesSkippedUnusable, attempt, trigger, embeddingRateLimitRetries, embeddingWaitSeconds. Dropping pagesSkippedUnusable meant a run whose corpus was gutted by 4xx error pages was indistinguishable from one that indexed cleanly, because the two benign skip reasons were bound and the one that indicts the crawl was not.",
+  "$comment": "Wire contract for POST /api/geek-crawler/internal/rag/index-status. HAND-MAINTAINED, not generated: an earlier version of this comment claimed it was generated from IndexStatusResponse, and no generator has ever existed. One could not be complete anyway -- eventType is added by webhook.notify() after model_dump, and the C# type strings and these notes are not derivable from a Pydantic model. GeekBackend keeps a copy whose `fields` map must match this one; a test on each side pins its own half, and the cross-repo workflow compares the two maps. Neither repo can see the other's types at compile time, so this file is the only thing standing between them. It exists because on 2026-09-29 five fields were found to be sent on every webhook and bound by nothing: pagesSkippedUnusable, attempt, trigger, embeddingRateLimitRetries, embeddingWaitSeconds. Dropping pagesSkippedUnusable meant a run whose corpus was gutted by 4xx error pages was indistinguishable from one that indexed cleanly, because the two benign skip reasons were bound and the one that indicts the crawl was not.",
   "version": 1,
   "endpoint": "POST /api/geek-crawler/internal/rag/index-status",
-  "auth": "X-API-Key: GEEK_BACKEND_API_KEY",
+  "auth": "X-API-Key, whose value must equal GeekAPI's GEEK_BACKEND_API_KEY. The sender reads INDEX_STATUS_WEBHOOK_KEY and falls back to its own API_KEY when that is unset (app.py), and API_KEY is a different secret -- so the header name is always right and the value is wrong by default. ApiKeyMiddleware compares ordinally and 401s on mismatch. The sender logs that at ERROR rather than WARNING precisely because it means every webhook is rejected, not one.",
   "sender": "Geek-Crawler-Rag src/geek_crawler_rag/models.py IndexStatusResponse",
   "receiver": "GeekAPI/Controllers/GeekCrawler/GeekCrawlerRagWebhookController.cs RagIndexStatusWebhookRequest",
   "fields": {
@@ -27,7 +27,8 @@
   },
   "$notes": {
     "eventType": "Not on the model. webhook.notify() adds it to the payload after model_dump, so it is on the wire and must be in this list.",
-    "persisted": "GeekAPI persists five of these to crawl_runs as Rag* fields: state, chunksUpserted, pagesEnglish, pagesSkippedUnusable, finishedAtUtc. The rest reach SignalR only, which is live-only -- no listener at the time means the value is gone.",
-    "attempt": "Bound and pushed but deliberately NOT used by the receiver's out-of-order guard, which keys on finishedAtUtc. Changing that is a behaviour decision, not a binding one."
+    "persisted": "GeekAPI persists five of these to crawl_runs as Rag* fields: state, chunksUpserted, pagesEnglish, pagesSkippedUnusable, finishedAtUtc. The rest reach SignalR and the crawls/{runId}/rag-index projection only. Note the receiver wraps its persist in catch { LogWarning } and still returns Accepted, so a persist failure is not visible to the sender -- durability here is best-effort, not guaranteed.",
+    "attempt": "Bound and pushed but deliberately NOT used by the receiver's out-of-order guard, which keys on finishedAtUtc. Changing that is a behaviour decision, not a binding one.",
+    "comparison": "Only the `fields` map is compared across repos. Prose in $comment and $notes may differ, so editing a note here does not red the other repo's main."
   }
 }

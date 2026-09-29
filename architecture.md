@@ -105,7 +105,13 @@ No Playwright required on this box for RAG.
 
 **Index:** `POST` index for `runId` (idempotent). GeekAPI triggers on crawl **`complete`**. Admin may POST any run; `mongoPageCount` > 50 000 is skipped.
 
-**Status push:** optional `INDEX_STATUS_WEBHOOK_*` → GeekAPI → SignalR (not UI polling).
+**Status push:** optional `INDEX_STATUS_WEBHOOK_*` → GeekAPI → SignalR (not UI polling). The
+payload is under contract: `contracts/rag-index-status/webhook.v1.json` lists every field posted,
+GeekBackend keeps a matching copy, and the `webhook-contract-agrees` job compares them. GeekAPI
+binds by name, so a field absent from its DTO is discarded silently — which is why the contract
+exists. Five fields were in that state until 2026-09-29. `INDEX_STATUS_WEBHOOK_KEY` must equal
+GeekAPI's `GEEK_BACKEND_API_KEY`; it falls back to this service's own `API_KEY`, which is a
+different secret, and a mismatch 401s every push.
 
 **Query:** embed need + filter `runId` (+ `host`, `crawlType`); return top-k chunks with `url` / text for grounding.
 
