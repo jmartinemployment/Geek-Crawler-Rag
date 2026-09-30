@@ -144,7 +144,14 @@ fastembed's built-in default, not configuration.
 3. Drop both collections and the `rag_index_jobs` rows. Optionally clear `rag_vector_cache` (436 rows
    become unreachable — the key includes the model and writes are `$setOnInsert`).
 4. Deploy. **Window for the two commits held for it**: GeekBackend `2123a1b` then this repo's
-   `744ee69`. Receiver first.
+   `406a77c`. Receiver first.
+
+   `.env.hostinger` and `hostinger-compose.yml` are **already migrated** — `OPENAI_*` gone,
+   `EMBEDDING_*` and `FASTEMBED_CACHE_PATH` in. Note the consequence: a `docker compose up -d` with
+   the *old* image would now fail, because the old code reads settings the compose file no longer
+   passes. The next `up -d` must be the new image. (Editing the env file cannot disturb the running
+   container — compose reads it at `up` time and the current container's environment is already
+   fixed.)
 5. Recreate both collections with their payload indexes.
 6. Index 2–3 runs. **Gate, then the rest.**
 7. Restore `indexing_threshold: 20000`; poll `optimizer_status` on `GET /collections/{name}` — not
