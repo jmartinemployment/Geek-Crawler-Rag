@@ -14,7 +14,10 @@ services:
         soft: 65535
         hard: 65535
     mem_limit: 3g
-    cpus: "1.0"
+    # 0.5, not 1.0. Measured 2026-09-30 during a live index run: Qdrant sat at 1.3-2.7% while the api
+    # container pinned its own cap at 277-303%. A full reserved core was idling next to a saturated
+    # neighbour. Raise this again if search traffic ever makes it work.
+    cpus: "0.5"
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/6333'"]
       interval: 15s
@@ -87,7 +90,11 @@ services:
     # api 7 + qdrant 3 + mongo 4 + caddy 0.25 already commits 14.25 of the host's 15 GiB,
     # and these are ceilings, not reservations -- actual steady use is ~6.5 GiB total.
     mem_limit: 7g
-    cpus: "3.0"
+    # 3.5, not 3.0. The same measurement: dense inference is CPU-bound and ONNX uses every thread it
+    # is allowed, so this cap is the throughput ceiling. Note an earlier read of 147% -- taken while
+    # SPLADE dominated and much of its cost was single-threaded post-processing -- said CPU was NOT
+    # the constraint. Local dense embedding changed that; the reading is 277-303% now.
+    cpus: "3.5"
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')\""]
       interval: 30s

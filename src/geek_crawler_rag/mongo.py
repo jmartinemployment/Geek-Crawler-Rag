@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
@@ -37,6 +37,7 @@ class CrawlRun:
 class SchedulableRun:
     id: str
     page_count: int
+    ready_at: Any = None
 
 
 @dataclass(frozen=True)
@@ -180,7 +181,7 @@ class MongoCorpus:
         )
         cursor = self._db["crawl_runs"].find(
             run_filter,
-            {"Id": 1, "_id": 0},
+            {"Id": 1, "ContentReadyAt": 1, "_id": 0},
             hint="ix_crawl_runs_content_ready",
         )
 
@@ -201,9 +202,26 @@ class MongoCorpus:
             elif page_count > maximum_pages:
                 safety_cap += 1
             else:
-                candidates.append(SchedulableRun(run_id, page_count))
+                candidates.append(
+                    SchedulableRun(run_id, page_count, doc.get("ContentReadyAt"))
+                )
+        # Oldest ready first, not smallest first.
+        #
+        # Smallest-first was chosen so a pipeline fault surfaced on the cheapest run rather than
+        # after the most expensive one. That was worth having while the pipeline was unproven, and it
+        # is a debugging property, not an operating one -- it silently reorders the corpus against
+        # whatever order the operator crawled in, which is the order they are writing content in.
+        # Jeff, 2026-09-30: "I never liked it picking smallest first, as I am trying to produce
+        # content in a different order."
+        #
+        # FIFO on ContentReadyAt makes the order controllable by the one thing the operator already
+        # controls: when they crawl. A run with no marker cannot be selected at all (the filter
+        # requires it), so the fallback here only orders ties.
         candidate = (
-            min(candidates, key=lambda item: (item.page_count, item.id))
+            min(
+                candidates,
+                key=lambda item: (item.ready_at or datetime.max.replace(tzinfo=timezone.utc), item.id),
+            )
             if candidates
             else None
         )
