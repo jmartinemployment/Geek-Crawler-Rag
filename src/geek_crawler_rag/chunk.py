@@ -61,13 +61,47 @@ def chunk_text(
     step = size_tokens - overlap_tokens
     while start < len(spans):
         end = min(start + size_tokens, len(spans))
-        piece = cleaned[spans[start][0] : spans[end - 1][1]].strip()
+        piece, end = _fit_window(cleaned, spans, start, end, tokenizer, size_tokens)
         if piece:
             chunks.append(piece)
         if end >= len(spans):
             break
         start += step
     return chunks
+
+
+def _fit_window(
+    cleaned: str,
+    spans: list[tuple[int, int]],
+    start: int,
+    end: int,
+    tokenizer: ChunkTokenizer,
+    size_tokens: int,
+) -> tuple[str, int]:
+    """Slice tokens ``[start, end)`` and shrink until the SLICE measures within budget.
+
+    The span arithmetic alone is not sufficient, and assuming it was is how this nearly shipped with
+    the bug it was written to remove. A slice covering exactly N tokens of ``cleaned`` can tokenize
+    to MORE than N tokens when measured on its own: WordPiece marks word continuations with ``##``,
+    so a piece that was ``##tion`` inside ``reconciliation`` becomes the standalone word ``tion``
+    when the slice starts there, and a standalone word may split into more pieces than the one it
+    came from. Measured on 27,309 live points at a 500-token budget: parents reached 502, a drift of
+    +2. Harmless at 500 against a 512 ceiling, and fatal at 510 -- which the caller is allowed to
+    ask for.
+
+    So the budget is enforced on the produced string, which is the thing the model actually reads.
+    Shrinking is not a fallback for a failed path: it is the correct computation of "N tokens of
+    text", done against the tokenizer rather than against an index. It terminates because ``end``
+    strictly decreases and stops at ``start + 1``.
+    """
+    while end > start:
+        piece = cleaned[spans[start][0] : spans[end - 1][1]].strip()
+        if not piece:
+            return "", end
+        if len(tokenizer.token_spans(piece)) <= size_tokens:
+            return piece, end
+        end -= 1
+    return "", start + 1
 
 
 @dataclass(frozen=True)

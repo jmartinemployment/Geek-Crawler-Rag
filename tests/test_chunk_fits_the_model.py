@@ -111,3 +111,49 @@ def test_chunks_are_verbatim_so_citation_verification_still_works(real_chunk_tok
         "great_expectations",
     ):
         assert literal in joined, f"{literal!r} did not survive chunking"
+
+
+#: Long compound words, so most token boundaries are WordPiece ``##`` continuations and a window
+#: starting mid-word is near-certain. Verified to reproduce a +2 naive drift; a text of ordinary
+#: prose does NOT, which is how the first version of the test below passed without the fix.
+MID_WORD_BOUNDARIES = (
+    "unstructured internationalisation reconciliation subledgerIdentifier "
+    "interoperability characterisation disintermediation "
+) * 40
+
+
+def test_a_window_starting_mid_word_still_measures_within_budget(real_chunk_tokenizer):
+    """The defect the span arithmetic hid, reproduced from the mechanism that caused it.
+
+    ``chunk_text`` slices the character range of exactly N tokens. Measured on its own, that slice
+    can exceed N: WordPiece marks continuations with ``##``, so when a window begins mid-word the
+    leading fragment becomes a standalone word and may split into more pieces than the single
+    ``##piece`` it came from. Found on 27,309 live points -- a parent of
+    https://parseur.com/blog/ measured 502 against a 500 budget, its slice beginning
+    ``'ructured text from emails'``, i.e. inside ``unstructured``.
+
+    At a 500 budget the +2 is invisible against a 512 ceiling. At the 510 the guard permits, it
+    truncates -- the exact failure this module exists to rule out. So the budget is enforced on the
+    produced string, and this asserts it at every window position rather than only the first.
+    """
+    limit = real_chunk_tokenizer.sequence_limit
+    overhead = real_chunk_tokenizer.special_token_overhead
+    ceiling = limit - overhead
+
+    for budget, overlap in ((50, 7), (120, 20), (ceiling, 80)):
+        chunks = chunk_text(
+            MID_WORD_BOUNDARIES,
+            tokenizer=real_chunk_tokenizer,
+            size_tokens=budget,
+            overlap_tokens=overlap,
+        )
+        assert len(chunks) > 1, f"budget {budget} must actually window this text"
+        for chunk in chunks:
+            content = len(real_chunk_tokenizer.token_spans(chunk))
+            assert content <= budget, (
+                f"slice measures {content} content tokens against a {budget} budget "
+                f"(+{content - budget} drift); head={chunk[:40]!r}"
+            )
+            assert content + overhead <= limit, (
+                f"chunk reaches inference as {content + overhead} against a {limit} limit"
+            )
