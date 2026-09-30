@@ -121,6 +121,17 @@ indistinguishable from a hang for minutes at a time.
 tail -40 /var/log/rag-requeue.log     # "re-postable: 0" repeated = nothing needed rescuing
 ```
 
+**The exit status is the part cron does not discard.** The log reported the 2026-09-29 failures for
+seven hours before anyone looked, so the script now exits **3** when `FAILED` or `HELD_DEAD` runs are
+left waiting on a person — distinct from **1** (a post was refused) and **2** (no `API_KEY`). It
+clears to 0 as soon as those runs are dealt with. Cron mails a non-zero status, so wrap it if you
+want the mail somewhere else:
+
+```bash
+/docker/geek-crawler-rag/requeue-stranded.sh >> /var/log/rag-requeue.log 2>&1 || \
+  echo "rag requeue exit $? — see /var/log/rag-requeue.log"
+```
+
 Remove it with `crontab -e`. Note the copy at `/docker/geek-crawler-rag/` is a copy, not a
 symlink — update it when this script changes.
 

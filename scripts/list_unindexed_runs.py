@@ -123,6 +123,11 @@ COMPLETE = "COMPLETE"
 
 REPOSTABLE = (NEVER_QUEUED, FAILED, STRANDED)
 
+# Exit statuses. 1 is a refused post, 2 a missing API_KEY, and 3 a backlog that only a person can
+# clear -- distinct so a cron can tell "this script could not do its job" from "there is something
+# for you". 0 means nothing is outstanding.
+EXIT_NEEDS_HUMAN = 3
+
 
 def _as_utc(value: object) -> datetime | None:
     if isinstance(value, datetime):
@@ -333,10 +338,20 @@ async def main() -> int:
         for row in held:
             print(f"  {row['runId']}  {row['reason']}")
 
+    # A run in either list is waiting on a person, and on the */30 cron this script's only output is
+    # a line in /var/log/rag-requeue.log that nobody reads. It reported the 2026-09-29 failures for
+    # seven hours before anyone looked. An exit status is the one thing cron does not discard, so
+    # the condition now leaves one behind; it clears as soon as the run is dealt with.
+    needs_human = bool(skipped_failed or held)
+    if needs_human:
+        print()
+        print(f"EXIT {EXIT_NEEDS_HUMAN}: {len(skipped_failed)} FAILED and {len(held)} HELD_DEAD "
+              "run(s) need a decision. Nothing here is automatic.")
+
     if not args.requeue:
         print()
         print("Read-only. Re-run with --requeue to POST /v1/index for the re-postable runs.")
-        return 0
+        return EXIT_NEEDS_HUMAN if needs_human else 0
 
     api_key = os.environ.get("API_KEY", "")
     if not api_key:
@@ -355,12 +370,14 @@ async def main() -> int:
         print(f"  {row['runId']}  pages={row['pages']:>5}  -> {outcome}")
 
     if refused:
+        # The harder failure wins: a refusal means this run did not do what it was asked, which is
+        # worth surfacing over a backlog that was only ever going to wait for a person.
         print()
         print(f"{refused} of {len(repostable)} post(s) were REFUSED and queued nothing. "
               "A live lease still holds those runs; re-run once it lapses.")
         return 1
 
-    return 0
+    return EXIT_NEEDS_HUMAN if needs_human else 0
 
 
 if __name__ == "__main__":
