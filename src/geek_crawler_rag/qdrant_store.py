@@ -140,7 +140,12 @@ class QdrantStore:
                 vectors_config=qm.VectorParams(
                     size=self._vector_size,
                     distance=qm.Distance.COSINE,
-                    on_disk=True,
+                    # float16 halves vector memory at ~no accuracy cost, and it is CREATION-ONLY:
+                    # a PATCH of datatype returns 200 ok and silently changes nothing.
+                    datatype=qm.Datatype.FLOAT16,
+                    # In RAM. 384-d float16 at 500k points is ~380 MB against a 3 GiB container
+                    # limit, so there is nothing to gain by making every search touch NVMe.
+                    on_disk=False,
                 ),
                 # One unified schema, and creation is the only chance to declare it. The dense
                 # vector stays unnamed -- Qdrant addresses it as "" and the LlamaIndex store detects
@@ -148,56 +153,122 @@ class QdrantStore:
                 # while the sparse vector is named because sparse vectors have no unnamed form.
                 sparse_vectors_config={
                     SPARSE_VECTOR_NAME: qm.SparseVectorParams(
-                        index=qm.SparseIndexParams(on_disk=True),
+                        index=qm.SparseIndexParams(on_disk=False),
+                        # MANDATORY, and creation-only. fastembed's BM25 returns uniform values --
+                        # measured: every one 1.597 -- because IDF is Qdrant's job, applied at query
+                        # time through this modifier. Without it BM25 degrades to unweighted term
+                        # matching, which discards exactly the rare-term weighting that made it the
+                        # right sparse model: a product code like XJ-4420-B would score no higher
+                        # than the word "the". Nothing errors; retrieval just quietly gets worse.
+                        #
+                        # It would be WRONG with a neural sparse model such as SPLADE, which carries
+                        # its own learned weights -- IDF on top double-penalises. Modifier and model
+                        # are one decision.
+                        modifier=qm.Modifier.IDF,
                     ),
                 },
+                hnsw_config=qm.HnswConfigDiff(
+                    m=16,
+                    # 200 over the default 100: a one-time build cost for better recall, and recall
+                    # here is whether a quote can be verified at all.
+                    ef_construct=200,
+                    full_scan_threshold=10000,
+                    on_disk=False,
+                ),
+                optimizers_config=qm.OptimizersConfigDiff(
+                    # 2 rather than auto (which resolves to the CPU count, 4): fewer, larger segments
+                    # mean fewer HNSW graphs to traverse and merge per search. indexing_threshold is
+                    # deliberately NOT set to 0 here -- that belongs to a deliberate bulk load, and a
+                    # collection created by startup must be immediately searchable rather than
+                    # silently unindexed until someone remembers to restore it.
+                    default_segment_number=2,
+                    max_optimization_threads=2,
+                ),
                 on_disk_payload=True,
             )
             logger.info(
-                "Created Qdrant collection %s (vectors on_disk, sparse '%s' on_disk)",
+                "Created Qdrant collection %s (size=%s float16 in RAM, sparse '%s' with IDF)",
                 self._collection,
+                self._vector_size,
                 SPARSE_VECTOR_NAME,
             )
         else:
-            await self._ensure_vectors_on_disk()
+            await self._verify_collection_matches_intent()
             await self._drop_body_text_indexes()
         await self._ensure_payload_indexes()
 
-    async def _ensure_vectors_on_disk(self) -> None:
-        """Move dense vectors to disk-backed storage for RAM-constrained hosts.
+    async def _verify_collection_matches_intent(self) -> None:
+        """Refuse to run against a collection whose creation-only settings are wrong.
 
-        Note what is deliberately absent beside this: there is no sibling that adds the sparse
-        vector to an existing collection. Qdrant v1.13.4 refuses it --
-        ``PATCH /collections/{c} {"sparse_vectors": {...}}`` returns
-        ``400 Wrong input: Not existing vector name error`` -- because update_collection can only
-        modify sparse vectors a collection already declares. A collection therefore either has the
-        sparse vector from creation or needs rebuilding; an earlier version of this file carried an
-        additive path whose only possible outcome was a logged warning.
+        Replaced ``_ensure_vectors_on_disk``, which forced ``on_disk=True`` on every startup. That was
+        right when vectors were 1536-d float32 on a RAM-constrained host; at 384-d float16 it would
+        now fight the intended configuration once per boot.
+
+        What matters more is that two settings **cannot be repaired**: ``datatype`` and the sparse
+        ``modifier``. A ``PATCH`` of ``datatype`` returns ``200 ok`` and changes nothing, and Qdrant
+        will not add or alter a sparse modifier after creation. So a collection created without them
+        is not a degraded collection to be nudged into shape -- it is one that has to be rebuilt, and
+        the only thing worse than finding that out is not finding out.
+
+        Size and modifier raise. A width mismatch fails every upsert anyway, so failing at startup
+        just moves the error to where the cause is legible. A missing IDF modifier is subtler and
+        worse: nothing errors, BM25 simply stops weighting rare terms, and the product codes the
+        sparse channel exists to bind score no higher than "the". Per ``plans/rules.md`` §3a that is
+        exactly what must not degrade silently.
+
+        datatype and on_disk only log. They cost memory or a page-cache hop; they do not change which
+        passages come back.
         """
         try:
             info = await self._client.get_collection(self._collection)
-            params = info.config.params.vectors
-            current_on_disk = False
-            if isinstance(params, qm.VectorParams):
-                current_on_disk = bool(params.on_disk)
-            elif isinstance(params, dict):
-                # Named vectors — not used by this collection.
-                return
-            if current_on_disk:
-                return
-            await self._client.update_collection(
-                collection_name=self._collection,
-                vectors_config={"": qm.VectorParamsDiff(on_disk=True)},
-            )
-            logger.info(
-                "Updated Qdrant collection %s vectors on_disk=true",
-                self._collection,
-            )
         except Exception:
             logger.warning(
-                "Could not set vectors on_disk for %s",
+                "Could not read %s to verify its configuration", self._collection, exc_info=True
+            )
+            return
+
+        params = info.config.params
+        vectors = params.vectors
+        if isinstance(vectors, dict):
+            # Named dense vectors -- not this collection's shape. Nothing to compare.
+            return
+
+        if vectors is not None and int(vectors.size) != int(self._vector_size):
+            raise ValueError(
+                f"Qdrant collection {self._collection} declares size={vectors.size} but this "
+                f"service embeds at {self._vector_size}. Every upsert would be rejected. The "
+                f"collection must be recreated -- size is fixed at creation."
+            )
+
+        sparse = params.sparse_vectors or {}
+        sparse_params = sparse.get(SPARSE_VECTOR_NAME)
+        if sparse_params is None:
+            raise ValueError(
+                f"Qdrant collection {self._collection} has no '{SPARSE_VECTOR_NAME}' sparse vector. "
+                f"Qdrant cannot add one after creation, so hybrid retrieval is impossible on this "
+                f"collection and it must be recreated."
+            )
+        if sparse_params.modifier != qm.Modifier.IDF:
+            raise ValueError(
+                f"Qdrant collection {self._collection} sparse vector '{SPARSE_VECTOR_NAME}' has "
+                f"modifier={sparse_params.modifier!r}, not IDF. BM25 would run unweighted: rare "
+                f"terms such as product codes would score no higher than common words, silently. "
+                f"The modifier is creation-only, so the collection must be recreated."
+            )
+
+        if vectors is not None and vectors.datatype not in (None, qm.Datatype.FLOAT16):
+            logger.error(
+                "Qdrant collection %s stores vectors as %s, not float16. Twice the memory for no "
+                "accuracy gain, and datatype is creation-only -- a PATCH reports success and does "
+                "nothing. Fixed only by recreating.",
                 self._collection,
-                exc_info=True,
+                vectors.datatype,
+            )
+        if vectors is not None and vectors.on_disk:
+            logger.info(
+                "Qdrant collection %s keeps vectors on disk; at this width they fit in RAM. "
+                "Patchable, unlike datatype and modifier.",
+                self._collection,
             )
 
     async def _drop_body_text_indexes(self) -> None:
