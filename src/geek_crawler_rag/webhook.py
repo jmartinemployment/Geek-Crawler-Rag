@@ -61,6 +61,21 @@ class IndexStatusWebhook:
                     status.run_id,
                     response.text[:300],
                 )
+            elif response.status_code == 404 or response.status_code >= 500:
+                # The receiver could not record it, and now says so. Until GeekBackend stopped
+                # swallowing the persist failure, this case answered 202 Accepted: the one failure
+                # mode that loses chunksUpserted, pagesEnglish and pagesSkippedUnusable was the only
+                # one this sender could not learn about. 404 means the run is gone from GeekAPI
+                # (purged, or never ingested) so there is nothing to record onto; 5xx means the hop
+                # itself failed. Neither is retried here -- rules.md 3a -- but neither is silent.
+                logger.error(
+                    "Index status webhook NOT RECORDED runId=%s status=%s — GeekAPI accepted "
+                    "nothing, so this run's Rag* fields on crawl_runs are unchanged and the "
+                    "declared-URL evidence gate will read stale numbers. body=%s",
+                    status.run_id,
+                    response.status_code,
+                    response.text[:300],
+                )
             elif response.status_code >= 400:
                 logger.warning(
                     "Index status webhook failed runId=%s status=%s body=%s",
