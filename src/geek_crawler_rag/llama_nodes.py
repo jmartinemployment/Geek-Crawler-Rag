@@ -92,7 +92,21 @@ def page_to_nodes(
         unit_anchors = [
             {"label": label, "href": href} for label, href in unit.section_anchors
         ]
-        if unit.parent_index not in seen_parents:
+        # A parent point only when the parent actually carries more than its child.
+        #
+        # Measured 2026-09-30 over 3,000 sampled child points: 71.4% have a parentText byte-identical
+        # to their childText, because parent_child_units emits a child equal to its parent whenever a
+        # heading section is shorter than child_chunk_size_tokens (chunk.py). Those parent points were
+        # 45.2% of the collection and pure duplication -- they competed with their own child for the
+        # same top-k slots, and under BM25's `idf` modifier they inflated both df and N, depressing
+        # the weight of exactly the rare literals the sparse channel exists to bind.
+        #
+        # The other 28.6% are real: a parent ~3x its child at p50, carrying meaning no 200-token child
+        # contains -- pricing matrices, multi-step procedures, a qualifier hundreds of tokens from the
+        # feature it qualifies. Dropping the tier outright would have removed that silently, so the
+        # test is emptiness of the difference, not the tier.
+        parent_adds_context = unit.parent_text.strip() != unit.child_text.strip()
+        if unit.parent_index not in seen_parents and parent_adds_context:
             seen_parents.add(unit.parent_index)
             nodes.append(
                 _node(
