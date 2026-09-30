@@ -145,6 +145,16 @@ class LocalDenseEmbedding(BaseEmbedding):
     def class_name(cls) -> str:
         return "LocalDenseEmbedding"
 
+    @property
+    def dimensions(self) -> int:
+        """The width this model actually produces, measured rather than declared.
+
+        The collection is created from ``embedding_dimensions``, and Qdrant rejects any vector that
+        does not match its declared ``size``. Reading the real width lets startup refuse a mismatch
+        once instead of every upsert failing later for a reason that reads as a Qdrant fault.
+        """
+        return len(self._get_query_embedding("dimension probe"))
+
     # -- documents -------------------------------------------------------------------------------
 
     def _embed_documents(self, texts: list[str]) -> list[list[float]]:

@@ -174,7 +174,7 @@ class AssetContextService:
                 "parserVersion": parsed.parser_version,
                 "chunkerId": CHUNKER_ID,
                 "chunkerVersion": CHUNKER_VERSION,
-                "embeddingModel": self._settings.openai_embedding_model,
+                "embeddingModel": self._settings.embedding_model,
                 "chunkId": chunk.id,
                 "coordinates": _source_coordinate(
                     chunk.coordinates, request.resource.source_coordinates
@@ -226,7 +226,7 @@ class AssetContextService:
                 "parserVersion": request.parser_version,
                 "chunkerId": CHUNKER_ID,
                 "chunkerVersion": CHUNKER_VERSION,
-                "embeddingModel": self._settings.openai_embedding_model,
+                "embeddingModel": self._settings.embedding_model,
                 "chunkId": chunk.id,
                 "coordinates": _source_coordinate(
                     chunk.coordinates, request.source_coordinates

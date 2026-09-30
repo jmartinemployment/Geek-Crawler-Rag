@@ -145,7 +145,7 @@ async def lifespan(_app: FastAPI):
     # there; absent it, indexing behaves exactly as it did before.
     vector_cache = VectorCache(
         state.mongo.db,
-        model=settings.openai_embedding_model,
+        model=settings.embedding_model,
         dimensions=settings.embedding_dimensions,
     )
     await vector_cache.ensure_indexes()

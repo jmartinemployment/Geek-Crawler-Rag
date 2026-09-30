@@ -1,4 +1,4 @@
-"""LlamaIndex engine: OpenAI embeddings + Qdrant vector store under FastAPI."""
+"""LlamaIndex engine: local dense embeddings + Qdrant vector store under FastAPI."""
 
 from __future__ import annotations
 
@@ -6,7 +6,6 @@ import asyncio
 import logging
 from typing import Any
 
-import httpx
 from llama_index.core import Settings as LlamaSettings
 from llama_index.core.schema import NodeWithScore, TextNode
 from llama_index.core.vector_stores.types import (
@@ -17,10 +16,8 @@ from llama_index.core.vector_stores.types import (
     VectorStoreQuery,
     VectorStoreQueryMode,
 )
-from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.vector_stores.qdrant import QdrantVectorStore
 from llama_index.vector_stores.qdrant.utils import fastembed_sparse_encoder
-from openai import APIConnectionError, APITimeoutError, InternalServerError
 from qdrant_client import AsyncQdrantClient, QdrantClient
 
 from geek_crawler_rag.config import Settings
@@ -36,7 +33,6 @@ from geek_crawler_rag.embedding_sanitize import (
 )
 from geek_crawler_rag.embedding_throttle import (
     EmbeddingBatch,
-    EmbeddingThrottle,
     embedding_token_count,
     partition_embedding_batches,
 )
@@ -63,29 +59,29 @@ class LlamaIndexEngine:
         # Optional: set by app startup once Mongo is up. None means no
         # cross-run reuse, which is exactly the behaviour before it existed.
         self._vector_cache = vector_cache
-        if not settings.openai_api_key:
-            raise ValueError("OPENAI_API_KEY is required for LlamaIndex embeddings")
         self._settings = settings
-        # Native LlamaIndex + OpenAI HTTP client: retries off at the source.
-        # https://developers.llamaindex.ai/python/framework/module_guides/models/embeddings/
-        embed_timeout = httpx.Timeout(60.0, connect=10.0)
-        self._embed_http_client = httpx.Client(timeout=embed_timeout)
-        self._embed_async_http_client = httpx.AsyncClient(timeout=embed_timeout)
-        self._embed_model = OpenAIEmbedding(
-            model=settings.openai_embedding_model,
-            api_key=settings.openai_api_key,
-            dimensions=settings.embedding_dimensions,
+        # Local dense embeddings. No API key to require, no HTTP client, no rate limit: there is no
+        # external service in the indexing path. Constructing this loads the ONNX model, so a missing
+        # or unloadable model fails startup rather than the first page of the first index job.
+        self._embed_model = LocalDenseEmbedding(
+            model_name=settings.embedding_model,
             embed_batch_size=settings.embed_batch_size,
-            max_retries=settings.openai_embedding_max_retries,
-            timeout=60.0,
-            http_client=self._embed_http_client,
-            async_http_client=self._embed_async_http_client,
+            threads=settings.embedding_threads,
         )
+        if self._embed_model.dimensions != settings.embedding_dimensions:
+            # Fail closed at startup rather than on every upsert. Qdrant rejects a vector whose width
+            # does not match the collection's declared `size`, and the collection is created from
+            # embedding_dimensions -- so a mismatch here means every write fails later, for a reason
+            # that reads as a Qdrant problem.
+            raise ValueError(
+                f"embedding_dimensions={settings.embedding_dimensions} does not match "
+                f"{settings.embedding_model}, which produces "
+                f"{self._embed_model.dimensions}"
+            )
         LlamaSettings.embed_model = self._embed_model
-        self._embedding_throttle = EmbeddingThrottle(
-            settings.openai_embedding_tokens_per_minute
-        )
-        self._embedding_call_lock = asyncio.Lock()
+        # No throttle. It existed to stay under an OpenAI tokens-per-minute ceiling and a local model
+        # has none. The lock went with it: it serialised every embed call for the throttle's benefit,
+        # and inference already runs in a worker thread.
         client_kwargs: dict[str, Any] = {"url": settings.qdrant_url}
         if settings.qdrant_api_key:
             client_kwargs["api_key"] = settings.qdrant_api_key
@@ -122,14 +118,28 @@ class LlamaIndexEngine:
         return self._vector_store
 
     @property
-    def embed_model(self) -> OpenAIEmbedding:
+    def embed_model(self) -> LocalDenseEmbedding:
         return self._embed_model
 
     def embedding_stats(self) -> dict[str, float | int]:
+        """Zeroed, and the keys kept deliberately.
+
+        There is no throttle to report on: a local model has no tokens-per-minute ceiling to wait for
+        and nothing to retry against a rate limit. But ``rateLimitRetries`` and ``waitSeconds`` reach
+        the index-status webhook as ``embeddingRateLimitRetries`` and ``embeddingWaitSeconds``, which
+        are pinned in ``contracts/rag-index-status/webhook.v1.json`` with a byte-matching GeekBackend
+        copy that CI diffs. Dropping either from here reds that comparison and silently removes a
+        bound field from the receiver.
+
+        So they stay at zero until the coordinated two-repo change retires them --
+        ``plans/go-local-embeddings.md``, "Follow-on". ``truncatedInputs`` is the one number here that
+        now carries information: inputs that hit the model's sequence limit and were truncated.
+        """
         return {
-            "tokensInWindow": self._embedding_throttle.tokens_in_window,
-            "rateLimitRetries": self._embedding_throttle.rate_limit_retries,
-            "waitSeconds": round(self._embedding_throttle.total_wait_seconds, 3),
+            "tokensInWindow": 0,
+            "rateLimitRetries": 0,
+            "waitSeconds": 0.0,
+            "truncatedInputs": self._embed_model.truncated_inputs,
         }
 
     async def close(self) -> None:
@@ -141,14 +151,6 @@ class LlamaIndexEngine:
             self._client.close()
         except Exception:
             logger.debug("sync qdrant client close failed", exc_info=True)
-        try:
-            await self._embed_async_http_client.aclose()
-        except Exception:
-            logger.debug("async embed httpx client close failed", exc_info=True)
-        try:
-            self._embed_http_client.close()
-        except Exception:
-            logger.debug("sync embed httpx client close failed", exc_info=True)
 
     async def embed_and_upsert(self, nodes: list[TextNode]) -> int:
         if not nodes:
@@ -200,8 +202,9 @@ class LlamaIndexEngine:
         # Embedding cache: a heading section shorter than child_chunk_size_tokens
         # cannot be sliced, so parent_child_units emits a child byte-identical to
         # its parent (chunk.py). Both points are still written, but the vector is
-        # the same, so send each distinct string to OpenAI once. Measured ~29% of
-        # calls on real marketing pages.
+        # the same, so embed each distinct string once. Measured ~29% of calls on real
+        # marketing pages -- and it still matters with a local model: the saving is CPU
+        # rather than spend, and inference is now the dominant cost of indexing.
         uniq_texts = list(dict.fromkeys(texts))
         embeddings: list[list[float]] | None = None
         if len(uniq_texts) < len(texts):
@@ -311,11 +314,13 @@ class LlamaIndexEngine:
         cleaned, mutated = sanitize_embedding_texts(texts)
         if mutated:
             logger.info(
-                "Sanitized %s/%s embedding texts before OpenAI batch",
+                "Sanitized %s/%s embedding texts before the embedding batch",
                 mutated,
                 len(cleaned),
             )
-        # Defense in depth: never send empty strings (OpenAI 400).
+        # Defense in depth: never embed an empty string. OpenAI answered 400 for one, which made
+        # this visible; fastembed does something worse -- it returns a vector for "" without
+        # complaint, so an empty chunk would be indexed as a real point and could be retrieved.
         if metadata_list is not None and len(metadata_list) != len(cleaned):
             metadata_list = list(metadata_list)[: len(cleaned)]
         filtered: list[str] = []
@@ -345,9 +350,9 @@ class LlamaIndexEngine:
         embeddings: list[list[float]] = []
         batches = partition_embedding_batches(
             cleaned,
-            model=self._settings.openai_embedding_model,
+            model=self._settings.embedding_model,
             max_items=self._settings.embed_batch_size,
-            max_tokens=self._settings.openai_embedding_max_batch_tokens,
+            max_tokens=self._settings.embedding_max_batch_tokens,
         )
         offset = 0
         for batch in batches:
@@ -377,65 +382,59 @@ class LlamaIndexEngine:
         96-minute run with zero errors. The retry was added sixteen days later on the
         strength of a single APIConnectionError.
 
-        And it cost money unauditably. A retry re-sends the same tokens, and the client
-        cannot tell a connection that dropped before OpenAI processed the batch from one
-        that dropped after -- so a retry may pay twice for one batch with no way to
-        detect which happened.
+        And it cost money unauditably. A retry re-sent the same tokens, and the client could not
+        tell a connection that dropped before the provider processed the batch from one that dropped
+        after -- so a retry might pay twice for one batch with no way to detect which happened.
 
-        What replaces it is what was always here: the failure is real, it is reported,
-        and recovery is a deliberate re-post (`scripts/trigger_manual_index.py`,
-        `scripts/list_unindexed_runs.py`). Keep the throttle well under the account
-        ceiling; that is the fix.
+        That history is kept because the conclusion outlived its cause. Embeddings are local since
+        2026-09-30: there is no rate limit, no billing, and no transient network failure to ride out,
+        so the argument for a retry is weaker now than when it was rejected. A model that will not
+        load is a startup failure, not something to retry per batch.
+
+        What replaces it is what was always here: the failure is real, it is reported, and recovery is
+        a deliberate re-post (`scripts/trigger_manual_index.py`, `scripts/list_unindexed_runs.py`).
         """
-        async with self._embedding_call_lock:
-            await self._embedding_throttle.acquire(batch.token_count)
-            try:
-                return await self._embed_model.aget_text_embedding_batch(batch.texts)
-            except EmbeddingCircuitOpen:
-                raise
-            except Exception as exc:
-                code = should_quarantine_embedding_error(exc)
-                if code is None and isinstance(exc, InternalServerError):
-                    code = int(getattr(exc, "status_code", 0) or 500)
-                if code is not None:
-                    raise open_embedding_circuit(
-                        texts=batch.texts,
-                        metadata_list=batch_meta,
-                        quarantine_dir=self._settings.embedding_quarantine_dir,
-                        model=self._settings.openai_embedding_model,
-                        token_count=batch.token_count,
-                        status_code=code,
-                        exc_type=type(exc).__name__,
-                        exc=exc,
-                    ) from exc
-                raise
+        try:
+            return await self._embed_model.aget_text_embedding_batch(batch.texts)
+        except EmbeddingCircuitOpen:
+            raise
+        except Exception as exc:
+            code = should_quarantine_embedding_error(exc)
+            if code is not None:
+                raise open_embedding_circuit(
+                    texts=batch.texts,
+                    metadata_list=batch_meta,
+                    quarantine_dir=self._settings.embedding_quarantine_dir,
+                    model=self._settings.embedding_model,
+                    token_count=batch.token_count,
+                    status_code=code,
+                    exc_type=type(exc).__name__,
+                    exc=exc,
+                ) from exc
+            raise
 
     async def embed_query(self, text: str) -> list[float]:
         text = sanitize_embedding_text(text)
         token_count = embedding_token_count(
-            [text], self._settings.openai_embedding_model
+            [text], self._settings.embedding_model
         )
-        async with self._embedding_call_lock:
-            await self._embedding_throttle.acquire(token_count)
-            try:
-                return await self._embed_model.aget_query_embedding(text)
-            except EmbeddingCircuitOpen:
-                raise
-            except Exception as exc:
-                code = should_quarantine_embedding_error(exc)
-                if code is None and isinstance(exc, InternalServerError):
-                    code = int(getattr(exc, "status_code", 0) or 500)
-                if code is not None:
-                    raise open_embedding_circuit(
-                        texts=[text],
-                        quarantine_dir=self._settings.embedding_quarantine_dir,
-                        model=self._settings.openai_embedding_model,
-                        token_count=token_count,
-                        status_code=code,
-                        exc_type=type(exc).__name__,
-                        exc=exc,
-                    ) from exc
-                raise
+        try:
+            return await self._embed_model.aget_query_embedding(text)
+        except EmbeddingCircuitOpen:
+            raise
+        except Exception as exc:
+            code = should_quarantine_embedding_error(exc)
+            if code is not None:
+                raise open_embedding_circuit(
+                    texts=[text],
+                    quarantine_dir=self._settings.embedding_quarantine_dir,
+                    model=self._settings.embedding_model,
+                    token_count=token_count,
+                    status_code=code,
+                    exc_type=type(exc).__name__,
+                    exc=exc,
+                ) from exc
+            raise
 
     async def dense_query(
         self,
