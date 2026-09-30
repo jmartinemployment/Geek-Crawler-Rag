@@ -112,10 +112,22 @@ def body_text(item: dict) -> str:
 
 
 def clip(text: str, full: bool) -> str:
-    text = " ".join((text or "").split())
-    if full or len(text) <= 400:
-        return text
-    return text[:400] + f" … (+{len(text) - 400} chars)"
+    """Render chunk text with its block boundaries visible.
+
+    Collapsing whitespace here is not cosmetic, it is misinformation. Blocks are
+    joined with "\n\n" (block_text.BLOCK_SEPARATOR), so a listItem "Inventory"
+    followed by a paragraph "Professional" is stored as two separated blocks --
+    flattening it prints "Inventory Professional", a product name that appears
+    nowhere on the page, and reads as fabrication by the extractor. One "·" per
+    boundary keeps the chunk on few enough lines to scan while still showing
+    where one block ends.
+    """
+    text = text or ""
+    blocks = [" ".join(part.split()) for part in text.split("\n\n")]
+    joined = " · ".join(part for part in blocks if part)
+    if full or len(joined) <= 400:
+        return joined
+    return joined[:400] + f" … (+{len(joined) - 400} chars)"
 
 
 def report_hosts(payloads) -> None:
