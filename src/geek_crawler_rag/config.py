@@ -114,7 +114,7 @@ class Settings(BaseSettings):
     # often at 64 as at 32.
     embed_batch_size: int = 64
 
-    # Durable smallest-first indexing scheduler.
+    # Durable indexing scheduler, oldest-content-ready first (see mongo.find_oldest_content_ready_run).
     index_scheduler_enabled: bool = True
     index_scheduler_interval_seconds: int = 300
     index_scheduler_poll_seconds: int = 60

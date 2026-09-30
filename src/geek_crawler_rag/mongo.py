@@ -151,18 +151,24 @@ class MongoCorpus:
     async def count_pages(self, run_id: str) -> int:
         return int(await self._db["crawl_pages"].count_documents({"RunId": run_id}))
 
-    async def find_smallest_content_ready_run(
+    async def find_oldest_content_ready_run(
         self,
         *,
         excluded_run_ids: set[str],
         maximum_pages: int = 50_000,
     ) -> SchedulableRunScan:
-        """Return the smallest completed, content-ready crawl not yet indexed.
+        """Return the OLDEST completed, content-ready crawl not yet indexed.
 
-        Readiness is `ContentReadyAt`, the marker GeekAPI stamps once every
-        persisted page of the run carries extracted content. The `hint` names the
-        index `ensure_indexes` creates at startup — Mongo errors on a hint naming
-        an index that does not exist, so the two must be changed together.
+        Oldest by `ContentReadyAt`, tie-broken on `Id` so the choice is stable. This picked the
+        smallest by page count until `384fa35`; the method kept the old name until 2026-09-30, which
+        is worse than the original bug -- the old name was itself a
+        live claim, and this one said the scheduler optimises for throughput. It does not, deliberately: content is
+        produced in the order sites were crawled, so indexing a 24-page site ahead of a 500-page one
+        that has been waiting reorders the work queue behind it.
+
+        Readiness is `ContentReadyAt`, the marker GeekAPI stamps once every persisted page of the run
+        carries extracted content. The `hint` names the index `ensure_indexes` creates at startup —
+        Mongo errors on a hint naming an index that does not exist, so the two must change together.
         """
         run_filter: dict[str, Any] = {
             "Status": {"$in": ["complete", "external"]},

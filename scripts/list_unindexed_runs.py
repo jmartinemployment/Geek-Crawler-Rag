@@ -13,7 +13,7 @@ places:
   * `Indexer.start()` does not call `claim_recoverable` -- "that path was
     re-queuing cancelled deploy jobs. Operator must re-enqueue deliberately."
   * The scheduler is deprecated and `INDEX_SCHEDULER_ENABLED` stays false, so
-    `find_smallest_content_ready_run` never runs.
+    `find_oldest_content_ready_run` never runs.
 
 The worker queue is an in-process `asyncio.Queue`. A container restart empties
 it and leaves the Mongo rows behind, so `rag_index_jobs` is the only durable
@@ -235,7 +235,7 @@ async def main() -> int:
     parser.add_argument(
         "--requeue",
         action="store_true",
-        help="POST /v1/index for every re-postable run, smallest first. Off by default.",
+        help="POST /v1/index for every re-postable run, oldest content-ready first. Off by default.",
     )
     parser.add_argument(
         "--base-url",
@@ -288,6 +288,9 @@ async def main() -> int:
             {
                 "runId": run_id,
                 "crawlType": str(doc.get("CrawlType") or ""),
+                # Carried because the sort below orders on it. The projection already selects it;
+                # leaving it out of the row made the sort fall back to runId without saying so.
+                "contentReadyAt": doc.get("ContentReadyAt"),
                 "pages": page_count,
                 "state": state,
                 "reason": reason,
@@ -300,10 +303,14 @@ async def main() -> int:
         print("No content-ready runs found. Nothing to report.")
         return 0
 
-    # Smallest first: the queue is FIFO at concurrency 1, so this is the execution
-    # order. A pipeline fault then surfaces on the cheapest run rather than after
-    # the most expensive one.
-    rows.sort(key=lambda row: row["pages"])
+    # Oldest ContentReadyAt first, matching mongo.find_oldest_content_ready_run. The queue is FIFO
+    # at concurrency 1, so this IS the execution order -- which is why it has to agree with the
+    # scheduler this script stands in for, and it sorted by page count instead until 2026-09-30.
+    #
+    # The old rationale was that a pipeline fault surfaces on the cheapest run first. That is true
+    # and it was outweighed: content is produced in the order sites were crawled, so a small site
+    # jumping a large one that has been waiting reorders the work downstream of it.
+    rows.sort(key=lambda row: (str(row.get("contentReadyAt") or "\uffff"), row.get("runId") or ""))
 
     print(f"{len(rows)} content-ready run(s), {now.isoformat()}")
     print()
@@ -361,7 +368,7 @@ async def main() -> int:
         return 2
 
     print()
-    print(f"Re-posting {len(repostable)} run(s), smallest first:")
+    print(f"Re-posting {len(repostable)} run(s), oldest content-ready first:")
     refused = 0
     for row in repostable:
         outcome = post_index(row["runId"], base_url=args.base_url, api_key=api_key)

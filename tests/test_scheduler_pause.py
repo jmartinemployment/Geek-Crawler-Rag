@@ -240,7 +240,7 @@ async def test_scheduler_pause_and_resume_pass_config_through():
 @pytest.mark.asyncio
 async def test_a_paused_tick_scans_nothing_and_enqueues_nothing():
     mongo = MagicMock()
-    mongo.find_smallest_content_ready_run = AsyncMock()
+    mongo.find_oldest_content_ready_run = AsyncMock()
     store = MagicMock()
     store.claim_scheduler_due = AsyncMock(return_value=False)
     store.complete_scheduler_tick = AsyncMock()
@@ -250,7 +250,7 @@ async def test_a_paused_tick_scans_nothing_and_enqueues_nothing():
     scheduler = IndexScheduler(mongo, store, indexer, settings, owner="owner")
 
     assert await scheduler.tick() is None
-    mongo.find_smallest_content_ready_run.assert_not_awaited()
+    mongo.find_oldest_content_ready_run.assert_not_awaited()
     indexer.enqueue_scheduled.assert_not_awaited()
     # No tick was consumed either, so nextRunAtUtc is not pushed out by the pause.
     store.complete_scheduler_tick.assert_not_awaited()

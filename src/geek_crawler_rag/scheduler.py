@@ -1,4 +1,9 @@
-"""Durable two-hour, smallest-first crawl indexing scheduler."""
+"""Durable two-hour crawl indexing scheduler, oldest-content-ready first.
+
+Ordering lives in `MongoCorpus.find_oldest_content_ready_run`. It was smallest-by-page-count until
+`384fa35`; this docstring and the startup log below both still said "smallest-first" afterwards,
+which meant production logs asserted the opposite of the code on every boot.
+"""
 
 from __future__ import annotations
 
@@ -49,7 +54,7 @@ class IndexScheduler:
                 self._loop(), name="index-scheduler"
             )
             logger.info(
-                "Index scheduler enabled interval=%ss smallest-first",
+                "Index scheduler enabled interval=%ss oldest-content-ready-first",
                 self._settings.index_scheduler_interval_seconds,
             )
 
@@ -131,7 +136,7 @@ class IndexScheduler:
             excluded = await self._status_store.excluded_run_ids(
                 max_attempts=self._settings.index_scheduler_max_attempts
             )
-            scan = await self._mongo.find_smallest_content_ready_run(
+            scan = await self._mongo.find_oldest_content_ready_run(
                 excluded_run_ids=excluded
             )
             candidate = scan.candidate

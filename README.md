@@ -201,7 +201,7 @@ At index start the service logs **`mongoPageCount`**. Runs with `mongoPageCount`
 
 **The index scheduler is deprecated.** Indexing is triggered by `POST /v1/index`.
 `INDEX_SCHEDULER_ENABLED` is `false`; `scheduler.py` and
-`mongo.find_smallest_content_ready_run` remain in the tree without being the live route.
+`mongo.find_oldest_content_ready_run` remain in the tree without being the live route.
 
 Keep the flag set in the environment rather than relying on a default — `config.py:50` and
 `deploy/hostinger-compose.yml:45` (`${INDEX_SCHEDULER_ENABLED:-true}`) both default it on. Until
@@ -210,8 +210,8 @@ the only thing holding it off. If it ever did run it would cost embedding spend,
 indexing is read-only (`indexer._skip_unusable`).
 
 When it did run, the scheduler persisted its next due time in Mongo, took an atomic lease, and chose the
-smallest completed run whose crawl-level `ContentReadyAt` confirms every persisted page carries extracted
-content and which is not already indexed (`INDEX_SCHEDULER_INTERVAL_SECONDS`, 300s in production).
+completed run with the OLDEST `ContentReadyAt` — the crawl-level marker confirming every persisted page
+carries extracted content — that is not already indexed (`INDEX_SCHEDULER_INTERVAL_SECONDS`, 300s in production).
 
 Index jobs — scheduled or manual — use Mongo leases and heartbeats. There is **no** automatic
 stale-job recovery: `Indexer.start()` deliberately does not `claim_recoverable`, and with the

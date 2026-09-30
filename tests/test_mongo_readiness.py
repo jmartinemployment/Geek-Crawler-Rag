@@ -57,7 +57,7 @@ async def test_run_level_readiness_selects_oldest_ready_and_reports_exclusions()
     corpus = MongoCorpus.__new__(MongoCorpus)
     corpus._db = {"crawl_runs": runs, "crawl_pages": FakePages()}
 
-    scan = await corpus.find_smallest_content_ready_run(
+    scan = await corpus.find_oldest_content_ready_run(
         excluded_run_ids={"done"},
         maximum_pages=50_000,
     )
@@ -100,7 +100,7 @@ async def test_it_picks_the_oldest_ready_run_not_the_smallest():
     corpus = MongoCorpus.__new__(MongoCorpus)
     corpus._db = {"crawl_runs": runs, "crawl_pages": Pages()}
 
-    scan = await corpus.find_smallest_content_ready_run(
+    scan = await corpus.find_oldest_content_ready_run(
         excluded_run_ids=set(), maximum_pages=50_000
     )
     assert scan.candidate.id == "first", "oldest ready wins even though it is 90x larger"
@@ -124,7 +124,7 @@ async def test_a_missing_ready_marker_orders_last_rather_than_first():
     corpus = MongoCorpus.__new__(MongoCorpus)
     corpus._db = {"crawl_runs": runs, "crawl_pages": Pages()}
 
-    scan = await corpus.find_smallest_content_ready_run(
+    scan = await corpus.find_oldest_content_ready_run(
         excluded_run_ids=set(), maximum_pages=50_000
     )
     assert scan.candidate.id == "dated"

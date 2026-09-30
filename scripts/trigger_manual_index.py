@@ -6,7 +6,9 @@ the scheduler is deprecated and `INDEX_SCHEDULER_ENABLED` is `false`, so nothing
 its own. This is the operator-facing way to do what the scheduler used to.
 
 One run per request -- `IndexRunRequest` carries a single `runId` -- so a batch is a loop, sent
-smallest-first to match the ordering the scheduler documented. Index concurrency on the service is
+oldest-`ContentReadyAt`-first to match the scheduler's ordering. That ordering changed in `384fa35`:
+it was smallest-first, which is throughput-optimal and wrong for the actual job, because content is
+produced in the order sites were crawled, not in order of size. Index concurrency on the service is
 1, so these queue rather than run together; each POST returns as soon as the job is accepted.
 
 `indexer.py` calls `ensure_collection()` at job start, so the first accepted job recreates
@@ -45,12 +47,16 @@ def _base_url(settings: Any) -> str:
 
 
 def _discover_run_ids(settings: Any) -> list[str]:
-    """Content-ready runs with no recorded index, smallest first.
+    """Content-ready runs with no recorded index, OLDEST `ContentReadyAt` first.
 
-    The readiness filter mirrors `MongoCorpus.find_smallest_content_ready_run`: `Status` complete or
-    external, and a non-empty `ContentReadyAt`, the marker GeekAPI stamps once every persisted page
-    of the run carries extracted content. `RagIndexedAtUtc` is the "already done" marker written
-    back when a run finishes indexing.
+    The order has to match `MongoCorpus.find_oldest_content_ready_run`, or the operator-facing
+    trigger and the scheduler disagree about which run is next -- and this script sorted by page
+    count until 2026-09-30, months after the scheduler stopped doing so.
+
+    The readiness filter mirrors that method: `Status` complete or external, and a non-empty
+    `ContentReadyAt`, the marker GeekAPI stamps once every persisted page of the run carries
+    extracted content. `RagIndexedAtUtc` is the "already done" marker written back when a run
+    finishes indexing.
     """
     client: MongoClient = MongoClient(settings.mongo_crawler_url)
     try:
@@ -63,17 +69,21 @@ def _discover_run_ids(settings: Any) -> list[str]:
                     "RagIndexedAtUtc": None,
                     "Id": {"$type": "string", "$ne": ""},
                 },
-                {"Id": 1, "_id": 0},
+                {"Id": 1, "ContentReadyAt": 1, "_id": 0},
             )
         )
-        sized: list[tuple[int, str]] = []
+        # Oldest ContentReadyAt first, tie-broken on Id, exactly as the scheduler orders. A run with
+        # no readable marker sorts last rather than first: the filter above already required the
+        # field, so an unparseable value is a malformed record and must not jump the queue.
+        ordered: list[tuple[str, str]] = []
         for run in runs:
             run_id = run.get("Id")
             if not run_id:
                 continue
-            sized.append((db["crawl_pages"].count_documents({"RunId": run_id}), run_id))
-        sized.sort()
-        return [run_id for _, run_id in sized]
+            ready = run.get("ContentReadyAt")
+            ordered.append((str(ready) if ready is not None else "\uffff", run_id))
+        ordered.sort()
+        return [run_id for _, run_id in ordered]
     finally:
         client.close()
 
@@ -112,7 +122,7 @@ def main(argv: list[str]) -> int:
         return 0
 
     print(f"Target: {base_url}/v1/index")
-    print(f"Runs to enqueue ({len(run_ids)}), smallest first:")
+    print(f"Runs to enqueue ({len(run_ids)}), oldest content-ready first:")
     for run_id in run_ids:
         print(f"  {run_id}")
     print("")

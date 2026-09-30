@@ -10,7 +10,7 @@ Two deliberate decisions, not gaps:
 - `Indexer.start()` does **not** call `claim_recoverable` — *"that path was
   re-queuing cancelled deploy jobs. Operator must re-enqueue deliberately."*
 - The scheduler is deprecated; `INDEX_SCHEDULER_ENABLED` stays `false`, so
-  `find_smallest_content_ready_run` never runs.
+  `find_oldest_content_ready_run` never runs.
 
 The worker queue is an in-process `asyncio.Queue` at concurrency 1. **A restart
 empties it.** The Mongo rows in `rag_index_jobs` survive, so they are the only
@@ -96,7 +96,7 @@ image, so pipe it from a checkout:
 ssh -i ~/.ssh/hostinger_rag_ed25519 root@<vps> \
   'docker exec -i geek-crawler-rag-api-1 python -' < scripts/list_unindexed_runs.py
 
-# 2. Act. Re-posts every re-postable run, smallest first.
+# 2. Act. Re-posts every re-postable run, oldest content-ready first.
 ssh -i ~/.ssh/hostinger_rag_ed25519 root@<vps> \
   'docker exec -i geek-crawler-rag-api-1 python - --requeue' < scripts/list_unindexed_runs.py
 ```
