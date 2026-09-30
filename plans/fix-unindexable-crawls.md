@@ -83,6 +83,23 @@ projection in C#, which CLAUDE.md §1a forbids by name).
 `GeekCrawlerOptions.cs:28-32` already has the intended switch, with a comment naming this exact case:
 *"0 is intentional: idle this GeekAPI instance's crawl workers (local Mac / Railway handoff)."*
 
+## Status, 2026-09-30
+
+**Done.** Items 1, 3, 5, 6 and 7 — `GEEK_CRAWLER_WORKER_COUNT=0` on Railway, and GeekBackend
+`8713268`: the requeue path refuses an `external` run instead of hijacking it, the in-process
+completion fails the run rather than completing it, the ingest route enforces
+`complete ⇒ contentReadyAt`, the enqueue warning no longer claims "content-ready", and the SignalR
+frame carries `contentReadyAt`. Six tests; the two source-level guards were mutation-checked.
+1,250 pass.
+
+**Blocked on the open question below.** Items 2 and 4 — what `StartCrawl` should do now, and making
+the schedule service reach the same outcome. Item 4 is written as "whatever item 2 does, this path
+must reach the same outcome", so it cannot land first.
+
+Item 7's guard changes what item 2 is choosing between: an in-process crawl no longer ends
+`complete`-but-invisible, it ends `failed` with the reason. So the current behaviour is already
+honest, just wasteful — refusing up front saves the walk, it no longer prevents a silent defect.
+
 ## Plan
 
 **1. Turn the workers off in production.** Set `GEEK_CRAWLER_WORKER_COUNT=0` on the Railway `GeekAPI`
