@@ -14,10 +14,6 @@ useful for batch *sizing*; they are not an authority on whether a single item fi
 
 from __future__ import annotations
 
-import asyncio
-import email.utils
-import random
-import time
 from collections import deque
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
@@ -34,10 +30,18 @@ class EmbeddingBatch:
 
 
 def embedding_token_count(texts: Sequence[str], model: str) -> int:
-    try:
-        encoding = tiktoken.encoding_for_model(model)
-    except KeyError:
-        encoding = tiktoken.get_encoding("cl100k_base")
+    """Approximate token count for batch sizing. **Not** the embedder's own count.
+
+    ``model`` is accepted and deliberately unused for encoding selection: tiktoken has no encoding for
+    a local ONNX model, so ``encoding_for_model`` would raise ``KeyError`` on every call and fall
+    through to the same place. The parameter is kept because callers pass the model for logging and
+    quarantine payloads, and dropping it would churn four callsites to no benefit.
+
+    cl100k_base is a BPE tokenizer; bge-small counts WordPiece, which runs longer on technical text.
+    Use this for "how many texts go in this batch", never for "does this text fit the model" --
+    ``LocalDenseEmbedding`` answers that with the model's own tokenizer.
+    """
+    encoding = tiktoken.get_encoding("cl100k_base")
     return max(1, sum(len(encoding.encode(text)) for text in texts))
 
 

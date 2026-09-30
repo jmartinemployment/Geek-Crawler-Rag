@@ -70,7 +70,7 @@ Geek-Crawler-Rag turns partner and competitor website crawls into searchable evi
 ### Capabilities
 
 - English-only parent/child chunking for pinpoint and section-level context
-- OpenAI embeddings and deterministic Qdrant vector records
+- Local dense + sparse embeddings and deterministic Qdrant vector records
 - LlamaIndex dense retrieval combined with BM25/text search and reciprocal-rank fusion
 - Optional Cohere reranking
 - Entity, source, category, quality, host, and chunk-role filters
@@ -82,7 +82,7 @@ Geek-Crawler-Rag turns partner and competitor website crawls into searchable evi
 
 ### Technology
 
-Python, FastAPI, Pydantic, LlamaIndex, MongoDB, Qdrant, OpenAI, BM25, Cohere, Docker, and GHCR.
+Python, FastAPI, Pydantic, LlamaIndex, MongoDB, Qdrant, fastembed/ONNX, BM25, Cohere, Docker, and GHCR.
 
 **Readability was removed and is not a dependency** — no import in `src/`, no entry in
 `pyproject.toml`. It is an *article* extractor, and most crawled pages are product, pricing, feature
@@ -107,7 +107,7 @@ Geek-Crawler-v2 → MongoDB → Geek-Crawler-Rag/Qdrant
 |----|--------|
 | Index + query for `geek_crawler` pages | A crawler |
 | FastAPI + LlamaIndex + Qdrant on Hostinger | Cloud vector DB / pgvector |
-| English-only embed (`text-embedding-3-small`) | Spanish indexing |
+| English-only embed (`bge-small-en-v1.5`) | Spanish indexing |
 | Owned by this repo | Logic inside phi or GeekAPI |
 
 ## API
@@ -197,7 +197,7 @@ remains in GeekRepository.
 Index concurrency is **1**. Rebuild deletes all Qdrant points for `runId`, then reindexes.
 At index start the service logs **`mongoPageCount`**. Runs with `mongoPageCount` above **50 000** are skipped (Hostinger safety cap).
 
-### Indexing trigger and OpenAI rate limits
+### Indexing trigger
 
 **The index scheduler is deprecated.** Indexing is triggered by `POST /v1/index`.
 `INDEX_SCHEDULER_ENABLED` is `false`; `scheduler.py` and
@@ -222,26 +222,30 @@ operator or a new enqueue starts a fresh attempt. See
 [`docs/index-job-recovery-after-restart.md`](./docs/index-job-recovery-after-restart.md) for the
 re-post procedure and the two states that look like success but are not.
 
-All corpus, query, and ad-template embeddings pass through one rolling
-token-per-minute limiter, sequentially partitioned by item and token count.
-Embedding calls are **fail-closed with no in-process retries**
-(`OPENAI_EMBEDDING_MAX_RETRIES=0`): the first HTTP 500 or empty-input 400
-quarantines the batch and fails the job with already upserted points preserved
-(see [`docs/embedding-circuit-recovery.md`](./docs/embedding-circuit-recovery.md)
-and [`plans/rules.md`](./plans/rules.md) §3a).
+**Embeddings are local and in-process.** Dense is `BAAI/bge-small-en-v1.5` (384-d) and sparse is
+`Qdrant/bm25`, both through fastembed/ONNX — no API key, no rate limit, no per-chunk cost and no
+external service in the indexing path. Inference runs in a worker thread, never on the event loop.
 
-**Keep the throttle well under the account ceiling.** Your OpenAI TPM limit is
-returned in `x-ratelimit-limit-tokens` on any embeddings response. Setting the
-throttle *at* that limit rather than below it causes sustained runs to receive
-HTTP 500 `server_error` instead of clean 429s — a 1,000,000 setting against a
-1,000,000 ceiling killed multi-hour runs until it was lowered to 400,000.
+There is no throttle and no retry. An embed call is made **once**; a batch that cannot be embedded is
+quarantined and the job fails closed, with already upserted points preserved (see
+[`docs/embedding-circuit-recovery.md`](./docs/embedding-circuit-recovery.md) and
+[`plans/rules.md`](./plans/rules.md) §3a). The fail-closed policy is unchanged; what was removed with
+the remote API was the tokens-per-minute limiter it needed.
 
-- `OPENAI_EMBEDDING_TOKENS_PER_MINUTE=400000` (40% of a 1,000,000 ceiling)
-- `OPENAI_EMBEDDING_MAX_BATCH_TOKENS=50000`
+- `EMBEDDING_MODEL=BAAI/bge-small-en-v1.5`
+- `EMBEDDING_DIMENSIONS=384` — must equal the collection's declared `size`; startup refuses a mismatch
+- `EMBEDDING_THREADS=4` — ONNX intra-op threads; BM25 needs almost none, so dense gets them
+- `EMBEDDING_MAX_BATCH_TOKENS=50000`
 - `EMBED_BATCH_SIZE=64`
-- `OPENAI_EMBEDDING_MAX_RETRIES=0` (nothing retries an embed call — see below)
+- `FASTEMBED_CACHE_PATH=/tmp/fastembed_cache` — pinned so the named volume keeps catching model weights
 - `QDRANT_UPSERT_DELAY_SECONDS=0.5`
 - `INDEX_SCHEDULER_INTERVAL_SECONDS=300`
+
+**The model truncates at 512 tokens, silently.** `LocalDenseEmbedding` counts each input with the
+model's own tokenizer and logs every one that reaches the limit, reporting the total as
+`truncatedInputs`. It does not raise: the chunker sizes chunks with tiktoken BPE while the model counts
+WordPiece, which runs longer on technical text, so a chunk inside its configured budget can legitimately
+cross the ceiling. That count is how `PARENT_CHUNK_SIZE_TOKENS` gets tuned rather than estimated.
 
 **`EMBED_BATCH_SIZE=128` OOM-killed the container — do not set it there again.** On
 2026-09-25, 32 → 128 took the api container from a steady 2.4 GiB to past its **6 GiB**
@@ -306,7 +310,7 @@ GeekAPI fans out SignalR **`GeekCrawlerRagIndexEvent`**. The Geek-Crawler UI lis
 ## Local run
 
 ```bash
-cp .env.example .env   # set MONGO_CRAWLER_URL, OPENAI_API_KEY
+cp .env.example .env   # set MONGO_CRAWLER_URL, API_KEY
 docker compose up -d qdrant
 uv sync
 uv run geek-crawler-rag
@@ -361,18 +365,22 @@ re-claims it on the next tick and no Qdrant points are wiped.
 A green `/health` alone does **not** prove the new image is live — confirm the
 API container's uptime reset via `docker ps`.
 
-## Troubleshooting OpenAI errors
+## Troubleshooting embedding failures
 
-When indexing fails with OpenAI HTTP 500 errors, the service captures OpenAI's
-request ID and error message for diagnosis. See [`docs/embedding-circuit-recovery.md`](./docs/embedding-circuit-recovery.md)
-for quarantine workflow, examining error details, and recovery procedures.
+An embed call is made once. A batch that cannot be embedded is written to
+`EMBEDDING_QUARANTINE_DIR` and the job fails closed; points already upserted are kept.
 
-Key points:
-- Embedding failures (HTTP 400 or 500) write quarantine JSON to `EMBEDDING_QUARANTINE_DIR`
-- Quarantine files include `openaiDiagnostics` with `requestId`, `errorType`, and `message`
-- Use the request ID to check [OpenAI status](https://status.openai.com/) and distinguish genuine outages from request-shape issues
-- Failed runs are marked `FAILED` with no Qdrant wipe (points are preserved for recovery)
-- Re-index is manual; use operator decision after examining the quarantine
+- The quarantine file carries `reason` (`inference_failed` or `empty_input`), `model`, `batchSize`,
+  `tokenCount`, per-item previews, and `detail` — the exception chain, innermost first, because ONNX
+  and tokenizer errors put the useful text on the innermost exception.
+- `reason: empty_input` does not mean inference broke. It means the chunker or
+  `embedding_sanitize` let an empty string through, and both are supposed to make it unreachable —
+  so it points at a hole in one of them.
+- Recovery is a deliberate re-post, never automatic. See
+  [`docs/embedding-circuit-recovery.md`](./docs/embedding-circuit-recovery.md).
+
+There is no provider status page to check and no request ID to quote: embedding runs in this process.
+If it fails, the cause is local — the model, the input, or the host.
 
 ## Consumers
 

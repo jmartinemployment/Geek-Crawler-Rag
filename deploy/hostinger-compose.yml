@@ -34,12 +34,14 @@ services:
       QDRANT_URL: http://qdrant:6333
       MONGO_CRAWLER_URL: ${MONGO_CRAWLER_URL}
       MONGO_DB_NAME: ${MONGO_DB_NAME:-geek_crawler}
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
-      OPENAI_EMBEDDING_TOKENS_PER_MINUTE: ${OPENAI_EMBEDDING_TOKENS_PER_MINUTE:-400000}
-      OPENAI_EMBEDDING_MAX_BATCH_TOKENS: ${OPENAI_EMBEDDING_MAX_BATCH_TOKENS:-50000}
-      # Fail-closed: no in-process OpenAI retries / exponential backoff (by design).
-      OPENAI_EMBEDDING_MAX_RETRIES: ${OPENAI_EMBEDDING_MAX_RETRIES:-0}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-BAAI/bge-small-en-v1.5}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-384}
+      EMBEDDING_THREADS: ${EMBEDDING_THREADS:-4}
+      EMBEDDING_MAX_BATCH_TOKENS: ${EMBEDDING_MAX_BATCH_TOKENS:-50000}
+      # Pinned, not left to fastembed's built-in default. The named volume below is mounted at this
+      # path; if a future fastembed moves its default cache (e.g. to XDG ~/.cache), the volume would
+      # silently stop catching models and every recreate would re-download them.
+      FASTEMBED_CACHE_PATH: /tmp/fastembed_cache
       EMBEDDING_QUARANTINE_DIR: ${EMBEDDING_QUARANTINE_DIR:-/var/lib/geek-crawler-rag/embedding_quarantine}
       EMBED_BATCH_SIZE: ${EMBED_BATCH_SIZE:-64}
       INDEX_SCHEDULER_ENABLED: ${INDEX_SCHEDULER_ENABLED:-true}
@@ -59,9 +61,9 @@ services:
       INDEX_STATUS_WEBHOOK_KEY: ${INDEX_STATUS_WEBHOOK_KEY:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     volumes:
-      # Survives container recreate; inspect failed OpenAI batches here.
+      # Survives container recreate; inspect quarantined embed batches here.
       - embedding_quarantine:/var/lib/geek-crawler-rag/embedding_quarantine
-      # The SPLADE weights (509MB) live here. Without a volume they are inside the
+      # The embedding model weights live here (bge-small ~130MB). Without a volume they are inside the
       # container, so EVERY recreate re-downloads them from the HF hub before indexing
       # can resume -- and a job claimed during that window hangs on a model that is not
       # there yet. Named volume, so a recreate costs nothing.

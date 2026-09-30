@@ -70,8 +70,10 @@ because a lock acquisition prints nothing.
 | `running`, `leaseUntil` frozen at `claimedAt + 900s` | **restart the process, then re-post** |
 
 Restart with `docker restart geek-crawler-rag-api-1`, **not** `docker compose up -d`: a
-restart keeps the container's filesystem and therefore the 509 MB SPLADE model in
-`/tmp/fastembed_cache`, which is not a volume and is re-downloaded on every recreate.
+restart keeps in-flight state. The model cache is not the reason: `/tmp/fastembed_cache` **is** a
+named volume (`hostinger-compose.yml`), so model weights survive `docker compose up -d` as well. An
+earlier version of this line claimed the opposite and sent people debugging a re-download that does
+not happen.
 
 And check `docker events` before theorising. An OOM kill looks exactly like a hang from
 the job's side — the queue dies with the process and the row is left `running`:

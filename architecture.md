@@ -40,7 +40,7 @@ flowchart LR
   cheerio -->|page batches| api --> repo --> mongo
   api -.->|thin trigger / query proxy| rag
   rag -->|read Html| mongo
-  rag -->|embed| openai[OpenAI Embeddings]
+  rag -->|embed| embed[Local dense + sparse embeddings]
   rag -->|upsert search| qdrant
   rag -->|index status webhook| api
   api -->|SignalR GeekCrawlerRagIndexEvent| ui
@@ -119,6 +119,8 @@ different secret, and a mismatch 401s every push.
 
 Collection name: `geek_crawler_chunks`.
 
-Embeddings: OpenAI `text-embedding-3-small`.
+Embeddings: local, in-process. Dense `BAAI/bge-small-en-v1.5` (384-d) and sparse
+`Qdrant/bm25` with Qdrant's `idf` modifier, both via fastembed/ONNX. No external
+embedding service.
 
 Full detail: [`plans/geek-crawler-rag.md`](./plans/geek-crawler-rag.md).

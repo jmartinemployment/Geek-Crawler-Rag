@@ -153,14 +153,45 @@ fastembed's built-in default, not configuration.
 
 ## The gate
 
-**Stratified, not random.** A uniform sample draws ~71% from the region where the change provably
-costs nothing, so it could pass while the 28.6% regresses. Sample wide-parent units (ratio ≥ 2) across
-three shapes: matrix-relational ("which tier includes multi-currency consolidation"), multi-step
-synthesis, and distant negation (qualifier hundreds of tokens from its subject).
+**This is a production contract, not a formality.** Content Creator's declared-URL validation does not
+stop at counting: it queries the RAG (`POST /v1/query`), verifies each quote against page text
+(`GET /v1/pages/{id}` — `GccPartnerExtractionModels.cs:77`, *"True only after quote↔page-text verify"*),
+and **refuses to write** when nothing citable comes back (`GccGroundingResolver`, refusal text
+*"citable passage"*).
 
-Baseline first, on the current OpenAI+SPLADE index. Score `citation_verify.quote_in_text` pass/fail.
-Threshold set before running. **Passes only if the new engine matches or beats the baseline count on
-the wide-parent subset.**
+Quote verification itself is model-independent — it is string matching against corpus text, so it
+cannot degrade. What can degrade is whether `/v1/query` surfaces the passage at all. A retrieval
+regression therefore presents as **a refusal to produce content**, which is fail-closed and correct,
+but it means a URL that validates as usable today can stop validating.
+
+So the gate runs the real workflow, not a synthetic proxy:
+
+1. **Baseline first, on the current OpenAI+SPLADE index.** Take the partner/competitor URLs that
+   validate as usable today and record, per URL: does `/v1/query` return passages, do the quotes
+   verify, does validation confirm usability.
+2. Rebuild.
+3. **Same URLs, same validation path.** The gate passes only if the set that confirms usable is the
+   same size or larger.
+
+Supplement it with a stratified query set, because the URL set alone may not exercise the risk:
+sample **wide-parent units (ratio ≥ 2)** across the three shapes where a 200-token child cannot
+carry the meaning — matrix-relational ("which tier includes multi-currency consolidation"),
+multi-step synthesis, and distant negation (a qualifier hundreds of tokens from its subject). A
+uniform sample draws ~71% from the region where the change provably costs nothing.
+
+Threshold set before running, not after.
+
+### The counts gate is safe, checked
+
+`GccDeclaredUrlEvidence` requires `MinIndexedPages = 25` and `MinIndexedChunks = 250`.
+
+- `RagPagesEnglish` is **untouched** — the parent gate removes duplicate points, not pages.
+- `RagChunksUpserted` falls ~32%, and the smallest currently-passing run has 2,366 chunks → ~1,608,
+  still 6.4× the threshold. No run in the corpus flips.
+
+One narrow exposure to re-check after the rebuild: a site with 25+ pages but under ~370 chunks today
+would cross. That needs fewer than ~15 chunks/page against the current average of 30.9, so it is
+sparse-page sites only. None exist today.
 
 ## Verification
 
