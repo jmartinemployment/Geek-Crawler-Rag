@@ -486,23 +486,31 @@ class IndexService:
                 raise LeaseLostError(f"Lost index job lease: {run_id}")
             last_success = time.monotonic()
 
-    def _embedding_stats(self) -> tuple[int, float]:
+    def _embedding_stats(self) -> tuple[int, float, int]:
         getter = getattr(self._llama, "embedding_stats", None)
         if not callable(getter):
-            return 0, 0.0
+            return 0, 0.0, 0
         stats = getter()
-        return int(stats.get("rateLimitRetries", 0)), float(
-            stats.get("waitSeconds", 0.0)
+        return (
+            int(stats.get("rateLimitRetries", 0)),
+            float(stats.get("waitSeconds", 0.0)),
+            int(stats.get("truncatedInputs", 0)),
         )
 
     def _sync_embedding_stats(
         self,
         status: IndexStatusResponse,
-        baseline: tuple[int, float],
+        baseline: tuple[int, float, int],
     ) -> None:
-        retries, wait = self._embedding_stats()
+        """Deltas, not totals -- the counters live on the engine and span every run in the process."""
+        retries, wait, truncated = self._embedding_stats()
         status.embedding_rate_limit_retries = max(0, retries - baseline[0])
         status.embedding_wait_seconds = round(max(0.0, wait - baseline[1]), 3)
+        # NOT set on `status`: that model is the wire contract, and adding a key to it reds
+        # compare_webhook_contract until GeekBackend binds the same one. It goes on the wire in the
+        # same window that retires embeddingRateLimitRetries -- see plans/go-local-embeddings.md.
+        # Until then the count is live on /health and in the engine.
+        _ = truncated
 
     async def _fail_quarantined(
         self,
