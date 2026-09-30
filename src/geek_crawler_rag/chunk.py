@@ -1,27 +1,38 @@
-"""Token-aware chunking: legacy sliding window + parent/child sections."""
+"""Chunking: sliding window + parent/child sections, sized in the embedding model's own tokens.
+
+``tokenizer`` is a required argument throughout, never defaulted. It used to be tiktoken's
+``cl100k_base``, chosen implicitly inside this module, while the embedder counted WordPiece -- and
+the gap silently truncated 6.9% of parent chunks at inference. A default here is what let those two
+disagree without anyone passing anything wrong, so there is no default to fall back to. See
+``chunk_tokenizer`` for why chunks are sliced from the original string rather than decoded.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Iterable
 
-import tiktoken
-
 from geek_crawler_rag.block_text import derive_plaintext_from_blocks
-
-_ENCODING_NAME = "cl100k_base"
-
-
-def _encoding() -> tiktoken.Encoding:
-    return tiktoken.get_encoding(_ENCODING_NAME)
+from geek_crawler_rag.chunk_tokenizer import ChunkTokenizer
 
 
 def chunk_text(
     text: str,
     *,
+    tokenizer: ChunkTokenizer,
     size_tokens: int = 650,
     overlap_tokens: int = 80,
 ) -> list[str]:
+    """Sliding token window over ``text``, returning verbatim slices of it.
+
+    Each chunk is ``text[span_of_first_token.start : span_of_last_token.end]`` -- the original
+    characters, including whatever punctuation, casing and interior whitespace they had. Nothing is
+    reconstructed from tokens.
+
+    ``size_tokens`` counts CONTENT tokens. The model adds ``special_token_overhead`` on top, so a
+    caller wanting to stay inside a 512-token model must ask for at most 510. Enforced below rather
+    than documented and hoped for.
+    """
     cleaned = (text or "").strip()
     if not cleaned:
         return []
@@ -31,20 +42,29 @@ def chunk_text(
     if overlap_tokens < 0 or overlap_tokens >= size_tokens:
         raise ValueError("overlap_tokens must be >= 0 and < size_tokens")
 
-    enc = _encoding()
-    tokens = enc.encode(cleaned)
-    if not tokens:
+    limit = tokenizer.sequence_limit
+    usable = limit - tokenizer.special_token_overhead if limit > 0 else 0
+    if usable > 0 and size_tokens > usable:
+        # Fail loudly at the boundary rather than let the model truncate silently at inference.
+        # This is a configuration error, not a data condition.
+        raise ValueError(
+            f"size_tokens={size_tokens} exceeds the model's usable budget {usable} "
+            f"(sequence_limit={limit} minus {tokenizer.special_token_overhead} special tokens)"
+        )
+
+    spans = tokenizer.token_spans(cleaned)
+    if not spans:
         return []
 
     chunks: list[str] = []
     start = 0
     step = size_tokens - overlap_tokens
-    while start < len(tokens):
-        end = min(start + size_tokens, len(tokens))
-        piece = enc.decode(tokens[start:end]).strip()
+    while start < len(spans):
+        end = min(start + size_tokens, len(spans))
+        piece = cleaned[spans[start][0] : spans[end - 1][1]].strip()
         if piece:
             chunks.append(piece)
-        if end >= len(tokens):
+        if end >= len(spans):
             break
         start += step
     return chunks
@@ -68,10 +88,16 @@ class ParentChildUnit:
 def _token_windows(
     text: str,
     *,
+    tokenizer: ChunkTokenizer,
     size_tokens: int,
     overlap_tokens: int,
 ) -> list[str]:
-    return chunk_text(text, size_tokens=size_tokens, overlap_tokens=overlap_tokens)
+    return chunk_text(
+        text,
+        tokenizer=tokenizer,
+        size_tokens=size_tokens,
+        overlap_tokens=overlap_tokens,
+    )
 
 
 @dataclass(frozen=True)
@@ -160,12 +186,13 @@ def split_blocks_into_sections(
 def parent_child_units(
     blocks: Iterable[dict[str, Any]] | None,
     *,
+    tokenizer: ChunkTokenizer,
     child_size_tokens: int = 200,
     child_overlap_tokens: int = 40,
     parent_size_tokens: int = 1000,
     parent_overlap_tokens: int = 80,
 ) -> list[ParentChildUnit]:
-    """Build child pinpoint chunks nested under parent windows (~800-1200 tok).
+    """Build child pinpoint chunks nested under parent windows.
 
     Parents are windowed **within a section**, so a parent never straddles two
     headings and every chunk carries the heading it actually sits under. Before
@@ -194,6 +221,7 @@ def parent_child_units(
     for section in sections:
         parents = _token_windows(
             section.text,
+            tokenizer=tokenizer,
             size_tokens=parent_size_tokens,
             overlap_tokens=parent_overlap_tokens,
         )
@@ -202,6 +230,7 @@ def parent_child_units(
         for parent_text in parents:
             children = _token_windows(
                 parent_text,
+                tokenizer=tokenizer,
                 size_tokens=child_size_tokens,
                 overlap_tokens=child_overlap_tokens,
             )

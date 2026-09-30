@@ -17,35 +17,76 @@ from geek_crawler_rag.rrf import reciprocal_rank_fusion
 from geek_crawler_rag.bm25_rank import bm25_rank_indices, tokenize
 
 
-def test_chunk_empty():
-    assert chunk_text("") == []
-    assert chunk_text("   ") == []
+def test_chunk_empty(chunk_tokenizer):
+    assert chunk_text("", tokenizer=chunk_tokenizer) == []
+    assert chunk_text("   ", tokenizer=chunk_tokenizer) == []
 
 
-def test_chunk_short_text_single_piece():
+def test_chunk_short_text_single_piece(chunk_tokenizer):
     text = "Hello world. " * 20
-    chunks = chunk_text(text, size_tokens=200, overlap_tokens=20)
+    chunks = chunk_text(text, tokenizer=chunk_tokenizer, size_tokens=200, overlap_tokens=20)
     assert len(chunks) >= 1
     assert all(c.strip() for c in chunks)
 
 
-def test_chunk_overlap_covers_long_doc():
+def test_chunk_overlap_covers_long_doc(chunk_tokenizer):
     text = " ".join(f"word{i}" for i in range(2000))
-    chunks = chunk_text(text, size_tokens=100, overlap_tokens=20)
+    chunks = chunk_text(text, tokenizer=chunk_tokenizer, size_tokens=100, overlap_tokens=20)
     assert len(chunks) > 3
     assert "word1999" in chunks[-1]
     assert "word0" in chunks[0]
 
 
-def test_chunk_rejects_bad_overlap():
+def test_chunk_rejects_bad_overlap(chunk_tokenizer):
     try:
-        chunk_text("abc", size_tokens=10, overlap_tokens=10)
+        chunk_text("abc", tokenizer=chunk_tokenizer, size_tokens=10, overlap_tokens=10)
         raise AssertionError("expected ValueError")
     except ValueError:
         pass
 
 
-def test_parents_are_bounded_by_headings_and_carry_their_section():
+def test_every_chunk_is_a_verbatim_slice_of_the_input(chunk_tokenizer):
+    """The guarantee that makes WordPiece sizing safe at all.
+
+    Chunks are cut from the original string at token boundaries, never rebuilt from tokens. The old
+    implementation decoded a token slice, which is lossless for BPE and destructive for WordPiece --
+    bge-small is uncased and splits on punctuation, so `Invoice.model_validate_json` would come back
+    as `invoice. model _ validate _ json`. Chunk text is also the citation-verification target, so a
+    lossy round-trip there breaks quote verification, not just readability.
+    """
+    text = (
+        "Parse it: invoice = Invoice.model_validate_json(raw_json). "
+        "Then df = pd.DataFrame([item.model_dump() for item in invoice.lineItems]). "
+        "Check TOTALS against XJ-4420-B and 7.3.1 exactly. "
+    ) * 6
+    chunks = chunk_text(text, tokenizer=chunk_tokenizer, size_tokens=30, overlap_tokens=5)
+    assert len(chunks) > 3
+    for chunk in chunks:
+        assert chunk in text, "chunk is not a substring of its source"
+    # Casing, punctuation and identifiers survive intact.
+    joined = " ".join(chunks)
+    assert "Invoice.model_validate_json" in joined
+    assert "XJ-4420-B" in joined
+    assert "7.3.1" in joined
+    assert "TOTALS" in joined
+
+
+def test_a_window_wider_than_the_model_accepts_is_refused(chunk_tokenizer):
+    """Configuration error at the boundary, not silent truncation at inference.
+
+    The model adds special tokens per input, so the usable budget is sequence_limit minus that
+    overhead -- 510 for a 512-token model. Asking for more is how 6.9% of parents got cut.
+    """
+    usable = chunk_tokenizer.sequence_limit - chunk_tokenizer.special_token_overhead
+    assert chunk_text("word " * 50, tokenizer=chunk_tokenizer, size_tokens=usable)
+    try:
+        chunk_text("word " * 50, tokenizer=chunk_tokenizer, size_tokens=usable + 1)
+        raise AssertionError("expected ValueError for a window above the usable budget")
+    except ValueError as exc:
+        assert "usable budget" in str(exc)
+
+
+def test_parents_are_bounded_by_headings_and_carry_their_section(chunk_tokenizer):
     """Each chunk reports the heading it sits under, and its own section's anchors.
 
     Sections are cut at heading blocks, so a parent window never straddles two
@@ -69,6 +110,7 @@ def test_parents_are_bounded_by_headings_and_carry_their_section():
     ]
     units = parent_child_units(
         blocks,
+        tokenizer=chunk_tokenizer,
         child_size_tokens=40,
         child_overlap_tokens=5,
         parent_size_tokens=120,
@@ -105,7 +147,7 @@ def test_parents_are_bounded_by_headings_and_carry_their_section():
     )
 
 
-def test_section_text_is_the_page_projection_restricted_to_those_blocks():
+def test_section_text_is_the_page_projection_restricted_to_those_blocks(chunk_tokenizer):
     """The invariant that keeps citations verifiable.
 
     A quote is taken from a retrieved chunk and matched against the whole-page
@@ -128,14 +170,16 @@ def test_section_text_is_the_page_projection_restricted_to_those_blocks():
     for section in sections:
         assert section.text in page_text
 
-    units = parent_child_units(blocks, parent_size_tokens=1000, child_size_tokens=200)
+    units = parent_child_units(
+        blocks, tokenizer=chunk_tokenizer, parent_size_tokens=500, child_size_tokens=200
+    )
     for unit in units:
         assert unit.parent_text in page_text
 
 
-def test_no_blocks_yields_no_units():
-    assert parent_child_units(None) == []
-    assert parent_child_units([]) == []
+def test_no_blocks_yields_no_units(chunk_tokenizer):
+    assert parent_child_units(None, tokenizer=chunk_tokenizer) == []
+    assert parent_child_units([], tokenizer=chunk_tokenizer) == []
     assert split_blocks_into_sections(None) == []
     # Blocks that render to nothing are not a section.
     assert split_blocks_into_sections([{"kind": "paragraph", "text": "  "}]) == []

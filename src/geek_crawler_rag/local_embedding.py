@@ -38,6 +38,8 @@ from fastembed import TextEmbedding
 from llama_index.core.base.embeddings.base import BaseEmbedding
 from llama_index.core.bridge.pydantic import PrivateAttr
 
+from geek_crawler_rag.chunk_tokenizer import WordPieceChunkTokenizer
+
 logger = logging.getLogger(__name__)
 
 
@@ -48,6 +50,7 @@ class LocalDenseEmbedding(BaseEmbedding):
     _threads: int = PrivateAttr()
     _max_tokens: int = PrivateAttr()
     _truncated: int = PrivateAttr()
+    _chunk_tokenizer: WordPieceChunkTokenizer = PrivateAttr()
 
     def __init__(
         self,
@@ -69,6 +72,12 @@ class LocalDenseEmbedding(BaseEmbedding):
         )
         self._truncated = 0
         self._max_tokens = self._read_max_tokens()
+        # The chunker must size text in THIS model's tokens, not tiktoken's. Built from the same
+        # tokenizer instance so the two can never name different models, and built here so the
+        # cost of deserialising it is paid once at startup rather than per page.
+        self._chunk_tokenizer = WordPieceChunkTokenizer(
+            self._model.model.tokenizer  # type: ignore[attr-defined]
+        )
         logger.info(
             "Local dense embedder ready model=%s threads=%s batch=%s max_tokens=%s",
             model_name,
@@ -107,6 +116,15 @@ class LocalDenseEmbedding(BaseEmbedding):
         return len(tokenizer.encode(text).ids)
 
     @property
+    def chunk_tokenizer(self) -> WordPieceChunkTokenizer:
+        """The tokenizer the chunker must measure with, to match what this model counts.
+
+        Truncation is disabled on it (see ``chunk_tokenizer``), which is why it is a separate
+        instance rather than the one ``_count_tokens`` uses.
+        """
+        return self._chunk_tokenizer
+
+    @property
     def truncated_inputs(self) -> int:
         """How many inputs exceeded the model's limit and were silently truncated by it."""
         return self._truncated
@@ -115,15 +133,18 @@ class LocalDenseEmbedding(BaseEmbedding):
         """Truncation is the model's default and it is silent. Make it visible and countable.
 
         ONNX truncates at ``max_length`` with no error, so a chunk at or over the limit yields a
-        vector representing only its head. That is a fail-open, and the reason it can happen at all is a
-        tokenizer mismatch: the chunker sizes parents and children with tiktoken's BPE
-        (``embedding_batching.partition_embedding_batches``) while the model counts WordPiece, which
-        runs longer on technical text. So a parent inside its configured 480-token budget can still
-        cross 512 here.
+        vector representing only its head. That is a fail-open.
 
-        Not raised. The chunk is legitimate and the run should continue -- but nobody should have to
-        guess whether it happened. The count is the input for tuning
-        ``parent_chunk_size_tokens`` empirically instead of by estimate.
+        Since 2026-09-30 the chunker sizes in this same model's tokens (``chunk_tokenizer``), and
+        ``chunk_text`` refuses a ``size_tokens`` above the usable budget, so a chunk from this repo's
+        chunker should now be structurally incapable of reaching the ceiling. This check stays
+        because "should be incapable" is a claim, and an uncounted fail-open is how the previous
+        mismatch went unnoticed: the chunker measured tiktoken BPE while the model counted WordPiece,
+        and 136 of 1,984 parents crossed 512 with the discarded tail being Python source.
+
+        Not raised. The chunk is legitimate and the run should continue. A non-zero count now means a
+        real defect -- a caller bypassing the chunker, or an assumption in it that no longer holds --
+        rather than a budget in need of tuning.
         """
         if self._max_tokens <= 0:
             return

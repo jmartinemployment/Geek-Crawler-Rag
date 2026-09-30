@@ -10,6 +10,7 @@ from typing import Protocol
 from bs4 import BeautifulSoup
 
 from geek_crawler_rag.chunk import chunk_text
+from geek_crawler_rag.chunk_tokenizer import ChunkTokenizer
 from geek_crawler_rag.config import Settings
 from geek_crawler_rag.context_models import (
     AssetDeleteRequest,
@@ -41,6 +42,15 @@ class AssetEmbedder(Protocol):
     async def embed_texts(self, texts: list[str]) -> list[list[float]]: ...
 
     async def embed_query(self, text: str) -> list[float]: ...
+
+    @property
+    def chunk_tokenizer(self) -> ChunkTokenizer:
+        """The embedding model's own tokenizer, for sizing chunks it will have to fit.
+
+        On the protocol rather than passed in separately so the tokenizer cannot come from a
+        different model than the vectors -- which is exactly the drift that truncated 6.9% of
+        parent chunks.
+        """
 
 
 @dataclass(frozen=True)
@@ -100,10 +110,23 @@ def chunk_asset(
     text: str,
     resource_digest: str,
     *,
+    tokenizer: ChunkTokenizer,
     size_tokens: int,
     overlap_tokens: int,
 ) -> list[AssetChunk]:
-    pieces = chunk_text(text, size_tokens=size_tokens, overlap_tokens=overlap_tokens)
+    """Chunk an operator-supplied asset, mapping each piece back to source coordinates.
+
+    The ``text.find(piece)`` below requires every chunk to appear verbatim in ``text``. That is
+    guaranteed now that ``chunk_text`` slices the original string; it was not when chunks were
+    produced by decoding a token slice, and the ``ValueError`` here was the only thing standing
+    between a lossy round-trip and silently wrong coordinates.
+    """
+    pieces = chunk_text(
+        text,
+        tokenizer=tokenizer,
+        size_tokens=size_tokens,
+        overlap_tokens=overlap_tokens,
+    )
     chunks: list[AssetChunk] = []
     search_from = 0
     for piece in pieces:
@@ -150,6 +173,7 @@ class AssetContextService:
         chunks = chunk_asset(
             parsed.text,
             request.resource.resource_digest,
+            tokenizer=self._embedder.chunk_tokenizer,
             size_tokens=self._settings.child_chunk_size_tokens,
             overlap_tokens=self._settings.child_chunk_overlap_tokens,
         )
@@ -203,6 +227,7 @@ class AssetContextService:
         chunks = chunk_asset(
             parsed.text,
             request.derived_sha256,
+            tokenizer=self._embedder.chunk_tokenizer,
             size_tokens=self._settings.child_chunk_size_tokens,
             overlap_tokens=self._settings.child_chunk_overlap_tokens,
         )

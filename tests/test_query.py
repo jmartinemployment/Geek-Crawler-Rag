@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from llama_index.core.schema import NodeWithScore, TextNode
 
+from conftest import FakeChunkTokenizer
 from geek_crawler_rag.config import Settings
 from geek_crawler_rag.models import QueryRequest
 from geek_crawler_rag.query import (
@@ -140,6 +141,8 @@ async def test_query_hybrid_maps_hits():
         child_text="child text about pricing",
     )
     llama = MagicMock()
+    # A MagicMock chunk_tokenizer fails chunk_text's budget check; give it the real protocol.
+    llama.chunk_tokenizer = FakeChunkTokenizer()
     llama.dense_query = AsyncMock(return_value=[NodeWithScore(node=node, score=0.9)])
 
     settings = Settings(openai_api_key="test", hybrid_dense_limit=5, rerank_pool_size=5)
@@ -200,6 +203,8 @@ async def test_query_hybrid_collapses_sibling_parents_and_backfills():
         ),
     ]
     llama = MagicMock()
+    # A MagicMock chunk_tokenizer fails chunk_text's budget check; give it the real protocol.
+    llama.chunk_tokenizer = FakeChunkTokenizer()
     llama.dense_query = AsyncMock(
         return_value=[
             NodeWithScore(node=n, score=0.9 - i * 0.01) for i, n in enumerate(nodes)
@@ -263,6 +268,8 @@ async def test_query_hybrid_prefer_child_keeps_sibling_children():
         ),
     ]
     llama = MagicMock()
+    # A MagicMock chunk_tokenizer fails chunk_text's budget check; give it the real protocol.
+    llama.chunk_tokenizer = FakeChunkTokenizer()
     llama.dense_query = AsyncMock(
         return_value=[
             NodeWithScore(node=n, score=0.9 - i * 0.01) for i, n in enumerate(nodes)
@@ -293,6 +300,8 @@ async def test_query_hybrid_reranks_full_pool_even_when_topk_smaller():
         for i in range(5)
     ]
     llama = MagicMock()
+    # A MagicMock chunk_tokenizer fails chunk_text's budget check; give it the real protocol.
+    llama.chunk_tokenizer = FakeChunkTokenizer()
     llama.dense_query = AsyncMock(
         return_value=[
             NodeWithScore(node=n, score=0.9 - i * 0.01) for i, n in enumerate(nodes)
@@ -330,6 +339,8 @@ async def test_query_graph_mode_returns_themes():
         child_text="child text about pricing",
     )
     llama = MagicMock()
+    # A MagicMock chunk_tokenizer fails chunk_text's budget check; give it the real protocol.
+    llama.chunk_tokenizer = FakeChunkTokenizer()
     llama.dense_query = AsyncMock(return_value=[NodeWithScore(node=node, score=0.9)])
 
     settings = Settings(openai_api_key="test", hybrid_dense_limit=5, rerank_pool_size=5)
@@ -413,6 +424,8 @@ async def test_a_broken_lexical_search_is_an_error_not_a_dense_only_answer():
         child_text="child text about pricing",
     )
     llama = MagicMock()
+    # A MagicMock chunk_tokenizer fails chunk_text's budget check; give it the real protocol.
+    llama.chunk_tokenizer = FakeChunkTokenizer()
     llama.dense_query = AsyncMock(return_value=[NodeWithScore(node=node, score=0.9)])
 
     settings = Settings(openai_api_key="test", hybrid_dense_limit=5, rerank_pool_size=5)

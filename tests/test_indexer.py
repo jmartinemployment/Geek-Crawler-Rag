@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from llama_index.core.schema import TextNode
 
+from conftest import FakeChunkTokenizer
 from geek_crawler_rag.config import Settings
 from geek_crawler_rag.indexer import IndexService, LeaseLostError
 from geek_crawler_rag.metadata import EntityRef
@@ -28,6 +29,8 @@ def _entity_mock(mongo: MagicMock) -> None:
 
 def _llama_mock() -> MagicMock:
     llama = MagicMock()
+    # A MagicMock chunk_tokenizer fails chunk_text's budget check; give it the real protocol.
+    llama.chunk_tokenizer = FakeChunkTokenizer()
 
     async def upsert(nodes: list[TextNode]) -> int:
         return len(nodes)
@@ -354,6 +357,8 @@ async def test_index_flush_failure_preserves_partial_points():
     store.delete_by_page_id = AsyncMock()
     store.ensure_collection = AsyncMock()
     llama = MagicMock()
+    # A MagicMock chunk_tokenizer fails chunk_text's budget check; give it the real protocol.
+    llama.chunk_tokenizer = FakeChunkTokenizer()
     llama.embed_and_upsert = AsyncMock(side_effect=RuntimeError("qdrant down"))
     settings = Settings(openai_api_key="test", embed_batch_size=10)
 
@@ -548,6 +553,8 @@ async def test_shutdown_preserves_partial_qdrant_index():
     started = asyncio.Event()
     never = asyncio.Event()
     llama = MagicMock()
+    # A MagicMock chunk_tokenizer fails chunk_text's budget check; give it the real protocol.
+    llama.chunk_tokenizer = FakeChunkTokenizer()
 
     async def blocked_embed(_nodes):
         started.set()

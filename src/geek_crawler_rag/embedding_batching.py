@@ -4,12 +4,12 @@ Named ``embedding_throttle`` until 2026-09-30, when the throttle it was named fo
 with the metered remote API it paced. What is left counts tokens and splits a list of texts into
 batches -- no waiting, no rate limit, no retry classification.
 
-**The token counts here are tiktoken BPE, and the embedder counts WordPiece.** That is a real
-mismatch, not a rounding difference: WordPiece runs longer on technical text, so a chunk inside its
-configured budget here can still cross the model's sequence limit and be silently truncated at
-inference. ``LocalDenseEmbedding`` counts with the model's own tokenizer and reports every input that
-hits the ceiling, which is the number to tune ``parent_chunk_size_tokens`` against. These counts remain
-useful for batch *sizing*; they are not an authority on whether a single item fits.
+**These counts are the model's own WordPiece, not tiktoken BPE.** They were tiktoken until
+2026-09-30, and the mismatch was not a rounding difference: WordPiece runs far longer on code and
+technical identifiers, so a parent inside its configured 480-token budget arrived at inference over
+the model's 512 ceiling and was silently truncated -- 136 of 1,984 parent points, worst case 638
+tokens. The chunker (``chunk``) and this module now measure with the same ``ChunkTokenizer`` the
+embedder derives from its own model, so "how many tokens" has one answer everywhere.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
-import tiktoken
+from geek_crawler_rag.chunk_tokenizer import ChunkTokenizer
 
 
 @dataclass(frozen=True)
@@ -29,26 +29,23 @@ class EmbeddingBatch:
     token_count: int
 
 
-def embedding_token_count(texts: Sequence[str], model: str) -> int:
-    """Approximate token count for batch sizing. **Not** the embedder's own count.
+def embedding_token_count(texts: Sequence[str], *, tokenizer: ChunkTokenizer) -> int:
+    """Exact content-token count for these texts, as the embedding model counts them.
 
-    ``model`` is accepted and deliberately unused for encoding selection: tiktoken has no encoding for
-    a local ONNX model, so ``encoding_for_model`` would raise ``KeyError`` on every call and fall
-    through to the same place. The parameter is kept because callers pass the model for logging and
-    quarantine payloads, and dropping it would churn four callsites to no benefit.
+    Content tokens only -- the model's ``special_token_overhead`` is per input, not per batch, and
+    this total exists to size batches rather than to decide whether one item fits.
 
-    cl100k_base is a BPE tokenizer; bge-small counts WordPiece, which runs longer on technical text.
-    Use this for "how many texts go in this batch", never for "does this text fit the model" --
-    ``LocalDenseEmbedding`` answers that with the model's own tokenizer.
+    The ``model: str`` parameter this used to take is gone. It was accepted and never used, because
+    tiktoken has no encoding for a local ONNX model; keeping a parameter that names the model while
+    counting with a different tokenizer is precisely how the two drifted apart unnoticed.
     """
-    encoding = tiktoken.get_encoding("cl100k_base")
-    return max(1, sum(len(encoding.encode(text)) for text in texts))
+    return max(1, sum(len(tokenizer.token_spans(text)) for text in texts))
 
 
 def partition_embedding_batches(
     texts: Sequence[str],
     *,
-    model: str,
+    tokenizer: ChunkTokenizer,
     max_items: int,
     max_tokens: int,
 ) -> list[EmbeddingBatch]:
@@ -59,7 +56,7 @@ def partition_embedding_batches(
     current: list[str] = []
     current_tokens = 0
     for text in texts:
-        tokens = embedding_token_count([text], model)
+        tokens = embedding_token_count([text], tokenizer=tokenizer)
         if tokens > max_tokens:
             raise ValueError(
                 f"single embedding input tokens={tokens} exceeds max={max_tokens}"

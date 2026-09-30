@@ -27,6 +27,7 @@ from geek_crawler_rag.embedding_circuit import (
     open_embedding_circuit,
     classify_embedding_failure,
 )
+from geek_crawler_rag.chunk_tokenizer import WordPieceChunkTokenizer
 from geek_crawler_rag.local_embedding import LocalDenseEmbedding
 from geek_crawler_rag.embedding_sanitize import (
     sanitize_embedding_text,
@@ -305,6 +306,12 @@ class LlamaIndexEngine:
         combined = {**cached, **fresh}
         return [combined[t] for t in texts]
 
+    @property
+    def chunk_tokenizer(self) -> WordPieceChunkTokenizer:
+        """Satisfies ``asset_context.AssetEmbedder``; the chunker sizes with the embedder's own
+        tokenizer so the two can never disagree about how long a chunk is."""
+        return self._embed_model.chunk_tokenizer
+
     async def embed_texts(
         self,
         texts: list[str],
@@ -350,7 +357,7 @@ class LlamaIndexEngine:
         embeddings: list[list[float]] = []
         batches = partition_embedding_batches(
             cleaned,
-            model=self._settings.embedding_model,
+            tokenizer=self._embed_model.chunk_tokenizer,
             max_items=self._settings.embed_batch_size,
             max_tokens=self._settings.embedding_max_batch_tokens,
         )
@@ -415,7 +422,7 @@ class LlamaIndexEngine:
     async def embed_query(self, text: str) -> list[float]:
         text = sanitize_embedding_text(text)
         token_count = embedding_token_count(
-            [text], self._settings.embedding_model
+            [text], tokenizer=self._embed_model.chunk_tokenizer
         )
         try:
             return await self._embed_model.aget_query_embedding(text)

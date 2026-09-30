@@ -1,5 +1,6 @@
 """LlamaIndex node builder unit tests."""
 
+from conftest import FakeChunkTokenizer
 from geek_crawler_rag.config import Settings
 from geek_crawler_rag.llama_nodes import page_to_nodes
 from geek_crawler_rag.metadata import EntityRef
@@ -35,6 +36,7 @@ def test_page_to_nodes_parent_and_child():
         crawl_type="partner",
         entity=entity,
         settings=Settings(openai_api_key="test"),
+        tokenizer=FakeChunkTokenizer(),
     )
     assert skip == ""
     assert nodes
@@ -67,6 +69,7 @@ def test_page_to_nodes_builds_text_from_blocks():
         crawl_type="partner",
         entity=entity,
         settings=Settings(openai_api_key="test"),
+        tokenizer=FakeChunkTokenizer(),
     )
     assert skip == ""
     assert any("block content" in n.get_content().lower() for n in nodes)
@@ -91,6 +94,7 @@ def test_page_to_nodes_rejects_a_page_with_no_blocks():
         crawl_type="partner",
         entity=entity,
         settings=Settings(openai_api_key="test"),
+        tokenizer=FakeChunkTokenizer(),
     )
     assert skip == "empty"
     assert nodes == []
@@ -116,6 +120,7 @@ def _nodes(page: CrawlPage):
         crawl_type="partner",
         entity=EntityRef(None, "acme.com", "partner", ("acme.com",)),
         settings=Settings(),
+        tokenizer=FakeChunkTokenizer(),
     )
 
 

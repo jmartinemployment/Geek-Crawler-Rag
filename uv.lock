@@ -553,7 +553,6 @@ dependencies = [
     { name = "pymongo" },
     { name = "qdrant-client" },
     { name = "rank-bm25" },
-    { name = "tiktoken" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -578,7 +577,6 @@ requires-dist = [
     { name = "pymongo", specifier = ">=4.18.0" },
     { name = "qdrant-client", specifier = ">=1.19.0" },
     { name = "rank-bm25", specifier = ">=0.2.2" },
-    { name = "tiktoken", specifier = ">=0.14.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.52.4" },
 ]
 

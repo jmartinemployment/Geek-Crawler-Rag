@@ -82,14 +82,24 @@ class Settings(BaseSettings):
     # Parent/child indexing (Phase B2).
     child_chunk_size_tokens: int = 200
     child_chunk_overlap_tokens: int = 40
-    # 480, not 1000, since 2026-09-30. bge-small truncates at 512 tokens and does so silently, and a
-    # parent point IS embedded when it differs from its child (llama_nodes). Measured: where a parent
-    # is genuinely wider than its child it runs ~3x the child's length at p50, so a 200-token child
-    # implies a ~590-token parent -- already past the ceiling at the old setting. 480 keeps the median
-    # case whole. The chunker counts tiktoken BPE and the model counts WordPiece, which runs longer, so
-    # this is a budget rather than a guarantee: LocalDenseEmbedding counts and logs anything that still
-    # reaches the limit, and that count is how this number gets tuned rather than guessed again.
-    parent_chunk_size_tokens: int = 480
+    # 500, and it is now a GUARANTEE rather than a budget.
+    #
+    # bge-small truncates at 512 tokens, silently, and a parent point IS embedded when it differs
+    # from its child (llama_nodes). This was 1000, then 480, and both were guesses -- because the
+    # chunker measured tiktoken BPE while the model counted WordPiece, which runs far longer on code
+    # and technical identifiers. Measured on the live corpus 2026-09-30: 136 of 1,984 parents crossed
+    # 512 anyway, worst case 638 tokens against a 480 setting, with the discarded tail being Python
+    # source. No value here could have been correct, because the two sides were not measuring the
+    # same thing.
+    #
+    # Since 2026-09-30 the chunker measures with the model's own tokenizer (chunk_tokenizer) and
+    # chunk_text REFUSES a size_tokens above sequence_limit minus special_token_overhead -- 512 - 2 =
+    # 510 for this model. So 500 content tokens reach inference as 502 and cannot be truncated by
+    # arithmetic, not by estimate. Raising this above 510 is a startup error, not a silent cut.
+    #
+    # LocalDenseEmbedding still counts anything that reaches the ceiling. A non-zero count now means
+    # a real defect -- a caller bypassing the chunker -- not a number in need of tuning.
+    parent_chunk_size_tokens: int = 500
     parent_chunk_overlap_tokens: int = 80
 
     page_batch_size: int = 25

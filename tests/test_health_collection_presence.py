@@ -23,6 +23,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from conftest import FakeChunkTokenizer
 from geek_crawler_rag.app import health, state
 from geek_crawler_rag.qdrant_store import QdrantStore
 
@@ -80,6 +81,8 @@ def _wire(monkeypatch, *, present, qdrant_ok=True, mongo_ok=True):
         model_dump=MagicMock(return_value={"enabled": False})
     ))
     llama = MagicMock()
+    # A MagicMock chunk_tokenizer fails chunk_text's budget check; give it the real protocol.
+    llama.chunk_tokenizer = FakeChunkTokenizer()
     llama.embedding_stats = MagicMock(return_value={})
     settings = MagicMock()
     settings.qdrant_collection = "geek_crawler_chunks"

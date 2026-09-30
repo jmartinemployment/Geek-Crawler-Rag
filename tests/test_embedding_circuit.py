@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from llama_index.core.schema import TextNode
 
+from conftest import FakeChunkTokenizer
 from geek_crawler_rag.config import Settings
 from geek_crawler_rag.embedding_circuit import (
     EMPTY_INPUT,
@@ -153,6 +154,8 @@ async def test_index_circuit_open_skips_cleanup(tmp_path: Path):
     store.ensure_collection = AsyncMock()
 
     llama = MagicMock()
+    # A MagicMock chunk_tokenizer fails chunk_text's budget check; give it the real protocol.
+    llama.chunk_tokenizer = FakeChunkTokenizer()
     llama.embed_and_upsert = AsyncMock(
         side_effect=EmbeddingCircuitOpen(
             "circuit",
@@ -227,6 +230,8 @@ async def test_index_empty_embed_quarantines_without_wipe(tmp_path: Path):
     store.ensure_collection = AsyncMock()
 
     llama = MagicMock()
+    # A MagicMock chunk_tokenizer fails chunk_text's budget check; give it the real protocol.
+    llama.chunk_tokenizer = FakeChunkTokenizer()
     llama.embed_and_upsert = AsyncMock(
         side_effect=EmbeddingCircuitOpen(
             "empty",

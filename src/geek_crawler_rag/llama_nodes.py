@@ -8,6 +8,7 @@ from typing import Any
 from llama_index.core.schema import TextNode
 
 from geek_crawler_rag.chunk import parent_child_units
+from geek_crawler_rag.chunk_tokenizer import ChunkTokenizer
 from geek_crawler_rag.config import Settings
 from geek_crawler_rag.extract import host_from_origin_or_url, page_text_and_title
 from geek_crawler_rag.language import is_english
@@ -33,6 +34,7 @@ def page_to_nodes(
     crawl_type: str,
     entity: EntityRef,
     settings: Settings,
+    tokenizer: ChunkTokenizer,
 ) -> tuple[list[TextNode], str]:
     """Return (nodes, skip_reason). skip_reason is empty on success."""
     text, title, has_blocks = page_text_and_title(
@@ -55,6 +57,7 @@ def page_to_nodes(
     # actually sits under and the anchors from that heading's own blocks.
     units = parent_child_units(
         page.blocks,
+        tokenizer=tokenizer,
         child_size_tokens=settings.child_chunk_size_tokens,
         child_overlap_tokens=settings.child_chunk_overlap_tokens,
         parent_size_tokens=settings.parent_chunk_size_tokens,

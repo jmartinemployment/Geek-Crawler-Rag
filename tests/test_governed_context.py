@@ -11,6 +11,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
+from conftest import FakeChunkTokenizer
 from geek_crawler_rag.app import require_api_key
 from geek_crawler_rag.asset_context import (
     AssetContextService,
@@ -132,6 +133,7 @@ def test_asset_chunk_ids_are_digest_and_coordinate_deterministic() -> None:
     chunks = chunk_asset(
         "An English source sentence. " * 100,
         "a" * 64,
+        tokenizer=FakeChunkTokenizer(),
         size_tokens=30,
         overlap_tokens=5,
     )
@@ -225,6 +227,10 @@ async def test_trusted_index_contract_is_digest_bound_and_owner_scoped() -> None
             captured.update(ids=ids, vectors=vectors, payloads=payloads)
 
     class Embedder:
+        # AssetEmbedder requires this: the chunker must size with the tokenizer of the model that
+        # will embed the chunks, so the two cannot come from different models.
+        chunk_tokenizer = FakeChunkTokenizer()
+
         async def embed_texts(self, texts):
             return [[0.1] for _ in texts]
 

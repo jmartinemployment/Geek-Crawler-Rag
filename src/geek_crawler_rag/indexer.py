@@ -16,6 +16,7 @@ from llama_index.core.schema import TextNode
 from geek_crawler_rag.config import Settings
 from geek_crawler_rag.embedding_circuit import EmbeddingCircuitOpen
 from geek_crawler_rag.extract import host_from_origin_or_url
+from geek_crawler_rag.chunk_tokenizer import ChunkTokenizer
 from geek_crawler_rag.llama_nodes import page_to_nodes
 from geek_crawler_rag.models import (
     TERMINAL_CRAWL_STATUSES,
@@ -58,6 +59,15 @@ class JobKilled(RuntimeError):
 
 class NodeUpserter(Protocol):
     async def embed_and_upsert(self, nodes: list[TextNode]) -> int: ...
+
+    @property
+    def chunk_tokenizer(self) -> ChunkTokenizer:
+        """The embedding model's own tokenizer, used to size chunks before it embeds them.
+
+        Required on the protocol, not fetched with getattr like ``embedding_stats``: a chunker
+        sized by a different tokenizer than the embedder counts with is the defect this replaced,
+        and an optional member would let it come back silently.
+        """
 
 
 class IndexService:
@@ -683,6 +693,9 @@ class IndexService:
                         crawl_type=run.crawl_type,
                         entity=entity,  # type: ignore[arg-type]
                         settings=self._settings,
+                        # The engine's own tokenizer, so chunk sizes are measured in the tokens the
+                        # model will actually count when it embeds them.
+                        tokenizer=self._llama.chunk_tokenizer,
                     )
                     stage_chunk_seconds += time.perf_counter() - _chunk_started
                     if skip == "empty":
