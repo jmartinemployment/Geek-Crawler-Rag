@@ -27,6 +27,7 @@ from geek_crawler_rag.embedding_circuit import (
     open_embedding_circuit,
     classify_embedding_failure,
 )
+from geek_crawler_rag.local_embedding import LocalDenseEmbedding
 from geek_crawler_rag.embedding_sanitize import (
     sanitize_embedding_text,
     sanitize_embedding_texts,
