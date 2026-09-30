@@ -128,7 +128,7 @@ class AdTemplateIndexService:
                 upserted=0, warning="No valid templates to index"
             )
 
-        # Embed via shared OpenAI embed model, upsert into templates collection.
+        # Embed via the shared dense embed model, upsert into templates collection.
         texts = [n.get_content() for n in nodes]
         embeddings = await self._llama.embed_texts(texts)
         points = [

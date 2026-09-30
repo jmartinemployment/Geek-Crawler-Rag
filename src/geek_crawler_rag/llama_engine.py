@@ -25,13 +25,13 @@ from geek_crawler_rag.qdrant_store import SPARSE_VECTOR_NAME, find_existing_poin
 from geek_crawler_rag.embedding_circuit import (
     EmbeddingCircuitOpen,
     open_embedding_circuit,
-    should_quarantine_embedding_error,
+    classify_embedding_failure,
 )
 from geek_crawler_rag.embedding_sanitize import (
     sanitize_embedding_text,
     sanitize_embedding_texts,
 )
-from geek_crawler_rag.embedding_throttle import (
+from geek_crawler_rag.embedding_batching import (
     EmbeddingBatch,
     embedding_token_count,
     partition_embedding_batches,
@@ -79,9 +79,8 @@ class LlamaIndexEngine:
                 f"{self._embed_model.dimensions}"
             )
         LlamaSettings.embed_model = self._embed_model
-        # No throttle. It existed to stay under an OpenAI tokens-per-minute ceiling and a local model
-        # has none. The lock went with it: it serialised every embed call for the throttle's benefit,
-        # and inference already runs in a worker thread.
+        # No throttle and no call lock. Both existed to pace a metered remote embedding API; there
+        # is no meter to pace against now, and inference already runs in a worker thread.
         client_kwargs: dict[str, Any] = {"url": settings.qdrant_url}
         if settings.qdrant_api_key:
             client_kwargs["api_key"] = settings.qdrant_api_key
@@ -318,9 +317,9 @@ class LlamaIndexEngine:
                 mutated,
                 len(cleaned),
             )
-        # Defense in depth: never embed an empty string. OpenAI answered 400 for one, which made
-        # this visible; fastembed does something worse -- it returns a vector for "" without
-        # complaint, so an empty chunk would be indexed as a real point and could be retrieved.
+        # Defense in depth: never embed an empty string. fastembed returns a vector for "" without
+        # raising, so an empty chunk would be stored as a real, retrievable point rather than
+        # rejected -- this guard is the only thing that catches it.
         if metadata_list is not None and len(metadata_list) != len(cleaned):
             metadata_list = list(metadata_list)[: len(cleaned)]
         filtered: list[str] = []
@@ -399,19 +398,18 @@ class LlamaIndexEngine:
         except EmbeddingCircuitOpen:
             raise
         except Exception as exc:
-            code = should_quarantine_embedding_error(exc)
-            if code is not None:
-                raise open_embedding_circuit(
-                    texts=batch.texts,
-                    metadata_list=batch_meta,
-                    quarantine_dir=self._settings.embedding_quarantine_dir,
-                    model=self._settings.embedding_model,
-                    token_count=batch.token_count,
-                    status_code=code,
-                    exc_type=type(exc).__name__,
-                    exc=exc,
-                ) from exc
-            raise
+            # Unconditional. Every embed failure quarantines and fails the job closed -- there is no
+            # status code to classify on and no "carry on" answer. See embedding_circuit.
+            raise open_embedding_circuit(
+                texts=batch.texts,
+                metadata_list=batch_meta,
+                quarantine_dir=self._settings.embedding_quarantine_dir,
+                model=self._settings.embedding_model,
+                token_count=batch.token_count,
+                reason=classify_embedding_failure(exc),
+                exc_type=type(exc).__name__,
+                exc=exc,
+            ) from exc
 
     async def embed_query(self, text: str) -> list[float]:
         text = sanitize_embedding_text(text)
@@ -423,18 +421,15 @@ class LlamaIndexEngine:
         except EmbeddingCircuitOpen:
             raise
         except Exception as exc:
-            code = should_quarantine_embedding_error(exc)
-            if code is not None:
-                raise open_embedding_circuit(
-                    texts=[text],
-                    quarantine_dir=self._settings.embedding_quarantine_dir,
-                    model=self._settings.embedding_model,
-                    token_count=token_count,
-                    status_code=code,
-                    exc_type=type(exc).__name__,
-                    exc=exc,
-                ) from exc
-            raise
+            raise open_embedding_circuit(
+                texts=[text],
+                quarantine_dir=self._settings.embedding_quarantine_dir,
+                model=self._settings.embedding_model,
+                token_count=token_count,
+                reason=classify_embedding_failure(exc),
+                exc_type=type(exc).__name__,
+                exc=exc,
+            ) from exc
 
     async def dense_query(
         self,

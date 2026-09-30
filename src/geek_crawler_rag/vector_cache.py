@@ -10,7 +10,7 @@ existing skip: point IDs are deterministic (``qdrant_store.point_id``) and
 Reusing a point id from an earlier run would hand back a point whose payload
 carries the old runId, and retrieval filters on runId (``qdrant_store``), so
 those chunks would be invisible to the new run's queries - embedding saved,
-corpus lost. Points stay per-run and cheap; the OpenAI call is what is expensive
+corpus lost. Points stay per-run and cheap; the embedding call is what is expensive
 and what is reused.
 
 The key includes the model. Two embedding models index different spaces, so a

@@ -63,12 +63,12 @@ class Settings(BaseSettings):
     embedding_threads: int = 4
     embedding_max_batch_tokens: int = 50_000
     # No retry setting, and there is no second mechanism: an embed call is made once. One sat here for
-    # OpenAI and was removed on 2026-09-28 along with the loop it fed -- it made a failed attempt
+    # a metered remote API and was removed on 2026-09-28 along with the loop it fed -- it made a failed
     # invisible when the next one succeeded, and it re-sent tokens the account may already have been
     # billed for. Nothing replaces it: a local model has no transient network failure to ride out, and
     # a model that will not load is a startup failure rather than something to retry per batch.
     #
-    # The quarantine stays. It is about embeddings generally, not about OpenAI: a batch that cannot be
+    # The quarantine stays. It is about embeddings generally, not about any one provider: a batch that
     # embedded is written to disk and the circuit opens, rather than the run continuing with a hole
     # in the corpus that nothing records.
     embedding_quarantine_dir: str = (
@@ -98,7 +98,7 @@ class Settings(BaseSettings):
     # the container is sized for ("EMBED_BATCH_SIZE=64 peaks near ~3.9 GiB"), and
     # 128 was OOM-killed, so that is the ceiling rather than a target.
     #
-    # It drives three things at once: the indexer's flush threshold, the OpenAI
+    # It drives three things at once: the indexer's flush threshold, the embedder's
     # batch cap, and the Qdrant batch. Every per-flush cost - a Qdrant retrieve, a
     # collection_exists round trip, the upsert, a Mongo write - is paid half as
     # often at 64 as at 32.

@@ -1,8 +1,9 @@
-"""Sanitize text before OpenAI embedding batches.
+"""Sanitize text before embedding batches.
 
-OpenAI text-embedding-3-small can return undocumented HTTP 500s when a batch
-contains null bytes, corrupt encoding, or certain control characters. One bad
-item rejects the entire LlamaIndex batch POST.
+Null bytes, corrupt encoding and certain control characters are not safe to hand an embedder. The
+remote API this was written for answered with undocumented HTTP 500s and rejected the whole batch,
+which is at least loud. A local tokenizer is quieter about it, so the cleaning matters more now, not
+less: the failure mode moves from a rejected batch to a vector computed over mojibake.
 
 What "clean" means (encoding hygiene only)
 -----------------------------------------

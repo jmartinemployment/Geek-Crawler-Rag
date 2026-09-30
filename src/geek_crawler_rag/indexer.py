@@ -724,18 +724,17 @@ class IndexService:
         except EmbeddingCircuitOpen as ex:
             self._sync_embedding_stats(status, embedding_baseline)
             logger.error(
-                "Index quarantined for runId=%s quarantine=%s statusCode=%s batchSize=%s requestId=%s message=%s",
+                "Index quarantined for runId=%s quarantine=%s reason=%s batchSize=%s detail=%s",
                 run_id,
                 ex.quarantine_path,
-                ex.status_code,
+                ex.reason,
                 ex.batch_size,
-                ex.request_id,
-                ex.openai_message,
+                ex.detail,
             )
             await self._fail_quarantined(
                 status,
                 error=(
-                    f"OpenAI embedding quarantined (HTTP {ex.status_code}). "
+                    f"Embedding quarantined ({ex.reason}). "
                     f"Quarantine: {ex.quarantine_path}. "
                     f"Already upserted points preserved."
                 ),

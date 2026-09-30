@@ -9,8 +9,10 @@ from llama_index.core.schema import TextNode
 
 from geek_crawler_rag.config import Settings
 from geek_crawler_rag.embedding_circuit import (
+    EMPTY_INPUT,
+    INFERENCE_FAILED,
     EmbeddingCircuitOpen,
-    is_openai_http_500,
+    classify_embedding_failure,
     open_embedding_circuit,
     quarantine_embedding_batch,
 )
@@ -25,49 +27,73 @@ class FakeHttp500(Exception):
 
 
 def test_quarantine_writes_json(tmp_path: Path):
-    path, request_id, message = quarantine_embedding_batch(
+    path, detail = quarantine_embedding_batch(
         texts=["hello\x00world", "second"],
         metadata_list=[
             {"runId": "r1", "pageId": "p1", "chunkId": "c1"},
             {"runId": "r1", "pageId": "p2"},
         ],
         quarantine_dir=tmp_path,
-        model="text-embedding-3-small",
+        model="BAAI/bge-small-en-v1.5",
         token_count=12,
-        status_code=500,
-        exc_type="InternalServerError",
+        reason=INFERENCE_FAILED,
+        exc_type="RuntimeError",
     )
     assert path.exists()
     data = json.loads(path.read_text(encoding="utf-8"))
-    assert data["statusCode"] == 500
+    assert data["reason"] == INFERENCE_FAILED
     assert data["runId"] == "r1"
     assert data["batchSize"] == 2
     assert data["items"][0]["pageId"] == "p1"
     assert "\x00" not in data["items"][0]["textPreview"] or True  # preview may keep raw
     assert len(data["items"][0]["textPreview"]) <= 501
-    assert request_id is None  # no actual OpenAI exception passed
-    assert message is None
+    assert detail is None  # no exception was passed
 
 
 def test_open_circuit_raises_with_path(tmp_path: Path):
     err = open_embedding_circuit(
         texts=["x"],
         quarantine_dir=tmp_path,
-        model="text-embedding-3-small",
-        status_code=500,
+        model="BAAI/bge-small-en-v1.5",
+        reason=INFERENCE_FAILED,
     )
     assert isinstance(err, EmbeddingCircuitOpen)
     assert Path(err.quarantine_path).exists()
 
 
-def test_is_openai_http_500():
-    assert is_openai_http_500(FakeHttp500())
-    assert not is_openai_http_500(Exception("nope"))
+def test_every_failure_quarantines_and_is_named():
+    """This replaced should_quarantine_embedding_error, which could return None.
 
-    class RateLimit(Exception):
-        status_code = 429
+    Its two predicates matched a remote provider's HTTP 500 and its 400 for an empty input string.
+    Once embeddings went local neither could fire, so it answered None for everything and the circuit
+    silently stopped engaging -- a fail-closed guard that cannot trigger, which reads as protection
+    while providing none. There is no "carry on" answer now.
+    """
+    assert classify_embedding_failure(RuntimeError("onnxruntime failed")) == INFERENCE_FAILED
+    assert classify_embedding_failure(Exception("")) == INFERENCE_FAILED
+    assert classify_embedding_failure(FakeHttp500()) == INFERENCE_FAILED
 
-    assert not is_openai_http_500(RateLimit())
+
+def test_empty_input_keeps_its_own_name():
+    """It survives classification because it has a different cause and a different fix.
+
+    An empty string means the chunker or sanitizer let something through, not that inference broke --
+    and both are supposed to make it unreachable, so seeing it means one of them has a hole.
+    """
+    assert classify_embedding_failure(ValueError("input cannot be an empty string")) == EMPTY_INPUT
+    assert classify_embedding_failure(ValueError("empty text given")) == EMPTY_INPUT
+
+
+def test_detail_walks_the_cause_chain():
+    """ONNX and tokenizer errors put the useful text on the innermost exception."""
+    from geek_crawler_rag.embedding_circuit import _exception_detail
+
+    inner = ValueError("tokenizer vocab missing")
+    outer = RuntimeError("inference failed")
+    outer.__cause__ = inner
+    detail = _exception_detail(outer)
+    assert "inference failed" in detail
+    assert "tokenizer vocab missing" in detail
 
 
 def test_quarantine_dir_unwritable(tmp_path: Path):
@@ -78,7 +104,8 @@ def test_quarantine_dir_unwritable(tmp_path: Path):
         quarantine_embedding_batch(
             texts=["x"],
             quarantine_dir=blocker,
-            model="text-embedding-3-small",
+            model="BAAI/bge-small-en-v1.5",
+            reason=INFERENCE_FAILED,
         )
 
 
@@ -130,7 +157,7 @@ async def test_index_circuit_open_skips_cleanup(tmp_path: Path):
         side_effect=EmbeddingCircuitOpen(
             "circuit",
             quarantine_path=str(tmp_path / "q.json"),
-            status_code=500,
+            reason=INFERENCE_FAILED,
         )
     )
     llama.embedding_stats = MagicMock(
@@ -156,74 +183,8 @@ async def test_index_circuit_open_skips_cleanup(tmp_path: Path):
     assert store.delete_by_run_id.await_count == 1
 
 
-def test_openai_error_diagnostics():
-    from geek_crawler_rag.embedding_circuit import describe_openai_error
-
-    class FakeOpenAIError(Exception):
-        def __init__(self):
-            self.request_id = "req-12345"
-            self.type = "invalid_request_error"
-            self.code = "invalid_embedding_model"
-            self.param = "model"
-            self.message = "Model not found"
-
-    err = FakeOpenAIError()
-    diag = describe_openai_error(err)
-    assert diag["requestId"] == "req-12345"
-    assert diag["errorType"] == "invalid_request_error"
-    assert diag["errorCode"] == "invalid_embedding_model"
-    assert diag["errorParam"] == "model"
-    assert "Model not found" in diag["message"]
-
-
-def test_quarantine_with_openai_diagnostics(tmp_path: Path):
-    from geek_crawler_rag.embedding_circuit import describe_openai_error
-
-    class FakeOpenAIError(Exception):
-        def __init__(self):
-            self.request_id = "req-67890"
-            self.type = "server_error"
-            self.code = None
-            self.param = None
-            self.message = "The server is experiencing issues"
-
-    err = FakeOpenAIError()
-    path, request_id, message = quarantine_embedding_batch(
-        texts=["test content"],
-        metadata_list=[{"runId": "r2"}],
-        quarantine_dir=tmp_path,
-        model="text-embedding-3-small",
-        status_code=500,
-        exc_type="InternalServerError",
-        exc=err,
-    )
-    assert path.exists()
-    assert request_id == "req-67890"
-    assert "server is experiencing" in message.lower()
-
-    data = json.loads(path.read_text(encoding="utf-8"))
-    assert data.get("openaiDiagnostics") is not None
-    assert data["openaiDiagnostics"]["requestId"] == "req-67890"
-    assert data["openaiDiagnostics"]["errorType"] == "server_error"
-
-
-def test_empty_input_error_detection():
-    from geek_crawler_rag.embedding_circuit import (
-        is_empty_embedding_input_error,
-        should_quarantine_embedding_error,
-    )
-
-    err = Exception(
-        "Error code: 400 - {'error': {'message': "
-        "\"Invalid 'input[31]': input cannot be an empty string.\"}}"
-    )
-    assert is_empty_embedding_input_error(err)
-    assert should_quarantine_embedding_error(err) == 400
-    assert should_quarantine_embedding_error(Exception("other")) is None
-
-
 @pytest.mark.asyncio
-async def test_index_empty_embed_400_quarantines_without_wipe(tmp_path: Path):
+async def test_index_empty_embed_quarantines_without_wipe(tmp_path: Path):
     mongo = MagicMock()
     mongo.get_run = AsyncMock(
         return_value=CrawlRun(id="r1", crawl_type="partner", status="complete")
@@ -270,7 +231,7 @@ async def test_index_empty_embed_400_quarantines_without_wipe(tmp_path: Path):
         side_effect=EmbeddingCircuitOpen(
             "empty",
             quarantine_path=str(tmp_path / "q400.json"),
-            status_code=400,
+            reason=EMPTY_INPUT,
         )
     )
     llama.embedding_stats = MagicMock(

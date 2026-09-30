@@ -170,16 +170,12 @@ the wide-parent subset.**
 4. Re-profile with py-spy: the 87% sparse frame must be gone.
 5. `scripts/inspect_qdrant_vectors.py` reads `size` live, so it verifies 384 without a hardcoded
    expectation.
-6. **Zero OpenAI, proved.** These must be empty:
-   - `grep -rn "^from openai\|^import openai\|embeddings.openai\|llms.openai" --include='*.py' src/`
-   - `grep -rn -i openai pyproject.toml uv.lock`
-   - `grep -rn -i OPENAI .env.example deploy/ docs/ README.md architecture.md`
+6. **Zero OpenAI, proved.** All four must come back empty — no exemption for comments, since the test
+   is whether an occurrence *can be read as evidence*, not whether it executes:
+   - `grep -rni openai --include='*.py' src/`
+   - `grep -rni openai pyproject.toml uv.lock`
+   - `grep -rni OPENAI .env.example deploy/ docs/ README.md architecture.md`
    - any request to `api.openai.com` during a full index run
-
-   Scoped to imports and packages, not every occurrence of the word. Past-tense comments explaining
-   *why* a guard exists ("OpenAI answered 400 for one, which made this visible; fastembed returns a
-   vector for `""` without complaint") are history and earn their place — they are the reason the
-   guard is still there. What must not survive is anything readable as a live claim.
 
 ## Follow-on: two permanently-zero wire fields
 

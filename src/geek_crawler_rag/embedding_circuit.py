@@ -1,25 +1,28 @@
-"""Quarantine for non-retryable embed failures (HTTP 500 and empty-input 400).
+"""Quarantine for embed failures: write the batch to disk, then fail the job closed.
 
-Fail-closed design (OPENAI_EMBEDDING_MAX_RETRIES=0 at the SDK level):
-  HTTP 500 from OpenAI quarantines and fails the job -- but only after
-  LlamaIndexEngine._embed_batch has spent its bounded transient-retry budget
-  (OPENAI_EMBEDDING_TRANSIENT_RETRIES, default 2), per the plans/rules.md §3a
-  amendment of 2026-09-26. A 500 that persists across attempts is a failure
-  signal, not a blip; one that clears on retry never reaches here.
-  Beyond that budget there is no retry loop, and recovery stays manual and
-  operator-driven after examining the quarantine.
+An embedding call is made **once**. There is no retry loop and no bounded retry budget -- an earlier
+version of this docstring described one (``*_TRANSIENT_RETRIES``, default 2) and it was removed on
+2026-09-28 along with the code it documented, per ``plans/rules.md`` §3a. A retry that succeeds on its
+second attempt makes the first failure invisible.
 
-Empty-input HTTP 400:
-  -> quarantine dump -> EmbeddingCircuitOpen -> job FAILED, points kept
-  -> operator examines, then salvage Yes (fix + requeue) or No (keep + report)
+So a batch that cannot be embedded is written here and the job fails. It is not skipped, and the run
+does not continue with a hole in the corpus that nothing records. Points already upserted are kept:
+the failure is partial by nature and destroying good work does not make it less so.
+
+**Every embed failure quarantines, and that is a change.** The predicates this module used to classify
+on -- a provider's HTTP 500, and its 400 for an empty input string -- were specific to a remote API.
+Once embeddings moved local (2026-09-30) neither could ever fire again, so
+``should_quarantine_embedding_error`` returned ``None`` for everything and the circuit silently stopped
+engaging. A fail-closed mechanism that cannot trigger is worse than none, because it reads as
+protection. There is no status code to classify on now, so there is nothing to classify: any exception
+from the embedder is a batch that was not embedded.
 
 Quarantine lifecycle
 --------------------
-- Written to EMBEDDING_QUARANTINE_DIR (Docker volume on Hostinger).
-- Includes OpenAI diagnostics (requestId, errorType, message) for triage.
-- Retention: keep until an operator deletes after successful re-index (default
-  retain 14 days; prune with find -mtime +14).
-- Not auto-replayed; use docs/embedding-circuit-recovery.md.
+- Written to EMBEDDING_QUARANTINE_DIR (a Docker volume on Hostinger).
+- Retention: keep until an operator deletes it after a successful re-index (default hint 14 days;
+  prune with ``find -mtime +14``).
+- Not auto-replayed; see ``docs/embedding-circuit-recovery.md``.
 """
 
 from __future__ import annotations
@@ -44,19 +47,19 @@ class EmbeddingCircuitOpen(RuntimeError):
         message: str,
         *,
         quarantine_path: str,
-        status_code: int = 500,
+        reason: str,
         run_id: str | None = None,
         batch_size: int = 0,
-        request_id: str | None = None,
-        openai_message: str | None = None,
+        detail: str | None = None,
     ) -> None:
         super().__init__(message)
         self.quarantine_path = quarantine_path
-        self.status_code = status_code
+        # A slug, not an HTTP status. There is no transport to carry one, and `status_code` invited a
+        # reader to look for an API response that does not exist.
+        self.reason = reason
         self.run_id = run_id
         self.batch_size = batch_size
-        self.request_id = request_id
-        self.openai_message = openai_message
+        self.detail = detail
 
 
 def _item_preview(text: str, metadata: dict[str, Any] | None) -> dict[str, Any]:
@@ -87,11 +90,11 @@ def quarantine_embedding_batch(
     model: str,
     token_count: int | None = None,
     run_id: str | None = None,
-    status_code: int = 500,
+    reason: str,
     exc_type: str | None = None,
     exc: BaseException | None = None,
-) -> tuple[Path, str | None, str | None]:
-    """Write failing embed batch to quarantine JSON; return (file path, request_id, message)."""
+) -> tuple[Path, str | None]:
+    """Write the failing batch to quarantine JSON; return (file path, detail)."""
     root = Path(quarantine_dir)
     try:
         root.mkdir(parents=True, exist_ok=True)
@@ -113,13 +116,11 @@ def quarantine_embedding_batch(
         if run_id is None and isinstance(meta, dict) and meta.get("runId"):
             run_id = str(meta["runId"])
 
-    openai_diag = describe_openai_error(exc) if exc else {}
-    request_id = openai_diag.get("requestId")
-    message = openai_diag.get("message")
+    detail = _exception_detail(exc) if exc else None
 
     payload = {
         "quarantinedAtUtc": datetime.now(timezone.utc).isoformat(),
-        "statusCode": status_code,
+        "reason": reason,
         "excType": exc_type,
         "model": model,
         "tokenCount": token_count,
@@ -129,29 +130,27 @@ def quarantine_embedding_batch(
         "recovery": "manual_requeue_run_after_inspect",
         "items": items,
     }
-    if openai_diag:
-        payload["openaiDiagnostics"] = openai_diag
+    if detail:
+        payload["detail"] = detail
     path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
     # Structured single-line event for log aggregation / Slack alert rules.
     log_event = {
         "event": "embedding_circuit_open",
         "runId": run_id,
-        "statusCode": status_code,
+        "reason": reason,
         "batchSize": len(texts),
         "tokenCount": token_count,
         "model": model,
         "quarantinePath": str(path),
         "excType": exc_type,
     }
-    if request_id:
-        log_event["requestId"] = request_id
-    if message:
-        log_event["message"] = message
+    if detail:
+        log_event["detail"] = detail
     logger.error(
         "embedding_circuit_open %s",
         json.dumps(log_event, default=str),
     )
-    return path, request_id, message
+    return path, detail
 
 
 def open_embedding_circuit(
@@ -162,19 +161,19 @@ def open_embedding_circuit(
     model: str,
     token_count: int | None = None,
     run_id: str | None = None,
-    status_code: int = 500,
+    reason: str,
     exc_type: str | None = None,
     exc: BaseException | None = None,
 ) -> EmbeddingCircuitOpen:
-    """Quarantine batch and return EmbeddingCircuitOpen for the caller to raise."""
-    path, request_id, message = quarantine_embedding_batch(
+    """Quarantine the batch and return EmbeddingCircuitOpen for the caller to raise."""
+    path, detail = quarantine_embedding_batch(
         texts=texts,
         metadata_list=metadata_list,
         quarantine_dir=quarantine_dir,
         model=model,
         token_count=token_count,
         run_id=run_id,
-        status_code=status_code,
+        reason=reason,
         exc_type=exc_type,
         exc=exc,
     )
@@ -185,78 +184,52 @@ def open_embedding_circuit(
                 resolved_run = str(meta["runId"])
                 break
     return EmbeddingCircuitOpen(
-        f"OpenAI embedding HTTP {status_code}; circuit open. "
-        f"Quarantine: {path}",
+        f"Embedding failed ({reason}); circuit open. Quarantine: {path}",
         quarantine_path=str(path),
-        status_code=status_code,
+        reason=reason,
         run_id=resolved_run,
         batch_size=len(texts),
-        request_id=request_id,
-        openai_message=message,
+        detail=detail,
     )
 
 
-def describe_openai_error(exc: BaseException) -> dict[str, Any]:
-    """Extract OpenAI APIError diagnostic fields, walking __cause__ if needed."""
-    request_id = getattr(exc, "request_id", None)
-    error_type = getattr(exc, "type", None)
-    error_code = getattr(exc, "code", None)
-    error_param = getattr(exc, "param", None)
-    message = getattr(exc, "message", None)
+def _exception_detail(exc: BaseException) -> str | None:
+    """A bounded, human-readable description of what failed, walking ``__cause__``.
 
-    if message is None:
-        message = str(exc)
-    if isinstance(message, str) and len(message) > 300:
-        message = message[:300]
-
-    if (
-        not request_id
-        and not error_type
-        and not error_code
-        and not error_param
-        and (message == str(exc))
-    ):
-        cause = getattr(exc, "__cause__", None)
-        if cause is not None and cause is not exc:
-            return describe_openai_error(cause)
-
-    return {
-        "requestId": request_id,
-        "errorType": error_type,
-        "errorCode": error_code,
-        "errorParam": error_param,
-        "message": message,
-    }
+    ONNX and tokenizer errors put the useful text on the innermost exception, so the outermost
+    ``str(exc)`` is often a bare wrapper.
+    """
+    seen: list[str] = []
+    current: BaseException | None = exc
+    while current is not None and len(seen) < 4:
+        text = str(current).strip()
+        if text and text not in seen:
+            seen.append(f"{type(current).__name__}: {text}")
+        nxt = getattr(current, "__cause__", None)
+        current = nxt if nxt is not current else None
+    if not seen:
+        return None
+    return " <- ".join(seen)[:500]
 
 
-def is_openai_http_500(exc: BaseException) -> bool:
-    """True for confirmed OpenAI/API HTTP 500 (not 429 or other 4xx)."""
-    status = int(getattr(exc, "status_code", 0) or 0)
-    if status == 500:
-        return True
-    name = type(exc).__name__
-    if name == "InternalServerError" and (status == 0 or status >= 500):
-        return True
-    cause = getattr(exc, "__cause__", None)
-    if cause is not None and cause is not exc:
-        return is_openai_http_500(cause)
-    return False
+EMPTY_INPUT = "empty_input"
+INFERENCE_FAILED = "inference_failed"
 
 
-def is_empty_embedding_input_error(exc: BaseException) -> bool:
-    """OpenAI rejects batches that contain '' (HTTP 400 invalid_request_error)."""
-    if "input cannot be an empty string" in str(exc).lower():
-        return True
-    cause = getattr(exc, "__cause__", None)
-    if cause is not None and cause is not exc:
-        return is_empty_embedding_input_error(cause)
-    return False
+def classify_embedding_failure(exc: BaseException) -> str:
+    """Name the failure. Always quarantines -- there is no "carry on" answer.
 
+    This replaced ``should_quarantine_embedding_error``, which returned an HTTP status or ``None`` and
+    decided by matching a remote provider's 500 and its 400 for an empty input string. With embeddings
+    computed locally neither could fire, so it answered ``None`` for everything and the circuit never
+    engaged. A fail-closed guard that cannot trigger is worse than no guard, because it reads as one.
 
-def should_quarantine_embedding_error(exc: BaseException) -> int | None:
-    """Return HTTP status to quarantine for, or None if caller should re-raise."""
-    if is_openai_http_500(exc):
-        return int(getattr(exc, "status_code", 0) or 500)
-    if is_empty_embedding_input_error(exc):
-        return int(getattr(exc, "status_code", 0) or 400)
-    return None
+    The distinction that survives is ``empty_input``, because it has a different cause and a different
+    fix: an empty string means the chunker or the sanitizer let something through, not that inference
+    broke. ``sanitize_embedding_texts`` and the empty-string guard in ``llama_engine`` are supposed to
+    make it unreachable, so seeing it here means one of those has a hole.
+    """
+    text = str(exc).lower()
+    if "empty" in text and ("input" in text or "string" in text or "text" in text):
+        return EMPTY_INPUT
+    return INFERENCE_FAILED

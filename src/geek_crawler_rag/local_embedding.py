@@ -1,7 +1,6 @@
 """Dense embeddings, computed locally.
 
-Replaces ``OpenAIEmbedding``. There is no API key, no rate limit, no per-chunk cost and no external
-service in the indexing path -- see ``plans/go-fully-local-bge-small-bm25.md``.
+There is no API key, no rate limit, no per-chunk cost and no external service in the indexing path -- see ``plans/go-fully-local-bge-small-bm25.md``.
 
 **Why a local adapter instead of ``llama-index-embeddings-fastembed``.**
 
@@ -118,7 +117,7 @@ class LocalDenseEmbedding(BaseEmbedding):
         ONNX truncates at ``max_length`` with no error, so a chunk at or over the limit yields a
         vector representing only its head. That is a fail-open, and the reason it can happen at all is a
         tokenizer mismatch: the chunker sizes parents and children with tiktoken's BPE
-        (``embedding_throttle.partition_embedding_batches``) while the model counts WordPiece, which
+        (``embedding_batching.partition_embedding_batches``) while the model counts WordPiece, which
         runs longer on technical text. So a parent inside its configured 480-token budget can still
         cross 512 here.
 
