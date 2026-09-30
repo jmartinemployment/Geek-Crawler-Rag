@@ -47,6 +47,8 @@ class LocalDenseEmbedding(BaseEmbedding):
 
     _model: TextEmbedding = PrivateAttr()
     _threads: int = PrivateAttr()
+    _max_tokens: int = PrivateAttr()
+    _truncated: int = PrivateAttr()
 
     def __init__(
         self,
@@ -66,12 +68,78 @@ class LocalDenseEmbedding(BaseEmbedding):
         self._model = TextEmbedding(
             model_name=model_name, threads=threads, cache_dir=cache_dir
         )
+        self._truncated = 0
+        self._max_tokens = self._read_max_tokens()
         logger.info(
-            "Local dense embedder ready model=%s threads=%s batch=%s",
+            "Local dense embedder ready model=%s threads=%s batch=%s max_tokens=%s",
             model_name,
             threads,
             embed_batch_size,
+            self._max_tokens,
         )
+
+    def _read_max_tokens(self) -> int:
+        """The model's own sequence limit, read from its tokenizer rather than hardcoded.
+
+        bge-small-en-v1.5 reports 512. Reading it means a model swap cannot leave a stale constant
+        behind claiming the wrong ceiling.
+        """
+        try:
+            tokenizer = self._model.model.tokenizer  # type: ignore[attr-defined]
+            limit = int(tokenizer.truncation["max_length"])
+            return limit if limit > 0 else 0
+        except Exception:
+            # Unknown rather than assumed: 0 disables the check instead of inventing a ceiling.
+            logger.warning(
+                "Could not read the embedding model's sequence limit; "
+                "over-length inputs will not be reported"
+            )
+            return 0
+
+    def _count_tokens(self, text: str) -> int:
+        """Token count as the model sees it, **capped at the model's own limit.**
+
+        The tokenizer has truncation enabled (that is where ``_max_tokens`` is read from), so this
+        can never return more than the ceiling. The caller therefore tests ``>=``, not ``>``: an
+        encoding sitting exactly on the limit is one that was truncated. The only false positive is
+        text that happens to be exactly the limit long, which is worth a warning anyway.
+        """
+        tokenizer = self._model.model.tokenizer  # type: ignore[attr-defined]
+        return len(tokenizer.encode(text).ids)
+
+    @property
+    def truncated_inputs(self) -> int:
+        """How many inputs exceeded the model's limit and were silently truncated by it."""
+        return self._truncated
+
+    def _report_over_length(self, texts: list[str]) -> None:
+        """Truncation is the model's default and it is silent. Make it visible and countable.
+
+        ONNX truncates at ``max_length`` with no error, so a chunk at or over the limit yields a
+        vector representing only its head. That is a fail-open, and the reason it can happen at all is a
+        tokenizer mismatch: the chunker sizes parents and children with tiktoken's BPE
+        (``embedding_throttle.partition_embedding_batches``) while the model counts WordPiece, which
+        runs longer on technical text. So a parent inside its configured 480-token budget can still
+        cross 512 here.
+
+        Not raised. The chunk is legitimate and the run should continue -- but nobody should have to
+        guess whether it happened. The count is the input for tuning
+        ``parent_chunk_size_tokens`` empirically instead of by estimate.
+        """
+        if self._max_tokens <= 0:
+            return
+        for text in texts:
+            n = self._count_tokens(text)
+            if n >= self._max_tokens:
+                self._truncated += 1
+                logger.warning(
+                    "Embedding input reached the model limit and was truncated: "
+                    "tokens>=%s limit=%s chars=%s head=%r",
+                    n,
+                    self._max_tokens,
+                    len(text),
+                    text[:80],
+                )
 
     @classmethod
     def class_name(cls) -> str:
@@ -87,6 +155,7 @@ class LocalDenseEmbedding(BaseEmbedding):
         """
         if not texts:
             return []
+        self._report_over_length(texts)
         vectors = list(self._model.embed(texts, batch_size=self.embed_batch_size))
         if len(vectors) != len(texts):
             # Never mis-map: the caller zips these onto nodes by position.

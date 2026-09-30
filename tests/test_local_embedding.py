@@ -122,3 +122,40 @@ async def test_inference_does_not_block_the_event_loop(embedder) -> None:
 async def test_empty_input_is_empty_output_not_an_error(embedder) -> None:
     """Callers sanitize and may filter everything out; that is not a failure."""
     assert await embedder._aget_text_embeddings([]) == []
+
+
+@pytest.mark.asyncio
+async def test_the_model_limit_is_read_not_hardcoded(embedder) -> None:
+    """bge-small reports 512 through its own tokenizer. A swap must not leave a stale constant."""
+    assert embedder._max_tokens == 512
+
+
+@pytest.mark.asyncio
+async def test_over_length_input_is_counted_and_logged_not_silent(
+    embedder, caplog
+) -> None:
+    """ONNX truncates at max_length with no error, so a long chunk yields a head-only vector.
+
+    It is not raised: the chunker sizes chunks with tiktoken BPE while the model counts WordPiece,
+    which runs longer on technical text, so a parent inside its configured budget can legitimately
+    cross 512 here. The run continues -- but the count is what makes tuning
+    parent_chunk_size_tokens empirical rather than a guess.
+    """
+    before = embedder.truncated_inputs
+    long_text = "invoice reconciliation and supplier onboarding workflow " * 120
+
+    with caplog.at_level("WARNING"):
+        vectors = await embedder._aget_text_embeddings([long_text])
+
+    assert len(vectors[0]) == DIM, "it still returns a usable vector"
+    assert embedder.truncated_inputs == before + 1
+    assert any("reached the model limit" in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_input_inside_the_limit_is_not_reported(embedder, caplog) -> None:
+    before = embedder.truncated_inputs
+    with caplog.at_level("WARNING"):
+        await embedder._aget_text_embeddings(["a short sentence about invoices"])
+    assert embedder.truncated_inputs == before
+    assert not any("reached the model limit" in r.getMessage() for r in caplog.records)
