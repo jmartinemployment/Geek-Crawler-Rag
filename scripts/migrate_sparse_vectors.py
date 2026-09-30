@@ -9,7 +9,7 @@ until this has run, that branch contributes nothing for older points.
 Writes with `update_vectors`, never `upsert`. This is the whole safety story of
 the script: `upsert` replaces a point, so upserting a PointStruct carrying only
 `{"text-sparse": ...}` would delete the dense embedding beside it -- 168k of them,
-each one an OpenAI call to regenerate. `update_vectors` (PUT
+each one an embedding call to regenerate. `update_vectors` (PUT
 /collections/{c}/points/vectors) writes only the named vectors handed to it and
 leaves the rest of the point untouched.
 

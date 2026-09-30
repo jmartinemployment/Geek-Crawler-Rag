@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Enqueue a manual index pass for content-ready crawl runs.
 
-`POST /v1/index` is the live indexing trigger (README "Indexing trigger and OpenAI rate limits"):
+`POST /v1/index` is the live indexing trigger (README "Indexing trigger"):
 the scheduler is deprecated and `INDEX_SCHEDULER_ENABLED` is `false`, so nothing enqueues a run on
 its own. This is the operator-facing way to do what the scheduler used to.
 
