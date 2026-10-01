@@ -27,7 +27,7 @@
   },
   "$notes": {
     "eventType": "Not on the model. webhook.notify() adds it to the payload after model_dump, so it is on the wire and must be in this list.",
-    "persisted": "GeekAPI persists five of these to crawl_runs as Rag* fields: state, chunksUpserted, pagesEnglish, pagesSkippedUnusable, finishedAtUtc. The rest reach SignalR and the crawls/{runId}/rag-index projection only. Note the receiver wraps its persist in catch { LogWarning } and still returns Accepted, so a persist failure is not visible to the sender -- durability here is best-effort, not guaranteed.",
+    "persisted": "GeekAPI persists five of these to crawl_runs as Rag* fields: state, chunksUpserted, pagesEnglish, pagesSkippedUnusable, finishedAtUtc. The rest reach SignalR and the crawls/{runId}/rag-index projection only. The receiver refuses an absent run 404 before any write, and a persist that matches no document or raises answers 404 or 502 rather than Accepted (GeekBackend 2123a1b, deployed 2026-09-30). A 202 therefore means the five fields were written. The sender logs 404 and 5xx at ERROR naming that crawl_runs still carries stale numbers (Geek-Crawler-Rag 406a77c).",
     "attempt": "Bound and pushed but deliberately NOT used by the receiver's out-of-order guard, which keys on finishedAtUtc. Changing that is a behaviour decision, not a binding one.",
     "comparison": "Only the `fields` map is compared across repos. Prose in $comment and $notes may differ, so editing a note here does not red the other repo's main."
   }
