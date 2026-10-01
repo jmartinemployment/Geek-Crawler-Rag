@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import functools
+
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -66,6 +68,11 @@ async def test_embed_and_upsert_skips_already_committed(monkeypatch):
     # No cross-run cache in these tests: they assert the resume skip and the
     # per-flush dedupe, and a MagicMock here would be awaited as if it were one.
     engine._vector_cache = None
+    # embed_and_upsert delegates to _embed_deduplicated; on a MagicMock engine that is a mock,
+    # not a coroutine. Bind the real one so these tests still exercise the real path.
+    engine._embed_deduplicated = functools.partial(
+        le.LlamaIndexEngine._embed_deduplicated, engine
+    )
     engine._vector_store.async_add = AsyncMock()
     embedded: list[list[str]] = []
 
@@ -91,7 +98,7 @@ async def test_embed_and_upsert_skips_already_committed(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_embed_and_upsert_no_openai_call_when_all_present(monkeypatch):
+async def test_embed_and_upsert_embeds_nothing_when_all_points_present(monkeypatch):
     """Fully-committed batch must short-circuit without touching OpenAI."""
     from llama_index.core.schema import TextNode
 
@@ -105,6 +112,11 @@ async def test_embed_and_upsert_no_openai_call_when_all_present(monkeypatch):
     # No cross-run cache in these tests: they assert the resume skip and the
     # per-flush dedupe, and a MagicMock here would be awaited as if it were one.
     engine._vector_cache = None
+    # embed_and_upsert delegates to _embed_deduplicated; on a MagicMock engine that is a mock,
+    # not a coroutine. Bind the real one so these tests still exercise the real path.
+    engine._embed_deduplicated = functools.partial(
+        le.LlamaIndexEngine._embed_deduplicated, engine
+    )
     engine._vector_store.async_add = AsyncMock()
     engine.embed_texts = AsyncMock(side_effect=AssertionError("must not embed"))
 
@@ -141,6 +153,11 @@ async def test_embed_cache_sends_each_distinct_string_once(monkeypatch):
     # No cross-run cache in these tests: they assert the resume skip and the
     # per-flush dedupe, and a MagicMock here would be awaited as if it were one.
     engine._vector_cache = None
+    # embed_and_upsert delegates to _embed_deduplicated; on a MagicMock engine that is a mock,
+    # not a coroutine. Bind the real one so these tests still exercise the real path.
+    engine._embed_deduplicated = functools.partial(
+        le.LlamaIndexEngine._embed_deduplicated, engine
+    )
     engine._vector_store.async_add = AsyncMock()
     engine.embed_texts = fake_embed_texts
 
@@ -182,6 +199,11 @@ async def test_embed_cache_falls_back_on_length_mismatch(monkeypatch):
     # No cross-run cache in these tests: they assert the resume skip and the
     # per-flush dedupe, and a MagicMock here would be awaited as if it were one.
     engine._vector_cache = None
+    # embed_and_upsert delegates to _embed_deduplicated; on a MagicMock engine that is a mock,
+    # not a coroutine. Bind the real one so these tests still exercise the real path.
+    engine._embed_deduplicated = functools.partial(
+        le.LlamaIndexEngine._embed_deduplicated, engine
+    )
     engine._vector_store.async_add = AsyncMock()
     engine.embed_texts = flaky_embed_texts
 

@@ -112,7 +112,7 @@ async def test_engine_embeds_only_the_misses_and_keeps_order():
 
     engine.embed_texts = fake_embed
 
-    out = await le.LlamaIndexEngine._embed_with_cache(
+    out = await le.LlamaIndexEngine._embed_deduplicated(
         engine, ["a", "b", "c", "b"], [MagicMock() for _ in range(4)]
     )
 
@@ -142,9 +142,75 @@ async def test_a_length_mismatch_falls_back_rather_than_mis_mapping():
 
     engine.embed_texts = short_embed
 
-    out = await le.LlamaIndexEngine._embed_with_cache(
+    out = await le.LlamaIndexEngine._embed_deduplicated(
         engine, ["a", "b"], [MagicMock(), MagicMock()]
     )
 
     assert len(out) == 2, "fell back to embedding everything rather than mis-pairing"
     engine._vector_cache.put_many.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_flush_containing_a_duplicate_still_uses_the_persistent_cache():
+    """The regression that cost 60% of the cache.
+
+    There used to be two paths. An in-flush dedupe fired on `len(unique) < len(texts)` and assigned
+    the result directly, which made the `if embeddings is None` guard skip the persistent cache --
+    so a flush with one repeated string anywhere in it neither READ nor WROTE rag_vector_cache.
+    Measured on the live corpus: 9,321 cached entries against 23,207 distinct chunk texts, because
+    only wholly-unique flushes ever reached it.
+
+    A duplicate in the input is the exact condition that used to disable the cache, so it is the
+    condition this asserts on.
+    """
+    engine = MagicMock()
+    cache = MagicMock()
+    cache.get_many = AsyncMock(return_value={"footer": [7.0, 7.0, 7.0]})
+    cache.put_many = AsyncMock()
+    engine._vector_cache = cache
+
+    embedded: list[list[str]] = []
+
+    async def fake_embed(texts, metadata_list=None):
+        embedded.append(list(texts))
+        return [[float(len(t))] * 3 for t in texts]
+
+    engine.embed_texts = fake_embed
+
+    # "footer" repeats -- the old trigger -- and is also already cached.
+    texts = ["footer", "body one", "footer", "body two", "footer"]
+    out = await le.LlamaIndexEngine._embed_deduplicated(
+        engine, texts, [MagicMock() for _ in texts]
+    )
+
+    cache.get_many.assert_awaited_once()
+    assert embedded == [["body one", "body two"]], "cached text must not be re-embedded"
+    cache.put_many.assert_awaited_once()
+    stored = cache.put_many.await_args.args[0]
+    assert set(stored) == {"body one", "body two"}, "fresh vectors must be written back"
+
+    for i in (0, 2, 4):
+        assert out[i] == [7.0, 7.0, 7.0]
+    assert out[1] == [8.0] * 3
+    assert out[3] == [8.0] * 3
+
+
+@pytest.mark.asyncio
+async def test_no_cache_attached_still_dedupes_within_the_flush():
+    """Mongo may not be reachable when the engine is built, so the cache can be absent."""
+    engine = MagicMock()
+    engine._vector_cache = None
+    embedded: list[list[str]] = []
+
+    async def fake_embed(texts, metadata_list=None):
+        embedded.append(list(texts))
+        return [[float(len(t))] * 3 for t in texts]
+
+    engine.embed_texts = fake_embed
+
+    out = await le.LlamaIndexEngine._embed_deduplicated(
+        engine, ["x", "y", "x"], [MagicMock() for _ in range(3)]
+    )
+    assert embedded == [["x", "y"]]
+    assert out[0] == out[2]
+    assert len(out) == 3

@@ -200,50 +200,17 @@ class LlamaIndexEngine:
 
         texts = [n.get_content() for n in keep]
 
-        # Embedding cache: a heading section shorter than child_chunk_size_tokens
-        # cannot be sliced, so parent_child_units emits a child byte-identical to
-        # its parent (chunk.py). Both points are still written, but the vector is
-        # the same, so embed each distinct string once. Measured ~29% of calls on real
-        # marketing pages -- and it still matters with a local model: the saving is CPU
-        # rather than spend, and inference is now the dominant cost of indexing.
-        uniq_texts = list(dict.fromkeys(texts))
-        embeddings: list[list[float]] | None = None
-        if len(uniq_texts) < len(texts):
-            first_meta: dict[str, dict[str, Any] | None] = {}
-            for node, text in zip(keep, texts, strict=True):
-                first_meta.setdefault(text, _node_meta(node))
-            uniq_vectors = await self.embed_texts(
-                uniq_texts,
-                metadata_list=[first_meta[t] for t in uniq_texts],
-            )
-            # embed_texts sanitizes and may drop empties, so its result is aligned
-            # to its filtered input. On any length mismatch fall back rather than
-            # mis-map vectors onto the wrong nodes.
-            if len(uniq_vectors) == len(uniq_texts):
-                by_text = dict(zip(uniq_texts, uniq_vectors, strict=True))
-                embeddings = [by_text[t] for t in texts]
-                logger.info(
-                    "embed_cache_saved_calls=%s unique=%s of=%s",
-                    len(texts) - len(uniq_texts),
-                    len(uniq_texts),
-                    len(texts),
-                )
-            else:
-                logger.warning(
-                    "embed_cache_length_mismatch got=%s want=%s; embedding uncached",
-                    len(uniq_vectors),
-                    len(uniq_texts),
-                )
+        # One embedding path, not two. Until 2026-10-01 there were two and they were mutually
+        # exclusive: an in-flush dedupe ran `if len(uniq_texts) < len(texts)` and assigned
+        # `embeddings` directly, so the `if embeddings is None` guard below skipped the persistent
+        # cache entirely -- never reading it AND never writing it. A single repeated string anywhere
+        # in a flush was enough to take that branch, so rag_vector_cache ended up holding 9,321 of
+        # the corpus's 23,207 distinct texts: only the flushes that happened to be wholly unique
+        # contributed. The weaker cache won whenever both applied.
+        #
+        # Deduplicating by text is now step one of the cached path rather than an alternative to it.
+        embeddings = await self._embed_deduplicated(texts, keep)
 
-        if embeddings is None:
-            # The branch is here rather than inside the helper so the no-cache
-            # path is the same call it always was.
-            if self._vector_cache is None:
-                embeddings = await self.embed_texts(
-                    texts, metadata_list=[_node_meta(n) for n in keep]
-                )
-            else:
-                embeddings = await self._embed_with_cache(texts, keep)
         for node, emb in zip(keep, embeddings, strict=True):
             node.embedding = emb
         await self._vector_store.async_add(keep)
@@ -254,38 +221,49 @@ class LlamaIndexEngine:
         engine is built before Mongo is known to be reachable."""
         self._vector_cache = cache
 
-    async def _embed_with_cache(
+    async def _embed_deduplicated(
         self, texts: list[str], keep: list[TextNode]
     ) -> list[list[float]]:
-        """Embed only what is not already known, from any previous run.
+        """Embed each distinct string once, reusing anything embedded in any previous run.
 
-        The per-flush dedupe above collapses repeats inside one batch. This
-        reaches across batches, pages and runs: a re-crawl of a site produces
-        chunks byte-identical to the last crawl's, and those were embedded again
-        every time because the point id carries the runId.
+        Three savings, in one pass:
 
-        Order is preserved by construction - cached and freshly embedded vectors
-        are recombined against the original `texts` list, so a node never
-        receives another node's vector.
+        * **Within the flush.** A heading section shorter than ``child_chunk_size_tokens`` cannot be
+          sliced, so ``parent_child_units`` emits a child byte-identical to its parent. Both points
+          are written and both carry the same vector.
+        * **Across the run.** Site chrome repeats on every page. One footer CTA appears as 270
+          separate points in the live corpus.
+        * **Across runs.** A re-crawl produces chunks byte-identical to the last crawl's, and the
+          point id carries the runId, so nothing else would collapse them.
+
+        The first is free; the other two need ``rag_vector_cache``, which is why this must not be an
+        either/or with it.
+
+        Order is preserved by construction: vectors are recombined against the original ``texts``
+        list, so a node can never receive another node's vector.
         """
-        cache = self._vector_cache
-        cached = await cache.get_many(texts)
-        missing = [t for t in dict.fromkeys(texts) if t not in cached]
+        unique = list(dict.fromkeys(texts))
+        meta_by_text: dict[str, dict[str, Any] | None] = {}
+        for node, text in zip(keep, texts, strict=True):
+            meta_by_text.setdefault(text, _node_meta(node))
 
+        cached: dict[str, list[float]] = {}
+        cache = self._vector_cache
+        if cache is not None:
+            cached = await cache.get_many(unique)
+
+        missing = [t for t in unique if t not in cached]
         fresh: dict[str, list[float]] = {}
         if missing:
-            meta_by_text: dict[str, dict[str, Any] | None] = {}
-            for node, text in zip(keep, texts, strict=True):
-                meta_by_text.setdefault(text, _node_meta(node))
             vectors = await self.embed_texts(
                 missing, metadata_list=[meta_by_text.get(t) for t in missing]
             )
-            # embed_texts sanitizes and may drop empties, so a length mismatch
-            # means the mapping cannot be trusted. Fall back rather than risk
-            # pairing a vector with the wrong node.
+            # embed_texts sanitizes and may drop empties, so its result is aligned to its filtered
+            # input. On a length mismatch the mapping cannot be trusted, and pairing a vector with
+            # the wrong node is silently wrong forever -- so embed positionally instead.
             if len(vectors) != len(missing):
                 logger.warning(
-                    "vector_cache_length_mismatch got=%s want=%s; embedding uncached",
+                    "embed_dedupe_length_mismatch got=%s want=%s; embedding positionally",
                     len(vectors),
                     len(missing),
                 )
@@ -293,18 +271,18 @@ class LlamaIndexEngine:
                     texts, metadata_list=[_node_meta(n) for n in keep]
                 )
             fresh = dict(zip(missing, vectors, strict=True))
-            await cache.put_many(fresh)
+            if cache is not None:
+                await cache.put_many(fresh)
 
-        if cached:
-            logger.info(
-                "vector_cache_reused=%s embedded=%s of=%s",
-                len(cached),
-                len(missing),
-                len(dict.fromkeys(texts)),
-            )
-
-        combined = {**cached, **fresh}
-        return [combined[t] for t in texts]
+        logger.info(
+            "embed_dedupe texts=%s unique=%s cache_hits=%s embedded=%s",
+            len(texts),
+            len(unique),
+            len(cached),
+            len(missing),
+        )
+        by_text = {**cached, **fresh}
+        return [by_text[t] for t in texts]
 
     @property
     def chunk_tokenizer(self) -> WordPieceChunkTokenizer:
