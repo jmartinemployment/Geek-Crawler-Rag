@@ -1,602 +1,602 @@
 [
   {
     "stratum": "literal",
-    "need": "QuickBooks",
-    "runId": "387dca53-197c-41cb-bc23-f2155ee9c83a",
-    "host": "parseur.com",
-    "expect_literal": "QuickBooks"
-  },
-  {
-    "stratum": "wide_parent",
-    "need": "A preventative approach to stress management",
-    "runId": "8f91edf1-90bd-49f1-ba51-954c583d3fd9",
-    "host": "www.float.com",
-    "expect_literal": null,
-    "parent_child_ratio": 4.24
-  },
-  {
-    "stratum": "wide_parent",
-    "need": "Parseur vs other intelligent document processing platforms",
-    "runId": "387dca53-197c-41cb-bc23-f2155ee9c83a",
-    "host": "parseur.com",
-    "expect_literal": null,
-    "parent_child_ratio": 6.0
+    "need": "AvaTax",
+    "runId": "ac17c315-c7a8-475f-a2d1-fd1ad96150f1",
+    "host": "www.avalara.com",
+    "expect_literal": "AvaTax"
   },
   {
     "stratum": "literal",
-    "need": "TypeSales",
-    "runId": "264d12a3-86df-4ed0-8710-3557aa130eae",
-    "host": "www.anrok.com",
-    "expect_literal": "TypeSales"
-  },
-  {
-    "stratum": "literal",
-    "need": "ManagementArticle",
-    "runId": "9ba7263e-ee0d-40f8-9846-a0b16c4a15f7",
-    "host": "www.bill.com",
-    "expect_literal": "ManagementArticle"
-  },
-  {
-    "stratum": "literal",
-    "need": "bill.com",
-    "runId": "9ba7263e-ee0d-40f8-9846-a0b16c4a15f7",
-    "host": "www.bill.com",
-    "expect_literal": "bill.com"
+    "need": "ZoneBilling",
+    "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+    "host": "www.zoneandco.com",
+    "expect_literal": "ZoneBilling"
   },
   {
     "stratum": "wide_parent",
-    "need": "Frequently asked questions",
-    "runId": "9ba7263e-ee0d-40f8-9846-a0b16c4a15f7",
-    "host": "www.bill.com",
+    "need": "The Conn No One Saw Coming",
+    "runId": "6101fbba-069c-4e06-8f9c-7e4072faad56",
+    "host": "www.medius.com",
     "expect_literal": null,
     "parent_child_ratio": 2.69
   },
   {
     "stratum": "wide_parent",
-    "need": "Personal data we disclose to third parties.",
-    "runId": "387dca53-197c-41cb-bc23-f2155ee9c83a",
+    "need": "How to Automatically Extract Data from PDFs with AI",
+    "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
     "host": "parseur.com",
     "expect_literal": null,
-    "parent_child_ratio": 3.69
+    "parent_child_ratio": 3.65
   },
   {
     "stratum": "literal",
     "need": "NetSuite",
-    "runId": "e0a582f2-b0a6-4fad-8497-53a865249fb1",
+    "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
     "host": "www.zoneandco.com",
     "expect_literal": "NetSuite"
   },
   {
     "stratum": "literal",
-    "need": "StreetEasy",
-    "runId": "387dca53-197c-41cb-bc23-f2155ee9c83a",
+    "need": "DocuSign",
+    "runId": "6101fbba-069c-4e06-8f9c-7e4072faad56",
+    "host": "www.medius.com",
+    "expect_literal": "DocuSign"
+  },
+  {
+    "stratum": "wide_parent",
+    "need": "Contract Management FAQs",
+    "runId": "6101fbba-069c-4e06-8f9c-7e4072faad56",
+    "host": "www.medius.com",
+    "expect_literal": null,
+    "parent_child_ratio": 2.67
+  },
+  {
+    "stratum": "wide_parent",
+    "need": "Sylvain Josserand, Co-Founder & CTO",
+    "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
     "host": "parseur.com",
-    "expect_literal": "StreetEasy"
+    "expect_literal": null,
+    "parent_child_ratio": 2.7
   },
   {
     "stratum": "literal",
-    "need": "ShelDon",
-    "runId": "acdcd8e6-49e8-4bb9-9e6a-7dfc85bc33f8",
-    "host": "www.eojohnson.com",
-    "expect_literal": "ShelDon"
+    "need": "ContentsText",
+    "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+    "host": "www.zoneandco.com",
+    "expect_literal": "ContentsText"
   },
   {
     "stratum": "literal",
-    "need": "NewsApril",
-    "runId": "9ba7263e-ee0d-40f8-9846-a0b16c4a15f7",
-    "host": "www.bill.com",
-    "expect_literal": "NewsApril"
+    "need": "TransExecutive",
+    "runId": "6101fbba-069c-4e06-8f9c-7e4072faad56",
+    "host": "www.medius.com",
+    "expect_literal": "TransExecutive"
   },
   {
     "stratum": "wide_parent",
-    "need": "5) Wave",
-    "runId": "a3ecdfbd-4612-4084-a10d-af74cdead84f",
-    "host": "www.numeral.com",
+    "need": "Which ATS parse resumes, and what they extract",
+    "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+    "host": "parseur.com",
     "expect_literal": null,
-    "parent_child_ratio": 6.56
-  },
-  {
-    "stratum": "wide_parent",
-    "need": "A. European Privacy Rights and Notices",
-    "runId": "a3ecdfbd-4612-4084-a10d-af74cdead84f",
-    "host": "www.numeral.com",
-    "expect_literal": null,
-    "parent_child_ratio": 2.59
+    "parent_child_ratio": 2.57
   },
   {
     "stratum": "literal",
-    "need": "AvidXchange",
-    "runId": "14c8572a-1984-42f8-8eea-5d8b2caefc01",
-    "host": "www.avidxchange.com",
-    "expect_literal": "AvidXchange"
+    "need": "MySQL",
+    "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+    "host": "parseur.com",
+    "expect_literal": "MySQL"
+  },
+  {
+    "stratum": "literal",
+    "need": "ProcurementIndustry",
+    "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+    "host": "www.zoneandco.com",
+    "expect_literal": "ProcurementIndustry"
+  },
+  {
+    "stratum": "literal",
+    "need": "WhatsApp",
+    "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+    "host": "parseur.com",
+    "expect_literal": "WhatsApp"
   },
   {
     "stratum": "wide_parent",
-    "need": "General Terms and Conditions",
-    "runId": "14c8572a-1984-42f8-8eea-5d8b2caefc01",
-    "host": "www.avidxchange.com",
+    "need": "Advanced Tip: Combine Parseur with AI CRM Tools",
+    "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+    "host": "parseur.com",
     "expect_literal": null,
-    "parent_child_ratio": 4.9
+    "parent_child_ratio": 4.14
+  },
+  {
+    "stratum": "literal",
+    "need": "CloudSuite",
+    "runId": "6101fbba-069c-4e06-8f9c-7e4072faad56",
+    "host": "www.medius.com",
+    "expect_literal": "CloudSuite"
+  },
+  {
+    "stratum": "wide_parent",
+    "need": "Infor ERP and Medius Integration FAQ",
+    "runId": "6101fbba-069c-4e06-8f9c-7e4072faad56",
+    "host": "www.medius.com",
+    "expect_literal": null,
+    "parent_child_ratio": 2.83
+  },
+  {
+    "stratum": "wide_parent",
+    "need": "Business Spend Management FAQs",
+    "runId": "6101fbba-069c-4e06-8f9c-7e4072faad56",
+    "host": "www.medius.com",
+    "expect_literal": null,
+    "parent_child_ratio": 2.3
+  },
+  {
+    "stratum": "wide_parent",
+    "need": "45 Articles",
+    "runId": "ac17c315-c7a8-475f-a2d1-fd1ad96150f1",
+    "host": "www.avalara.com",
+    "expect_literal": null,
+    "parent_child_ratio": 2.6
+  },
+  {
+    "stratum": "literal",
+    "need": "INV-12115",
+    "runId": "6101fbba-069c-4e06-8f9c-7e4072faad56",
+    "host": "www.medius.com",
+    "expect_literal": "INV-12115"
+  },
+  {
+    "stratum": "wide_parent",
+    "need": "Experience Supplier Conversations in action.",
+    "runId": "6101fbba-069c-4e06-8f9c-7e4072faad56",
+    "host": "www.medius.com",
+    "expect_literal": null,
+    "parent_child_ratio": 2.3
+  },
+  {
+    "stratum": "literal",
+    "need": "ActiveCampaign",
+    "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+    "host": "parseur.com",
+    "expect_literal": "ActiveCampaign"
+  },
+  {
+    "stratum": "wide_parent",
+    "need": "The Conn No One Saw Coming",
+    "runId": "6101fbba-069c-4e06-8f9c-7e4072faad56",
+    "host": "www.medius.com",
+    "expect_literal": null,
+    "parent_child_ratio": 2.63
+  },
+  {
+    "stratum": "literal",
+    "need": "CompanyName",
+    "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+    "host": "parseur.com",
+    "expect_literal": "CompanyName"
+  },
+  {
+    "stratum": "wide_parent",
+    "need": "Common Oracle Fusion AP questions",
+    "runId": "6101fbba-069c-4e06-8f9c-7e4072faad56",
+    "host": "www.medius.com",
+    "expect_literal": null,
+    "parent_child_ratio": 3.43
+  },
+  {
+    "stratum": "literal",
+    "need": "McKinsey",
+    "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+    "host": "parseur.com",
+    "expect_literal": "McKinsey"
+  },
+  {
+    "stratum": "literal",
+    "need": "SuiteApps",
+    "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+    "host": "www.zoneandco.com",
+    "expect_literal": "SuiteApps"
+  },
+  {
+    "stratum": "literal",
+    "need": "ZoneCapture",
+    "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+    "host": "www.zoneandco.com",
+    "expect_literal": "ZoneCapture"
+  },
+  {
+    "stratum": "wide_parent",
+    "need": "Get a Personalized Demo Today",
+    "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+    "host": "www.zoneandco.com",
+    "expect_literal": null,
+    "parent_child_ratio": 2.71
+  },
+  {
+    "stratum": "wide_parent",
+    "need": "Comparing Parseur vs Zapier Email Parser",
+    "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+    "host": "parseur.com",
+    "expect_literal": null,
+    "parent_child_ratio": 2.64
+  },
+  {
+    "stratum": "literal",
+    "need": "ZoneReconcile",
+    "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+    "host": "www.zoneandco.com",
+    "expect_literal": "ZoneReconcile"
+  },
+  {
+    "stratum": "wide_parent",
+    "need": "ZoneReconcile Product Tour",
+    "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+    "host": "www.zoneandco.com",
+    "expect_literal": null,
+    "parent_child_ratio": 2.39
+  },
+  {
+    "stratum": "wide_parent",
+    "need": "What is a PDF parser and how can it boost your Shopify automation?",
+    "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+    "host": "parseur.com",
+    "expect_literal": null,
+    "parent_child_ratio": 3.8
+  },
+  {
+    "stratum": "wide_parent",
+    "need": "Which documents to automate first, and which to ignore",
+    "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+    "host": "parseur.com",
+    "expect_literal": null,
+    "parent_child_ratio": 2.04
+  },
+  {
+    "stratum": "literal",
+    "need": "OneStream",
+    "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+    "host": "www.zoneandco.com",
+    "expect_literal": "OneStream"
+  },
+  {
+    "stratum": "literal",
+    "need": "5.14.2026",
+    "runId": "6101fbba-069c-4e06-8f9c-7e4072faad56",
+    "host": "www.medius.com",
+    "expect_literal": "5.14.2026"
+  },
+  {
+    "stratum": "literal",
+    "need": "ZoneProcure",
+    "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+    "host": "www.zoneandco.com",
+    "expect_literal": "ZoneProcure"
+  },
+  {
+    "stratum": "wide_parent",
+    "need": "Automate the Right to Work Document Verification (UK)",
+    "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+    "host": "parseur.com",
+    "expect_literal": null,
+    "parent_child_ratio": 2.52
+  },
+  {
+    "stratum": "wide_parent",
+    "need": "Step 2: Standardizing supplier onboarding",
+    "runId": "6101fbba-069c-4e06-8f9c-7e4072faad56",
+    "host": "www.medius.com",
+    "expect_literal": null,
+    "parent_child_ratio": 2.21
   },
   {
     "stratum": "wide_parent",
     "need": "You may also like",
-    "runId": "387dca53-197c-41cb-bc23-f2155ee9c83a",
+    "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
     "host": "parseur.com",
     "expect_literal": null,
-    "parent_child_ratio": 2.5
-  },
-  {
-    "stratum": "literal",
-    "need": "ReceiptNumber",
-    "runId": "387dca53-197c-41cb-bc23-f2155ee9c83a",
-    "host": "parseur.com",
-    "expect_literal": "ReceiptNumber"
-  },
-  {
-    "stratum": "literal",
-    "need": "FloatSoftware",
-    "runId": "8f91edf1-90bd-49f1-ba51-954c583d3fd9",
-    "host": "www.float.com",
-    "expect_literal": "FloatSoftware"
-  },
-  {
-    "stratum": "literal",
-    "need": "SquareWorks",
-    "runId": "e0a582f2-b0a6-4fad-8497-53a865249fb1",
-    "host": "www.zoneandco.com",
-    "expect_literal": "SquareWorks"
+    "parent_child_ratio": 2.51
   },
   {
     "stratum": "wide_parent",
-    "need": "PDF data extraction with Parseur, from inbox to ERP",
-    "runId": "387dca53-197c-41cb-bc23-f2155ee9c83a",
-    "host": "parseur.com",
+    "need": "Avalara: Miscellaneous",
+    "runId": "ac17c315-c7a8-475f-a2d1-fd1ad96150f1",
+    "host": "www.avalara.com",
     "expect_literal": null,
-    "parent_child_ratio": 2.54
+    "parent_child_ratio": 2.36
+  },
+  {
+    "stratum": "literal",
+    "need": "RentalAdvisor",
+    "runId": "ac17c315-c7a8-475f-a2d1-fd1ad96150f1",
+    "host": "www.avalara.com",
+    "expect_literal": "RentalAdvisor"
   },
   {
     "stratum": "wide_parent",
-    "need": "FAQ",
-    "runId": "8407f32e-8f39-4be8-8ad3-64a67e836e6f",
-    "host": "www.stampli.com",
+    "need": "Family Affair",
+    "runId": "6101fbba-069c-4e06-8f9c-7e4072faad56",
+    "host": "www.medius.com",
     "expect_literal": null,
     "parent_child_ratio": 2.96
   },
   {
-    "stratum": "wide_parent",
-    "need": "Incorporation of and changes to the EU SCCs",
-    "runId": "8c192966-daf9-4363-adfa-ac97dc9e1822",
-    "host": "dext.com",
-    "expect_literal": null,
-    "parent_child_ratio": 4.72
-  },
-  {
     "stratum": "literal",
-    "need": "SuiteApp",
-    "runId": "e0a582f2-b0a6-4fad-8497-53a865249fb1",
+    "need": "HubSpotMetaNetSuiteFinance",
+    "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
     "host": "www.zoneandco.com",
-    "expect_literal": "SuiteApp"
+    "expect_literal": "HubSpotMetaNetSuiteFinance"
   },
   {
     "stratum": "wide_parent",
-    "need": "Get the report",
-    "runId": "9ba7263e-ee0d-40f8-9846-a0b16c4a15f7",
-    "host": "www.bill.com",
-    "expect_literal": null,
-    "parent_child_ratio": 3.97
-  },
-  {
-    "stratum": "literal",
-    "need": "17.02.2026",
-    "runId": "8c192966-daf9-4363-adfa-ac97dc9e1822",
-    "host": "dext.com",
-    "expect_literal": "17.02.2026"
-  },
-  {
-    "stratum": "literal",
-    "need": "TrialBook",
-    "runId": "d7e0fa68-5f15-4817-a124-92808dd60435",
-    "host": "www.nexusap.com",
-    "expect_literal": "TrialBook"
-  },
-  {
-    "stratum": "literal",
-    "need": "BusinessesBookkeeping",
-    "runId": "8c192966-daf9-4363-adfa-ac97dc9e1822",
-    "host": "dext.com",
-    "expect_literal": "BusinessesBookkeeping"
-  },
-  {
-    "stratum": "wide_parent",
-    "need": "How to build culture in a fully distributed remote team",
-    "runId": "8f91edf1-90bd-49f1-ba51-954c583d3fd9",
-    "host": "www.float.com",
-    "expect_literal": null,
-    "parent_child_ratio": 3.67
-  },
-  {
-    "stratum": "literal",
-    "need": "ComparisonZone",
-    "runId": "e0a582f2-b0a6-4fad-8497-53a865249fb1",
+    "need": "Browse all integrations",
+    "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
     "host": "www.zoneandco.com",
-    "expect_literal": "ComparisonZone"
+    "expect_literal": null,
+    "parent_child_ratio": 3.1
   },
   {
     "stratum": "wide_parent",
-    "need": "GNU Affero General Public License v3.0",
-    "runId": "8c192966-daf9-4363-adfa-ac97dc9e1822",
-    "host": "dext.com",
+    "need": "Related use cases and blog articles",
+    "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+    "host": "parseur.com",
     "expect_literal": null,
-    "parent_child_ratio": 4.93
+    "parent_child_ratio": 2.08
   },
   {
     "stratum": "wide_parent",
-    "need": "Annex II",
-    "runId": "a3ecdfbd-4612-4084-a10d-af74cdead84f",
-    "host": "www.numeral.com",
+    "need": "Zone Bridges the Global Cash Gap: Direct UK Bank Connectivity Now Live in ZoneReconcile",
+    "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+    "host": "www.zoneandco.com",
     "expect_literal": null,
-    "parent_child_ratio": 4.32
+    "parent_child_ratio": 2.42
   },
   {
     "stratum": "literal",
-    "need": "FirmWealth",
-    "runId": "9ba7263e-ee0d-40f8-9846-a0b16c4a15f7",
-    "host": "www.bill.com",
-    "expect_literal": "FirmWealth"
+    "need": "BEST-IN-CLASS",
+    "runId": "6101fbba-069c-4e06-8f9c-7e4072faad56",
+    "host": "www.medius.com",
+    "expect_literal": "BEST-IN-CLASS"
+  },
+  {
+    "stratum": "literal",
+    "need": "SuiteCloud",
+    "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+    "host": "www.zoneandco.com",
+    "expect_literal": "SuiteCloud"
   },
   {
     "stratum": "wide_parent",
-    "need": "Request a live demo",
-    "runId": "9ba7263e-ee0d-40f8-9846-a0b16c4a15f7",
-    "host": "www.bill.com",
+    "need": "Zuora vs. Chargebee vs. Zone & Co: Comparing billing approaches for NetSuite teams",
+    "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+    "host": "www.zoneandco.com",
     "expect_literal": null,
-    "parent_child_ratio": 2.33
+    "parent_child_ratio": 2.43
   },
   {
     "stratum": "wide_parent",
-    "need": "3. Buyout Credit",
-    "runId": "a3ecdfbd-4612-4084-a10d-af74cdead84f",
-    "host": "www.numeral.com",
+    "need": "How do I handle monthly CIS returns to HMRC?",
+    "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+    "host": "parseur.com",
     "expect_literal": null,
-    "parent_child_ratio": 3.52
+    "parent_child_ratio": 3.28
   },
   {
     "stratum": "wide_parent",
-    "need": "UK Services Schedule",
-    "runId": "5278878f-2a08-4211-b3e7-138aa61d8acd",
-    "host": "tipalti.com",
+    "need": "FAQs",
+    "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+    "host": "www.zoneandco.com",
     "expect_literal": null,
-    "parent_child_ratio": 4.8
+    "parent_child_ratio": 2.48
   },
   {
     "stratum": "wide_parent",
-    "need": "Frequently asked questions",
-    "runId": "8c192966-daf9-4363-adfa-ac97dc9e1822",
-    "host": "dext.com",
+    "need": "Comparing Parseur vs Parsio",
+    "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+    "host": "parseur.com",
     "expect_literal": null,
-    "parent_child_ratio": 3.75
+    "parent_child_ratio": 2.63
+  },
+  {
+    "stratum": "literal",
+    "need": "SuiteAnalytics",
+    "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+    "host": "www.zoneandco.com",
+    "expect_literal": "SuiteAnalytics"
+  },
+  {
+    "stratum": "literal",
+    "need": "RubinBrown",
+    "runId": "ac17c315-c7a8-475f-a2d1-fd1ad96150f1",
+    "host": "www.avalara.com",
+    "expect_literal": "RubinBrown"
+  },
+  {
+    "stratum": "wide_parent",
+    "need": "Comparison articles",
+    "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+    "host": "parseur.com",
+    "expect_literal": null,
+    "parent_child_ratio": 2.48
+  },
+  {
+    "stratum": "wide_parent",
+    "need": "Comparison articles",
+    "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+    "host": "parseur.com",
+    "expect_literal": null,
+    "parent_child_ratio": 2.38
+  },
+  {
+    "stratum": "literal",
+    "need": "FourKites",
+    "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+    "host": "www.zoneandco.com",
+    "expect_literal": "FourKites"
+  },
+  {
+    "stratum": "wide_parent",
+    "need": "Reports",
+    "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+    "host": "www.zoneandco.com",
+    "expect_literal": null,
+    "parent_child_ratio": 2.5
+  },
+  {
+    "stratum": "wide_parent",
+    "need": "Comparing Parseur vs Mailgun Email API",
+    "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+    "host": "parseur.com",
+    "expect_literal": null,
+    "parent_child_ratio": 2.57
   },
   {
     "stratum": "literal",
     "need": "BuildYourBNB",
-    "runId": "387dca53-197c-41cb-bc23-f2155ee9c83a",
+    "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
     "host": "parseur.com",
     "expect_literal": "BuildYourBNB"
   },
   {
     "stratum": "literal",
-    "need": "LendingTree",
-    "runId": "387dca53-197c-41cb-bc23-f2155ee9c83a",
-    "host": "parseur.com",
-    "expect_literal": "LendingTree"
+    "need": "SuiteWorld",
+    "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+    "host": "www.zoneandco.com",
+    "expect_literal": "SuiteWorld"
   },
   {
     "stratum": "wide_parent",
-    "need": "Related use cases and blog articles",
-    "runId": "387dca53-197c-41cb-bc23-f2155ee9c83a",
-    "host": "parseur.com",
-    "expect_literal": null,
-    "parent_child_ratio": 4.09
-  },
-  {
-    "stratum": "literal",
-    "need": "ApprovalMax",
-    "runId": "4f9e417c-5104-4b1d-b938-8fb543ce2432",
-    "host": "approvalmax.com",
-    "expect_literal": "ApprovalMax"
-  },
-  {
-    "stratum": "wide_parent",
-    "need": "Automating the paperwork behind a car sharing fleet",
-    "runId": "387dca53-197c-41cb-bc23-f2155ee9c83a",
-    "host": "parseur.com",
-    "expect_literal": null,
-    "parent_child_ratio": 2.15
-  },
-  {
-    "stratum": "wide_parent",
-    "need": "Variable consideration: Where over-correction creates its own risk",
-    "runId": "e0a582f2-b0a6-4fad-8497-53a865249fb1",
+    "need": "Zone & Co Announces Platinum Sponsorship of SuiteWorld 2025",
+    "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
     "host": "www.zoneandco.com",
     "expect_literal": null,
-    "parent_child_ratio": 5.07
+    "parent_child_ratio": 2.64
   },
   {
     "stratum": "wide_parent",
-    "need": "Overview",
-    "runId": "a53dfcac-83eb-4309-9938-3f31c5818982",
-    "host": "geekatyourspot.com",
-    "expect_literal": null,
-    "parent_child_ratio": 2.35
-  },
-  {
-    "stratum": "literal",
-    "need": "ActivePieces",
-    "runId": "387dca53-197c-41cb-bc23-f2155ee9c83a",
+    "need": "Data Processing Agreement",
+    "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
     "host": "parseur.com",
-    "expect_literal": "ActivePieces"
+    "expect_literal": null,
+    "parent_child_ratio": 2.69
   },
   {
     "stratum": "literal",
-    "need": "StoriesSee",
-    "runId": "8407f32e-8f39-4be8-8ad3-64a67e836e6f",
-    "host": "www.stampli.com",
-    "expect_literal": "StoriesSee"
-  },
-  {
-    "stratum": "literal",
-    "need": "MoreMay",
-    "runId": "264d12a3-86df-4ed0-8710-3557aa130eae",
-    "host": "www.anrok.com",
-    "expect_literal": "MoreMay"
+    "need": "SuiteBilling",
+    "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+    "host": "www.zoneandco.com",
+    "expect_literal": "SuiteBilling"
   },
   {
     "stratum": "wide_parent",
-    "need": "Devil\u2019s In the Email",
-    "runId": "6d28cf08-1c99-4d15-b1eb-dc2aca0a46bf",
+    "need": "Why line items break most extraction tools",
+    "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+    "host": "parseur.com",
+    "expect_literal": null,
+    "parent_child_ratio": 3.89
+  },
+  {
+    "stratum": "wide_parent",
+    "need": "Zoe by Zone runs agentic finance across NetSuite",
+    "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+    "host": "www.zoneandco.com",
+    "expect_literal": null,
+    "parent_child_ratio": 2.75
+  },
+  {
+    "stratum": "wide_parent",
+    "need": "Contract Management FAQs",
+    "runId": "6101fbba-069c-4e06-8f9c-7e4072faad56",
     "host": "www.medius.com",
     "expect_literal": null,
-    "parent_child_ratio": 5.13
-  },
-  {
-    "stratum": "wide_parent",
-    "need": "Frequently asked questions",
-    "runId": "9ba7263e-ee0d-40f8-9846-a0b16c4a15f7",
-    "host": "www.bill.com",
-    "expect_literal": null,
-    "parent_child_ratio": 2.58
+    "parent_child_ratio": 2.52
   },
   {
     "stratum": "literal",
-    "need": "WellnessMulti",
-    "runId": "8c192966-daf9-4363-adfa-ac97dc9e1822",
-    "host": "dext.com",
-    "expect_literal": "WellnessMulti"
-  },
-  {
-    "stratum": "wide_parent",
-    "need": "What are the benefits of using intuitive guided forms for requesters?",
-    "runId": "5278878f-2a08-4211-b3e7-138aa61d8acd",
-    "host": "tipalti.com",
-    "expect_literal": null,
-    "parent_child_ratio": 2.55
-  },
-  {
-    "stratum": "literal",
-    "need": "ActiveCampaign",
-    "runId": "a53dfcac-83eb-4309-9938-3f31c5818982",
-    "host": "geekatyourspot.com",
-    "expect_literal": "ActiveCampaign"
-  },
-  {
-    "stratum": "literal",
-    "need": "TypeSmall",
-    "runId": "9ba7263e-ee0d-40f8-9846-a0b16c4a15f7",
-    "host": "www.bill.com",
-    "expect_literal": "TypeSmall"
-  },
-  {
-    "stratum": "wide_parent",
-    "need": "Charting your course for 2025 and beyond",
-    "runId": "264d12a3-86df-4ed0-8710-3557aa130eae",
-    "host": "www.anrok.com",
-    "expect_literal": null,
-    "parent_child_ratio": 4.48
-  },
-  {
-    "stratum": "wide_parent",
-    "need": "Frequently Asked Questions",
-    "runId": "acdcd8e6-49e8-4bb9-9e6a-7dfc85bc33f8",
-    "host": "www.eojohnson.com",
-    "expect_literal": null,
-    "parent_child_ratio": 3.16
-  },
-  {
-    "stratum": "literal",
-    "need": "medius.com",
-    "runId": "6d28cf08-1c99-4d15-b1eb-dc2aca0a46bf",
-    "host": "www.medius.com",
-    "expect_literal": "medius.com"
-  },
-  {
-    "stratum": "literal",
-    "need": "StatesLiveUruguayLiveMacaoLiveLiechtensteinLiveIcelandLiveHong",
-    "runId": "a3ecdfbd-4612-4084-a10d-af74cdead84f",
-    "host": "www.numeral.com",
-    "expect_literal": "StatesLiveUruguayLiveMacaoLiveLiechtensteinLiveIcelandLiveHong"
-  },
-  {
-    "stratum": "wide_parent",
-    "need": "Global coverage map",
-    "runId": "a3ecdfbd-4612-4084-a10d-af74cdead84f",
-    "host": "www.numeral.com",
-    "expect_literal": null,
-    "parent_child_ratio": 2.27
-  },
-  {
-    "stratum": "wide_parent",
-    "need": "Best AI tool for Shopify product photography: PhotoRoom",
-    "runId": "a3ecdfbd-4612-4084-a10d-af74cdead84f",
-    "host": "www.numeral.com",
-    "expect_literal": null,
-    "parent_child_ratio": 8.71
-  },
-  {
-    "stratum": "wide_parent",
-    "need": "FAQs",
-    "runId": "e0a582f2-b0a6-4fad-8497-53a865249fb1",
-    "host": "www.zoneandco.com",
-    "expect_literal": null,
-    "parent_child_ratio": 4.27
-  },
-  {
-    "stratum": "literal",
-    "need": "BotPenguin",
-    "runId": "a53dfcac-83eb-4309-9938-3f31c5818982",
-    "host": "geekatyourspot.com",
-    "expect_literal": "BotPenguin"
-  },
-  {
-    "stratum": "wide_parent",
-    "need": "FAQs",
-    "runId": "e0a582f2-b0a6-4fad-8497-53a865249fb1",
-    "host": "www.zoneandco.com",
-    "expect_literal": null,
-    "parent_child_ratio": 2.97
-  },
-  {
-    "stratum": "wide_parent",
-    "need": "Common questions about global e\u2011invoicing mandates",
-    "runId": "6d28cf08-1c99-4d15-b1eb-dc2aca0a46bf",
-    "host": "www.medius.com",
-    "expect_literal": null,
-    "parent_child_ratio": 4.21
-  },
-  {
-    "stratum": "literal",
-    "need": "RealPage",
-    "runId": "14c8572a-1984-42f8-8eea-5d8b2caefc01",
-    "host": "www.avidxchange.com",
-    "expect_literal": "RealPage"
-  },
-  {
-    "stratum": "wide_parent",
-    "need": "Pages",
-    "runId": "14c8572a-1984-42f8-8eea-5d8b2caefc01",
-    "host": "www.avidxchange.com",
-    "expect_literal": null,
-    "parent_child_ratio": 4.72
-  },
-  {
-    "stratum": "literal",
-    "need": "tipalti.com",
-    "runId": "5278878f-2a08-4211-b3e7-138aa61d8acd",
-    "host": "tipalti.com",
-    "expect_literal": "tipalti.com"
-  },
-  {
-    "stratum": "wide_parent",
-    "need": "Tipalti Software Services Agreement",
-    "runId": "5278878f-2a08-4211-b3e7-138aa61d8acd",
-    "host": "tipalti.com",
-    "expect_literal": null,
-    "parent_child_ratio": 4.97
-  },
-  {
-    "stratum": "wide_parent",
-    "need": "Building the AI agent workflow without writing code",
-    "runId": "387dca53-197c-41cb-bc23-f2155ee9c83a",
+    "need": "AES-256",
+    "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
     "host": "parseur.com",
-    "expect_literal": null,
-    "parent_child_ratio": 2.1
+    "expect_literal": "AES-256"
   },
   {
     "stratum": "wide_parent",
-    "need": "Zapier Revenue and Statistics 2026 - Every Number, With Receipts",
-    "runId": "387dca53-197c-41cb-bc23-f2155ee9c83a",
+    "need": "With Avalara 1099 & W-9, e-file, e-deliver, and e-correct the most common IRS form types",
+    "runId": "ac17c315-c7a8-475f-a2d1-fd1ad96150f1",
+    "host": "www.avalara.com",
+    "expect_literal": null,
+    "parent_child_ratio": 2.14
+  },
+  {
+    "stratum": "wide_parent",
+    "need": "What is an invoice approval workflow in NetSuite?",
+    "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+    "host": "www.zoneandco.com",
+    "expect_literal": null,
+    "parent_child_ratio": 3.1
+  },
+  {
+    "stratum": "literal",
+    "need": "ChatGPT",
+    "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
     "host": "parseur.com",
-    "expect_literal": null,
-    "parent_child_ratio": 3.36
-  },
-  {
-    "stratum": "wide_parent",
-    "need": "2. GENERAL TERMS AND CONDITIONS APPLICABLE TO THE SERVICES",
-    "runId": "8407f32e-8f39-4be8-8ad3-64a67e836e6f",
-    "host": "www.stampli.com",
-    "expect_literal": null,
-    "parent_child_ratio": 5.32
-  },
-  {
-    "stratum": "wide_parent",
-    "need": "19. ARBITRATION AGREEMENT.",
-    "runId": "a3ecdfbd-4612-4084-a10d-af74cdead84f",
-    "host": "www.numeral.com",
-    "expect_literal": null,
-    "parent_child_ratio": 5.17
+    "expect_literal": "ChatGPT"
   },
   {
     "stratum": "literal",
-    "need": "AvidAscend",
-    "runId": "14c8572a-1984-42f8-8eea-5d8b2caefc01",
-    "host": "www.avidxchange.com",
-    "expect_literal": "AvidAscend"
-  },
-  {
-    "stratum": "wide_parent",
-    "need": "Read Melio reviews from other business owners.",
-    "runId": "495f5062-75a7-40a1-8ca7-b19ca711e31c",
-    "host": "melio.com",
-    "expect_literal": null,
-    "parent_child_ratio": 3.77
-  },
-  {
-    "stratum": "literal",
-    "need": "LiuFounder",
-    "runId": "9ba7263e-ee0d-40f8-9846-a0b16c4a15f7",
-    "host": "www.bill.com",
-    "expect_literal": "LiuFounder"
-  },
-  {
-    "stratum": "literal",
-    "need": "PayCorrects",
-    "runId": "e0a582f2-b0a6-4fad-8497-53a865249fb1",
+    "need": "SkyDeck",
+    "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
     "host": "www.zoneandco.com",
-    "expect_literal": "PayCorrects"
+    "expect_literal": "SkyDeck"
   },
   {
     "stratum": "literal",
-    "need": "MoreArticlesBilling",
-    "runId": "264d12a3-86df-4ed0-8710-3557aa130eae",
-    "host": "www.anrok.com",
-    "expect_literal": "MoreArticlesBilling"
+    "need": "QuickBooks",
+    "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+    "host": "parseur.com",
+    "expect_literal": "QuickBooks"
   },
   {
     "stratum": "literal",
-    "need": "ConGlobal",
-    "runId": "e0a582f2-b0a6-4fad-8497-53a865249fb1",
+    "need": "ZoneExtract",
+    "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
     "host": "www.zoneandco.com",
-    "expect_literal": "ConGlobal"
+    "expect_literal": "ZoneExtract"
   },
   {
     "stratum": "literal",
-    "need": "GoPayment",
-    "runId": "5278878f-2a08-4211-b3e7-138aa61d8acd",
-    "host": "tipalti.com",
-    "expect_literal": "GoPayment"
+    "need": "6.25.2026",
+    "runId": "6101fbba-069c-4e06-8f9c-7e4072faad56",
+    "host": "www.medius.com",
+    "expect_literal": "6.25.2026"
   },
   {
     "stratum": "literal",
-    "need": "ZoneApprovals",
-    "runId": "e0a582f2-b0a6-4fad-8497-53a865249fb1",
+    "need": "TeamDecember",
+    "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
     "host": "www.zoneandco.com",
-    "expect_literal": "ZoneApprovals"
+    "expect_literal": "TeamDecember"
   },
   {
     "stratum": "literal",
-    "need": "ZoneProcure",
-    "runId": "e0a582f2-b0a6-4fad-8497-53a865249fb1",
+    "need": "NetSuiteJune",
+    "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
     "host": "www.zoneandco.com",
-    "expect_literal": "ZoneProcure"
+    "expect_literal": "NetSuiteJune"
+  },
+  {
+    "stratum": "literal",
+    "need": "RubyGems",
+    "runId": "ac17c315-c7a8-475f-a2d1-fd1ad96150f1",
+    "host": "www.avalara.com",
+    "expect_literal": "RubyGems"
+  },
+  {
+    "stratum": "literal",
+    "need": "AutomationRead",
+    "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+    "host": "www.zoneandco.com",
+    "expect_literal": "AutomationRead"
   }
 ]

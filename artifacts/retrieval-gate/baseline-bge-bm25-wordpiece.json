@@ -1,0 +1,1211 @@
+{
+  "summary": {
+    "queries": 80,
+    "literal": 40,
+    "literal_found": 40,
+    "literal_rank1": 40,
+    "wide_parent": 40,
+    "wide_parent_returned": 40,
+    "errors": 0
+  },
+  "results": [
+    {
+      "stratum": "literal",
+      "need": "AvaTax",
+      "runId": "ac17c315-c7a8-475f-a2d1-fd1ad96150f1",
+      "host": "www.avalara.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "03ad2519-01f0-51ae-bda6-39138f81db0d",
+        "090f170b-2c31-5c27-b78f-44cf55ec8bb1",
+        "b3179506-dcc1-5900-9ed2-9f8b4ee4ce9f"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    },
+    {
+      "stratum": "literal",
+      "need": "ZoneBilling",
+      "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+      "host": "www.zoneandco.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "0e654f22-110a-5a56-a3b9-2578fdc329ed",
+        "48a9fd7e-9a82-5aa4-9b69-1332d044976d",
+        "d3806b7f-5132-5a14-99e5-bb8d9616ad72"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "The Conn No One Saw Coming",
+      "runId": "6101fbba-069c-4e06-8f9c-7e4072faad56",
+      "host": "www.medius.com",
+      "parent_child_ratio": 2.69,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "334c86e7-839b-5d4f-bd44-4f8175d46755",
+        "60e8d473-049b-53d7-90eb-d40769ab7216",
+        "ffb4797c-d237-5e3d-84db-96799c8d1c08"
+      ]
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "How to Automatically Extract Data from PDFs with AI",
+      "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+      "host": "parseur.com",
+      "parent_child_ratio": 3.65,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "fe4f5c46-5e85-513c-9789-f100a87387df",
+        "8fd08f5d-4c5c-5df3-9535-703c1201c4f0",
+        "0026ec68-3e7a-524f-af5b-12b041914499"
+      ]
+    },
+    {
+      "stratum": "literal",
+      "need": "NetSuite",
+      "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+      "host": "www.zoneandco.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "0151b5a2-4df8-50df-94a9-e5531f5f5b89",
+        "6492b0aa-4236-5803-a216-ffe301ae0306",
+        "26231610-ed43-51b2-b1a7-ce80705053ff"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    },
+    {
+      "stratum": "literal",
+      "need": "DocuSign",
+      "runId": "6101fbba-069c-4e06-8f9c-7e4072faad56",
+      "host": "www.medius.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "ea136dc1-8a48-5cb6-bd1a-3230ef6ae130",
+        "e16e6dbf-d257-5161-ac81-8209da18dda8",
+        "00315fca-3300-56f4-81b5-3d0f2cb2a3b9"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "Contract Management FAQs",
+      "runId": "6101fbba-069c-4e06-8f9c-7e4072faad56",
+      "host": "www.medius.com",
+      "parent_child_ratio": 2.67,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "0212584d-d167-5409-b2b5-3827e70dd0f6",
+        "ff7faaba-69c8-5287-8ecf-4ecbf649c1d5",
+        "5daae018-4194-583d-921a-4d56c634ea80"
+      ]
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "Sylvain Josserand, Co-Founder & CTO",
+      "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+      "host": "parseur.com",
+      "parent_child_ratio": 2.7,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "8257fb8a-7dc9-57da-b126-38a3c8d96ec0",
+        "4311f5d2-71ef-56bc-a1ff-7eea9d3c4c1c",
+        "8474e968-afef-58c9-a338-4f0e981dd822"
+      ]
+    },
+    {
+      "stratum": "literal",
+      "need": "ContentsText",
+      "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+      "host": "www.zoneandco.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "1f803c0f-c2b9-500a-85dd-62c7d6bd3cdd",
+        "176e98ab-3b6c-5a50-bec9-8e87a5582e43",
+        "0cc070c6-16a7-53fe-8189-069e89d553fd"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    },
+    {
+      "stratum": "literal",
+      "need": "TransExecutive",
+      "runId": "6101fbba-069c-4e06-8f9c-7e4072faad56",
+      "host": "www.medius.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "003a229e-daed-55d7-a71e-5ef90cf2be49",
+        "db7549a8-0d86-56b2-b6b6-b9f8d2988bf1",
+        "12335cd5-f7f8-5181-a2ea-88f00d7a36b2"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "Which ATS parse resumes, and what they extract",
+      "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+      "host": "parseur.com",
+      "parent_child_ratio": 2.57,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "00452d0d-dd30-54a0-ac5b-ab324eab7017",
+        "256cf49c-d360-5573-bd38-0e0bbde05d1c",
+        "5742bd78-1923-5a12-9883-2e7d4735f536"
+      ]
+    },
+    {
+      "stratum": "literal",
+      "need": "MySQL",
+      "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+      "host": "parseur.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "00475f6d-ac4b-5d21-a5f9-ff8c5bc321a5",
+        "838090d1-0ce9-5f2d-98a0-adf810fab5f4",
+        "bcb227ca-6859-5c2c-91ec-51f21403795a"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    },
+    {
+      "stratum": "literal",
+      "need": "ProcurementIndustry",
+      "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+      "host": "www.zoneandco.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "004cac00-da15-5a68-84fb-cfe2feea0b42",
+        "f77d48e4-286c-5bef-98af-1d2322a8c87f",
+        "3a569266-29c0-58b1-8816-943cd44807aa"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    },
+    {
+      "stratum": "literal",
+      "need": "WhatsApp",
+      "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+      "host": "parseur.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "015701eb-5b9a-5568-af55-7b608620b54a",
+        "0b742e3e-0514-5755-a357-424a934ff9d0",
+        "6b3c79d4-c439-564d-84e8-c74599d4c1a9"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "Advanced Tip: Combine Parseur with AI CRM Tools",
+      "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+      "host": "parseur.com",
+      "parent_child_ratio": 4.14,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "be1fff3e-23ea-58e1-b0c1-d9592b3398e0",
+        "86f33840-6507-55dd-82ec-ad0517282591",
+        "1cb41375-272d-5ad8-a9cd-61f4a81a43f8"
+      ]
+    },
+    {
+      "stratum": "literal",
+      "need": "CloudSuite",
+      "runId": "6101fbba-069c-4e06-8f9c-7e4072faad56",
+      "host": "www.medius.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "7b79cf95-c91f-5ace-8ba0-9a5e72f99676",
+        "ab146caf-7032-5832-8e35-efa5efa7b738",
+        "19fd7e2a-8b7a-5f1d-bd4e-4dd225465128"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "Infor ERP and Medius Integration FAQ",
+      "runId": "6101fbba-069c-4e06-8f9c-7e4072faad56",
+      "host": "www.medius.com",
+      "parent_child_ratio": 2.83,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "0055f3fb-dcab-53bf-bd97-fe36a26d9f39",
+        "11d769f3-1f4e-54ee-bc1e-bbe603325af9",
+        "2b28ea9f-58e8-5dec-bc97-3be949c28e18"
+      ]
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "Business Spend Management FAQs",
+      "runId": "6101fbba-069c-4e06-8f9c-7e4072faad56",
+      "host": "www.medius.com",
+      "parent_child_ratio": 2.3,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "d30e42c7-737e-5ba1-a871-83790769c39e",
+        "45afca1e-5b27-5d96-8a6f-38712ffa3bc9",
+        "d77bdfcb-4fa8-58aa-80ad-ebe193a0891d"
+      ]
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "45 Articles",
+      "runId": "ac17c315-c7a8-475f-a2d1-fd1ad96150f1",
+      "host": "www.avalara.com",
+      "parent_child_ratio": 2.6,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "041496f7-703d-5829-b55e-9564a8f6af53",
+        "874451e8-4fd9-51e0-866f-fff7af694ee7",
+        "128e3791-74f3-5704-8f2b-7d333b0835b4"
+      ]
+    },
+    {
+      "stratum": "literal",
+      "need": "INV-12115",
+      "runId": "6101fbba-069c-4e06-8f9c-7e4072faad56",
+      "host": "www.medius.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "0096ef70-c7cd-553c-a8c4-b2b68d9727f5",
+        "bdaf16a2-84dc-5f18-ad5a-f6a02023a393",
+        "07841fdd-3859-5b88-9149-b801c4de04e4"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "Experience Supplier Conversations in action.",
+      "runId": "6101fbba-069c-4e06-8f9c-7e4072faad56",
+      "host": "www.medius.com",
+      "parent_child_ratio": 2.3,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "0096ef70-c7cd-553c-a8c4-b2b68d9727f5",
+        "175f2fc9-5c6b-5e70-a794-41fdbbe78999",
+        "f0515ba9-65e8-5c2d-9c1b-a7e3303cc692"
+      ]
+    },
+    {
+      "stratum": "literal",
+      "need": "ActiveCampaign",
+      "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+      "host": "parseur.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "009fda77-546c-5527-a42b-a15bbdef62f6",
+        "117161f9-8608-5779-befb-d04232131dba",
+        "747dc771-54b8-5f82-8cd6-9089dc0307fe"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "The Conn No One Saw Coming",
+      "runId": "6101fbba-069c-4e06-8f9c-7e4072faad56",
+      "host": "www.medius.com",
+      "parent_child_ratio": 2.63,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "334c86e7-839b-5d4f-bd44-4f8175d46755",
+        "60e8d473-049b-53d7-90eb-d40769ab7216",
+        "ffb4797c-d237-5e3d-84db-96799c8d1c08"
+      ]
+    },
+    {
+      "stratum": "literal",
+      "need": "CompanyName",
+      "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+      "host": "parseur.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "9d108ad6-9346-5bbb-bf8e-bcf7f334f3a6",
+        "00b20f8c-cec1-52fb-9927-0f28865a4f4f",
+        "84747d25-ecfa-5f5d-8655-d8ed2ab085fd"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "Common Oracle Fusion AP questions",
+      "runId": "6101fbba-069c-4e06-8f9c-7e4072faad56",
+      "host": "www.medius.com",
+      "parent_child_ratio": 3.43,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "b1185390-893b-5150-b452-397fb270b54e",
+        "352fb98f-7a87-5e66-9587-3b535fee2460",
+        "e0c20103-9f98-5745-941c-83cbab01d368"
+      ]
+    },
+    {
+      "stratum": "literal",
+      "need": "McKinsey",
+      "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+      "host": "parseur.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "01ecc12f-3002-5913-8ffa-c54152932d06",
+        "9f911073-5df1-5c29-995a-4edb15c21852",
+        "8f42d52d-cd6e-56bc-bdc2-45ec88e52065"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    },
+    {
+      "stratum": "literal",
+      "need": "SuiteApps",
+      "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+      "host": "www.zoneandco.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "03ae5b07-19db-5d7e-89ed-ac6fd79d049a",
+        "01368f1a-b81c-5878-9649-dcf9b163072e",
+        "8e80f01a-1a6f-549b-8e59-13cfbb497d67"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    },
+    {
+      "stratum": "literal",
+      "need": "ZoneCapture",
+      "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+      "host": "www.zoneandco.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "030d2077-da03-5b98-a739-cc905694a7af",
+        "0c215a54-9b66-5608-a4de-78312e9d8dea",
+        "21a80ca0-4901-5299-8a93-baca212d9304"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "Get a Personalized Demo Today",
+      "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+      "host": "www.zoneandco.com",
+      "parent_child_ratio": 2.71,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "01ef5a62-9c11-5ce0-9184-b446ae90fcf3",
+        "05731b3b-eac1-5c35-9a88-161f5a5a821c",
+        "28c05d59-eac0-5ff9-abfa-f644484e4072"
+      ]
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "Comparing Parseur vs Zapier Email Parser",
+      "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+      "host": "parseur.com",
+      "parent_child_ratio": 2.64,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "a152404b-a1be-5463-ab94-2d6be12fac1e",
+        "287eed30-a228-5f72-beeb-13c22d6a563f",
+        "04697c35-88c8-5c4f-8be0-6a448e2053e0"
+      ]
+    },
+    {
+      "stratum": "literal",
+      "need": "ZoneReconcile",
+      "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+      "host": "www.zoneandco.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "00d1f6f6-e599-54a5-9b78-6916f01c3b42",
+        "1ad27e1a-3305-59e3-87c0-9f7a1a07ef2f",
+        "1a6e1ae7-8f41-5781-90e0-69ff20560e9c"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "ZoneReconcile Product Tour",
+      "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+      "host": "www.zoneandco.com",
+      "parent_child_ratio": 2.39,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "5ea94b76-638a-5300-a03b-ba6fa1a39a13",
+        "00d1f6f6-e599-54a5-9b78-6916f01c3b42",
+        "465fcb70-2a7b-5a7f-9d54-ab4f974bf1d7"
+      ]
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "What is a PDF parser and how can it boost your Shopify automation?",
+      "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+      "host": "parseur.com",
+      "parent_child_ratio": 3.8,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "4333dfc7-7055-56fc-9374-4e33cd0f4ee9",
+        "3bde7140-8bb4-5943-91a6-de1e2356bd30",
+        "8ba7778e-02a1-592b-a27e-2b0a5a1ad90c"
+      ]
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "Which documents to automate first, and which to ignore",
+      "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+      "host": "parseur.com",
+      "parent_child_ratio": 2.04,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "00e08f06-de2e-5b03-9597-0cbd480d68fc",
+        "5d60c902-0fd0-5036-ba74-a2b5e171cd77",
+        "676e2eac-73d4-5c59-8bdc-76f6175b331e"
+      ]
+    },
+    {
+      "stratum": "literal",
+      "need": "OneStream",
+      "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+      "host": "www.zoneandco.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "01008b5a-f17f-5f56-a971-c89e60ab4e8f",
+        "325af7d4-3684-5b17-ba18-16c0554c5dc2",
+        "5468aa85-090f-5791-a6bd-b0de2766fcf9"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    },
+    {
+      "stratum": "literal",
+      "need": "5.14.2026",
+      "runId": "6101fbba-069c-4e06-8f9c-7e4072faad56",
+      "host": "www.medius.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "c403aba0-92f4-522d-9424-41fe38350397",
+        "0101a2f9-1176-5155-8339-695aacb50649",
+        "b8439241-f65e-5709-97b9-b8484eb86793"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    },
+    {
+      "stratum": "literal",
+      "need": "ZoneProcure",
+      "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+      "host": "www.zoneandco.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "09254366-c801-5cba-a0ce-fe5032d0ff59",
+        "319e3eba-d28c-587d-ba11-c5a321738ec5",
+        "b8a592c3-0374-5106-982d-51f2f9c3fca2"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "Automate the Right to Work Document Verification (UK)",
+      "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+      "host": "parseur.com",
+      "parent_child_ratio": 2.52,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "4d0ad2fc-61b5-57b8-8b35-bfa09071cde8",
+        "11925c03-5ae6-5766-b8e7-1d313e852c0f",
+        "51321891-f6d9-59d6-be01-72139ed7f1d1"
+      ]
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "Step 2: Standardizing supplier onboarding",
+      "runId": "6101fbba-069c-4e06-8f9c-7e4072faad56",
+      "host": "www.medius.com",
+      "parent_child_ratio": 2.21,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "354ed498-e5c6-5365-b725-4dfea37bd2ab",
+        "8f0b4620-392e-5791-a461-4dcfbc679171",
+        "69683206-32ee-5819-90bc-8d1757eb5f16"
+      ]
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "You may also like",
+      "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+      "host": "parseur.com",
+      "parent_child_ratio": 2.51,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "0423e3dc-a089-5eda-8345-1384660848be",
+        "0b8ac970-d2fe-52d5-85f4-038a5823c5ae",
+        "019adefa-9278-50a7-adfe-1c8217c2b859"
+      ]
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "Avalara: Miscellaneous",
+      "runId": "ac17c315-c7a8-475f-a2d1-fd1ad96150f1",
+      "host": "www.avalara.com",
+      "parent_child_ratio": 2.36,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "0124eac2-4efd-5134-a499-124545a1335a",
+        "b555ead1-1166-550f-bb9a-73d1c96d63e2",
+        "b3179506-dcc1-5900-9ed2-9f8b4ee4ce9f"
+      ]
+    },
+    {
+      "stratum": "literal",
+      "need": "RentalAdvisor",
+      "runId": "ac17c315-c7a8-475f-a2d1-fd1ad96150f1",
+      "host": "www.avalara.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "01341f8b-e18b-52b3-832b-bb2d928926ba",
+        "700f3b7c-323d-5a99-8a8f-6c0552192000",
+        "34c23745-756e-58d2-b91b-351b6ae20e14"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "Family Affair",
+      "runId": "6101fbba-069c-4e06-8f9c-7e4072faad56",
+      "host": "www.medius.com",
+      "parent_child_ratio": 2.96,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "42154d81-ed5e-58a3-9ecc-2f7f76966bd3",
+        "dd610cac-4d6f-57bc-aa2b-18cd7f298755",
+        "60e8d473-049b-53d7-90eb-d40769ab7216"
+      ]
+    },
+    {
+      "stratum": "literal",
+      "need": "HubSpotMetaNetSuiteFinance",
+      "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+      "host": "www.zoneandco.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "01368f1a-b81c-5878-9649-dcf9b163072e",
+        "385db581-050e-5f3d-ac4e-b385dce49cc5",
+        "dddcec30-9639-53c6-9252-6a074c190a30"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "Browse all integrations",
+      "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+      "host": "www.zoneandco.com",
+      "parent_child_ratio": 3.1,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "06514419-4483-51c9-8048-decf80624026",
+        "6207bc98-1367-5dab-a83a-7585c1e9fbf8",
+        "8f742871-b415-5dc6-bf02-3a1a0ff46033"
+      ]
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "Related use cases and blog articles",
+      "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+      "host": "parseur.com",
+      "parent_child_ratio": 2.08,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "02149603-fdcd-59ef-ab18-34eba3d45789",
+        "03aff4e7-0b7b-57f0-b11d-8adda236c1b3",
+        "0db73e40-5f67-5944-8ceb-db8bad3f0b42"
+      ]
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "Zone Bridges the Global Cash Gap: Direct UK Bank Connectivity Now Live in ZoneReconcile",
+      "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+      "host": "www.zoneandco.com",
+      "parent_child_ratio": 2.42,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "013a86b9-5cdc-5324-a769-343cf8bc0d72",
+        "c1d4df19-42c6-5f94-bb96-9c3d9010602b",
+        "40d0786c-ce3c-5735-8b8f-cf4672cb9d21"
+      ]
+    },
+    {
+      "stratum": "literal",
+      "need": "BEST-IN-CLASS",
+      "runId": "6101fbba-069c-4e06-8f9c-7e4072faad56",
+      "host": "www.medius.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "c6e8b706-b657-51d9-a03e-808fb36acef8",
+        "014ee90d-e40e-5b09-ae24-ef55bb6dc4f6",
+        "c907164d-6a5f-5fda-b16f-fbd0ca8ca440"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    },
+    {
+      "stratum": "literal",
+      "need": "SuiteCloud",
+      "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+      "host": "www.zoneandco.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "4890323b-affb-508c-88c8-11d52f47a4bb",
+        "015257a9-768b-5c73-8527-49c0a4b3fddb",
+        "54da6ae0-c3bb-5d7f-b9ab-d41be9e2c604"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "Zuora vs. Chargebee vs. Zone & Co: Comparing billing approaches for NetSuite teams",
+      "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+      "host": "www.zoneandco.com",
+      "parent_child_ratio": 2.43,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "6c83a839-0998-516c-97a2-d95847bd4d83",
+        "f85781db-6345-5019-b8e9-fe201b5b23af",
+        "acc874cf-0ff6-50af-a7be-15e38f38c4f0"
+      ]
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "How do I handle monthly CIS returns to HMRC?",
+      "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+      "host": "parseur.com",
+      "parent_child_ratio": 3.28,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "2c303df3-e17e-5416-8fee-2acb3984ce4d",
+        "7df4a743-458a-5660-aa89-cfe6b69eb230",
+        "64ef72ac-db05-5ac2-8467-6593776ebab1"
+      ]
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "FAQs",
+      "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+      "host": "www.zoneandco.com",
+      "parent_child_ratio": 2.48,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "4a6d6f8a-4944-57c1-9f8f-277253849f5a",
+        "c487f4a7-6b06-501d-b7b9-2f2baa0587c5",
+        "0b3fe73f-7e4e-5bab-b2e5-3d6ae7dc3c94"
+      ]
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "Comparing Parseur vs Parsio",
+      "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+      "host": "parseur.com",
+      "parent_child_ratio": 2.63,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "61954b59-033d-5c1e-994f-486fe8a06ad6",
+        "10f9edf3-28ec-5d19-85c2-c391c061c4a5",
+        "6c8f3fdd-3658-50d8-b0cc-a3de803c7a75"
+      ]
+    },
+    {
+      "stratum": "literal",
+      "need": "SuiteAnalytics",
+      "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+      "host": "www.zoneandco.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "0524c184-709a-5382-9a6f-41f371a596bd",
+        "37cb4724-c3d3-5c1f-bda0-db6d7c3b4498",
+        "8d2e5cee-5f42-56e0-8b8e-4c09aac73dbd"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    },
+    {
+      "stratum": "literal",
+      "need": "RubinBrown",
+      "runId": "ac17c315-c7a8-475f-a2d1-fd1ad96150f1",
+      "host": "www.avalara.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "cde1320d-e599-527d-bade-4819c19d7e08",
+        "018b2247-5505-54bb-9fb9-f81cbcb75436",
+        "a0c18816-2108-546a-ac4f-51bdc80eda90"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "Comparison articles",
+      "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+      "host": "parseur.com",
+      "parent_child_ratio": 2.48,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "37baa510-c248-5acf-80c5-3f9e7636d60e",
+        "18bcd7ad-5b31-524c-a7f9-6cf6d83b929c",
+        "0798c5b1-5079-5b21-8922-9064259be73c"
+      ]
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "Comparison articles",
+      "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+      "host": "parseur.com",
+      "parent_child_ratio": 2.38,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "37baa510-c248-5acf-80c5-3f9e7636d60e",
+        "18bcd7ad-5b31-524c-a7f9-6cf6d83b929c",
+        "0798c5b1-5079-5b21-8922-9064259be73c"
+      ]
+    },
+    {
+      "stratum": "literal",
+      "need": "FourKites",
+      "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+      "host": "www.zoneandco.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "ad64af0e-194b-574d-a000-e6534c19fc53",
+        "019ef8f3-864b-50e5-b018-b11fec280c1b",
+        "85698b5c-de38-58f9-94d0-0bbd0d66bfa0"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "Reports",
+      "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+      "host": "www.zoneandco.com",
+      "parent_child_ratio": 2.5,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "333b2521-1a59-5abf-97a2-c3a0a59a4fee",
+        "7f2fcf40-1238-5d1e-ba17-0f6a76a0494f",
+        "eb4832f8-3710-5f8b-8443-e1c92e27b509"
+      ]
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "Comparing Parseur vs Mailgun Email API",
+      "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+      "host": "parseur.com",
+      "parent_child_ratio": 2.57,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "6cc9f80b-d58a-594a-b6b6-42ac7e963a5d",
+        "75446f0e-8498-5cff-8e78-c18ad8ffd78d",
+        "9414a382-748a-5848-a640-be99c0c50053"
+      ]
+    },
+    {
+      "stratum": "literal",
+      "need": "BuildYourBNB",
+      "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+      "host": "parseur.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "6b12495a-c3cc-5be7-81d3-905059ab795e",
+        "fc370d2b-fd75-537c-8ee7-efbd30c78fd4",
+        "11a9621a-ab69-58a9-b529-3f69d915bd0f"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    },
+    {
+      "stratum": "literal",
+      "need": "SuiteWorld",
+      "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+      "host": "www.zoneandco.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "1ad8b3e4-4397-5f30-bf02-cecea6599cec",
+        "2b1ecdcc-c880-5baa-a37e-f5eb62c020b3",
+        "bb7f0f91-cf2a-50a5-8e21-0ca9c0a0828f"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "Zone & Co Announces Platinum Sponsorship of SuiteWorld 2025",
+      "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+      "host": "www.zoneandco.com",
+      "parent_child_ratio": 2.64,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "2b1ecdcc-c880-5baa-a37e-f5eb62c020b3",
+        "e49591aa-2700-59fa-9527-c3d1c9570ec7",
+        "7385a8c4-fd8b-5537-bbc4-96998e66f26c"
+      ]
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "Data Processing Agreement",
+      "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+      "host": "parseur.com",
+      "parent_child_ratio": 2.69,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "13cd826e-6f4d-5a44-835c-8e63903d0faa",
+        "4eb221ef-8458-521f-9727-0271a2f50311",
+        "57e983b3-1ee9-53be-b3eb-23cfd9e63346"
+      ]
+    },
+    {
+      "stratum": "literal",
+      "need": "SuiteBilling",
+      "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+      "host": "www.zoneandco.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "19b15ad8-aedb-54ad-95ad-e22ea7e11064",
+        "5821282d-29b4-5cbe-86a1-7d893bde40a8",
+        "3fe19652-b982-5cef-ac53-6d9310b6a923"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "Why line items break most extraction tools",
+      "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+      "host": "parseur.com",
+      "parent_child_ratio": 3.89,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "3d3767ee-754d-57e7-a36d-5f765a6caba9",
+        "5c41c3a7-4059-5d46-82f1-3d6950863e1e",
+        "8acd0339-bbc5-59f7-96f9-c2c45e17dfb2"
+      ]
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "Zoe by Zone runs agentic finance across NetSuite",
+      "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+      "host": "www.zoneandco.com",
+      "parent_child_ratio": 2.75,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "6186592c-4c97-5e45-bf67-9dbf44fa3363",
+        "193cb8b0-85b2-51a9-a354-1eb638407c0e",
+        "82204dcd-7084-5e21-88df-56ad6a72e581"
+      ]
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "Contract Management FAQs",
+      "runId": "6101fbba-069c-4e06-8f9c-7e4072faad56",
+      "host": "www.medius.com",
+      "parent_child_ratio": 2.52,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "0212584d-d167-5409-b2b5-3827e70dd0f6",
+        "ff7faaba-69c8-5287-8ecf-4ecbf649c1d5",
+        "5daae018-4194-583d-921a-4d56c634ea80"
+      ]
+    },
+    {
+      "stratum": "literal",
+      "need": "AES-256",
+      "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+      "host": "parseur.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "9f0ce14d-45e2-5ccf-b10e-8685ea95f18a",
+        "b07c115c-9c22-5d99-ba6f-7f7737a23c7c",
+        "a3ad5ef2-b299-5a47-bbf0-8fab5cfe8819"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "With Avalara 1099 & W-9, e-file, e-deliver, and e-correct the most common IRS form types",
+      "runId": "ac17c315-c7a8-475f-a2d1-fd1ad96150f1",
+      "host": "www.avalara.com",
+      "parent_child_ratio": 2.14,
+      "status": 200,
+      "returned": 1,
+      "top_ids": [
+        "4bcd74bc-66f0-54c7-bf7c-05698516a36c"
+      ]
+    },
+    {
+      "stratum": "wide_parent",
+      "need": "What is an invoice approval workflow in NetSuite?",
+      "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+      "host": "www.zoneandco.com",
+      "parent_child_ratio": 3.1,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "a8f37eae-2e05-55e5-abdf-ecaf04648d32",
+        "b60b5529-5831-5769-99b9-d9cb73a47c39",
+        "209f5a28-84b0-5895-aa71-5a792f14a258"
+      ]
+    },
+    {
+      "stratum": "literal",
+      "need": "ChatGPT",
+      "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+      "host": "parseur.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "13e3064a-5780-5347-8119-26ec2eeaabf9",
+        "192c0454-3133-5964-83d0-b7a141d40aa8",
+        "585b518f-1807-52e2-a69a-23f9daf1c9d6"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    },
+    {
+      "stratum": "literal",
+      "need": "SkyDeck",
+      "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+      "host": "www.zoneandco.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "02581c2f-9ec7-5eb2-b6da-c4a88a9d7783",
+        "68db819c-2aea-53ec-85b5-1c95d228563a",
+        "36b16afb-0656-58c6-9ab1-c580320f232d"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    },
+    {
+      "stratum": "literal",
+      "need": "QuickBooks",
+      "runId": "3adbc2af-2cad-47cf-ad6e-45515b244419",
+      "host": "parseur.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "111a0c5d-536c-56b7-adce-278a7dd2faac",
+        "13b0fd4f-e75e-55ba-968f-3bab5379d546",
+        "1cb6f8d8-f6cd-504d-8ccd-2c8d4116aa3e"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    },
+    {
+      "stratum": "literal",
+      "need": "ZoneExtract",
+      "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+      "host": "www.zoneandco.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "0767259e-485d-5092-bc57-e14f1f37c3eb",
+        "28c5b84c-1b61-560f-9b97-fdb4abdfd82f",
+        "6019b9c6-11c7-5935-8204-ef6638e06786"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    },
+    {
+      "stratum": "literal",
+      "need": "6.25.2026",
+      "runId": "6101fbba-069c-4e06-8f9c-7e4072faad56",
+      "host": "www.medius.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "47f5b139-424f-503f-bf71-d70268866c5a",
+        "48b2ce52-83f3-5386-87b6-bafd1f9225b5",
+        "8df67418-7cea-55b0-8e78-a8490e86fef9"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    },
+    {
+      "stratum": "literal",
+      "need": "TeamDecember",
+      "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+      "host": "www.zoneandco.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "52f06f89-61b9-540d-83f8-96aef5f01e15",
+        "02ccba7d-563c-5932-b115-8cabb805eef7",
+        "29e8dfcc-e048-5deb-b89f-50c2c385db14"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    },
+    {
+      "stratum": "literal",
+      "need": "NetSuiteJune",
+      "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+      "host": "www.zoneandco.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "68a622ed-8076-54b6-a573-255f4b8cd6e0",
+        "1243128c-16e0-5970-a5fe-ebab11370700",
+        "49e4bdf7-1088-5b08-98b6-03fe8c19c488"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    },
+    {
+      "stratum": "literal",
+      "need": "RubyGems",
+      "runId": "ac17c315-c7a8-475f-a2d1-fd1ad96150f1",
+      "host": "www.avalara.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "34948533-47e3-54ca-9a23-092dde57030d",
+        "02d7fcb9-9765-5083-b0a3-184e449a40ec",
+        "151dbc05-f8d5-52aa-a67a-8996af438d09"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    },
+    {
+      "stratum": "literal",
+      "need": "AutomationRead",
+      "runId": "821dc2dd-a043-40b0-a277-4d2557a8bd50",
+      "host": "www.zoneandco.com",
+      "parent_child_ratio": null,
+      "status": 200,
+      "returned": 8,
+      "top_ids": [
+        "d3ca6d15-136e-5439-9ac3-de290eb7bb7a",
+        "1598e0c4-419f-520b-953c-36ce06318991",
+        "f9d84aaa-e347-501d-89e9-54dc1e79279e"
+      ],
+      "literal_rank": 0,
+      "literal_found": true
+    }
+  ]
+}
