@@ -83,7 +83,11 @@ class LlamaIndexEngine:
         LlamaSettings.embed_model = self._embed_model
         # No throttle and no call lock. Both existed to pace a metered remote embedding API; there
         # is no meter to pace against now, and inference already runs in a worker thread.
-        client_kwargs: dict[str, Any] = {"url": settings.qdrant_url}
+        client_kwargs: dict[str, Any] = {
+            "url": settings.qdrant_url,
+            # Without this the client deadline is 5s, which a CPU-starved event loop misses.
+            "timeout": settings.qdrant_timeout_seconds,
+        }
         if settings.qdrant_api_key:
             client_kwargs["api_key"] = settings.qdrant_api_key
         self._client = QdrantClient(**client_kwargs)

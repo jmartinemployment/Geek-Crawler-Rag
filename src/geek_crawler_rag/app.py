@@ -139,6 +139,7 @@ async def lifespan(_app: FastAPI):
         collection=settings.qdrant_collection,
         api_key=settings.qdrant_api_key,
         vector_size=settings.embedding_dimensions,
+        timeout_seconds=settings.qdrant_timeout_seconds,
     )
     state.llama = LlamaIndexEngine(settings)
     # Cross-run embedding reuse. Wired after Mongo because the cache lives

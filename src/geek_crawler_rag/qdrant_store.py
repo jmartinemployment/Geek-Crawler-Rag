@@ -82,8 +82,13 @@ class QdrantStore:
         collection: str = "geek_crawler_chunks",
         api_key: str | None = None,
         vector_size: int = 1536,
+        # Seconds before a Qdrant call is abandoned. Defaulted rather than required so the many
+        # construction sites in tests stay unchanged; app.py passes the configured value.
+        timeout_seconds: int = 60,
     ) -> None:
-        self._client = AsyncQdrantClient(url=url, api_key=api_key or None)
+        self._client = AsyncQdrantClient(
+            url=url, api_key=api_key or None, timeout=timeout_seconds
+        )
         self._collection = collection
         self._vector_size = vector_size
 

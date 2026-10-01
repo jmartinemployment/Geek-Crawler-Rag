@@ -13,6 +13,19 @@ class Settings(BaseSettings):
 
     qdrant_url: str = "http://localhost:6333"
     qdrant_api_key: str | None = None
+    # Seconds the Qdrant HTTP client waits for a response. qdrant_client defaults to 5, and we
+    # never set it until 2026-10-01, when four of the batch's largest runs died on it in a row:
+    # stripe at 7,461 chunks, liveplan at 22,369, ramp and datarails before writing anything.
+    #
+    # Qdrant was not slow. Its own access log shows those same PUTs served in 10-70ms, memory at
+    # 28% and status green. The API container was drawing 299% CPU on ONNX inference, which starves
+    # the asyncio event loop that has to read the response -- so the deadline expired on our side,
+    # not theirs. The bigger the run, the more draws against that 5-second odds, which is exactly
+    # why only large runs failed and ramp's 110 sequential resume lookups failed before any work.
+    #
+    # 60s is far above any observed Qdrant latency here and still fails if Qdrant genuinely dies.
+    # Raising it does not mask a slow database; it stops a busy client from calling a fast one dead.
+    qdrant_timeout_seconds: int = 60
     qdrant_collection: str = "geek_crawler_chunks"
     qdrant_ad_templates_collection: str = "geek_ad_templates"
     # Zero. This fired after every flush, and at batch 64 on a large run that is

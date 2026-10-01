@@ -51,7 +51,10 @@ class AdTemplateIndexService:
         self._settings = settings
         self._llama = llama
         self._collection = settings.qdrant_ad_templates_collection
-        client_kwargs: dict[str, Any] = {"url": settings.qdrant_url}
+        client_kwargs: dict[str, Any] = {
+            "url": settings.qdrant_url,
+            "timeout": settings.qdrant_timeout_seconds,
+        }
         if settings.qdrant_api_key:
             client_kwargs["api_key"] = settings.qdrant_api_key
         self._client = AsyncQdrantClient(**client_kwargs)
