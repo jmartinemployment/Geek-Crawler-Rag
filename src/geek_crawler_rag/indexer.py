@@ -561,7 +561,11 @@ class IndexService:
         status.pages_skipped_unusable += 1
         if reason == "non_english":
             status.pages_skipped_lang += 1
-        elif reason not in ("locale", "failure", "http_error"):
+        # "sitemap" sits with the policy exclusions, not with the content ones. The page that
+        # motivated it carries 3,092 blocks; counting it as skipped-EMPTY would report a fully
+        # extracted page as having no body, which is the misreport this counter exists to avoid.
+        # No new wire field: pagesSkippedEmpty/Lang/Unusable are pinned by the webhook contract.
+        elif reason not in ("locale", "failure", "http_error", "sitemap"):
             status.pages_skipped_empty += 1
 
     async def _index_run(self, run_id: str) -> None:

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 import logging
+import re
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
@@ -105,6 +106,34 @@ def should_exclude_locale_path(url: str) -> bool:
         return False
 
 
+#: A sitemap is a link index, not a page. It carries no prose a citation could come from, and it
+#: is the one page shape that scales with the size of the whole site rather than with its own
+#: content: netsuite.com/portal/sitemap.shtml is 143,292 characters across 3,092 blocks, three
+#: times the next largest page in that crawl and the only one over 60k. Chunked and flushed, its
+#: upsert body stalled the socket write and killed the run five times -- `httpx.WriteTimeout` inside
+#: `_send_request_body`, with Qdrant idle at 0.17% CPU and answering every other request in
+#: milliseconds.
+#:
+#: Matched on the last path segment, so `/portal/sitemap.shtml` and `/sitemap_index.xml` are caught
+#: while an article at `/blog/how-to-build-a-sitemap` is not -- that one is about sitemaps and is
+#: perfectly citable.
+_SITEMAP_SEGMENT = re.compile(r"^sitemap(?:[-_.][\w-]+)*$", re.IGNORECASE)
+
+
+def is_sitemap_url(url: str) -> bool:
+    """True when the URL's own last segment names it a sitemap."""
+    try:
+        pathname = urlparse(url).path or ""
+    except Exception:
+        return False
+    segments = [seg for seg in pathname.split("/") if seg]
+    if not segments:
+        return False
+    last = segments[-1]
+    stem = last.rsplit(".", 1)[0] if "." in last else last
+    return bool(_SITEMAP_SEGMENT.match(last) or _SITEMAP_SEGMENT.match(stem))
+
+
 def classify_unusable_page(
     *,
     url: str = "",
@@ -135,6 +164,10 @@ def classify_unusable_page(
     # field, and absence of a status is not evidence of an error.
     if isinstance(status_code, int) and status_code >= 400:
         return "http_error"
+
+    # Before the content checks: a sitemap has plenty of blocks and would otherwise pass every one.
+    if is_sitemap_url(page_url) or is_sitemap_url(url):
+        return "sitemap"
 
     if robots_allowed is False:
         return "failure"
