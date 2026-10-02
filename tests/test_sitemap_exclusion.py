@@ -19,6 +19,29 @@ from __future__ import annotations
 from geek_crawler_rag.unusable import classify_unusable_page, is_sitemap_url
 
 
+#: Every sitemap page in the live corpus on 2026-10-02, found by scanning all 47 crawls. Listed
+#: verbatim because the first pattern matched only 9 of them: `product-sitemap` and `html-sitemap`
+#: put the qualifier BEFORE the word, and a rule written from one example missed both.
+REAL_SITEMAPS = (
+    "https://www.avalara.com/us/en/sitemap.html",
+    "https://www.avidxchange.com/sitemap/",
+    "https://www.sage.com/en-us/sitemap/",
+    "https://www.highradius.com/product-sitemap/",
+    "https://www.highradius.com/sitemap/",
+    "https://www.netsuite.com/portal/sitemap.shtml",
+    "https://stripe.com/sitemap",
+    "https://www.accountingseed.com/html-sitemap/",
+    "https://www.netsuite.com/portal/fr/sitemap.shtml",
+    "https://www.netsuite.com/portal/es/sitemap.shtml",
+    "https://www.liveplan.com/sitemap",
+)
+
+
+def test_every_sitemap_in_the_live_corpus_is_matched():
+    missed = [u for u in REAL_SITEMAPS if not is_sitemap_url(u)]
+    assert not missed, f"real sitemap pages not matched: {missed}"
+
+
 def test_the_sitemap_shapes_that_appear_in_real_crawls():
     for url in (
         "https://www.netsuite.com/portal/sitemap.shtml",

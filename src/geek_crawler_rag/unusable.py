@@ -117,7 +117,14 @@ def should_exclude_locale_path(url: str) -> bool:
 #: Matched on the last path segment, so `/portal/sitemap.shtml` and `/sitemap_index.xml` are caught
 #: while an article at `/blog/how-to-build-a-sitemap` is not -- that one is about sitemaps and is
 #: perfectly citable.
-_SITEMAP_SEGMENT = re.compile(r"^sitemap(?:[-_.][\w-]+)*$", re.IGNORECASE)
+#: Qualifiers are enumerated, never "any word before sitemap". The corpus holds
+#: `product-sitemap` and `html-sitemap`, which must go -- but `how-to-build-a-sitemap` is an
+#: article and must stay, and an open prefix cannot tell them apart.
+_SITEMAP_SEGMENT = re.compile(
+    r"^(?:html|xml|page|post|product|category|image|video|news)[-_]sitemap(?:[-_.][\w-]+)*$"
+    r"|^sitemap(?:[-_.][\w-]+)*$",
+    re.IGNORECASE,
+)
 
 
 def is_sitemap_url(url: str) -> bool:
