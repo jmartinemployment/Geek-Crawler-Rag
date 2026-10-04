@@ -1,8 +1,7 @@
 """An unusable page must 404 on the citation read, not just be skipped at index time.
 
-`/v1/pages/{pageId}?runId=` is the read side of citation verification: GeekAPI's
-`GccV2PartnerExtractionVerify.VerifyAgainstLibraryAsync` fetches text here, matches a
-model's quote against it, and stamps the citation verified.
+`/v1/pages/{pageId}?runId=` serves page text for citation reads, and `POST /v1/verify` answers
+whether a quote is on a page; both refuse through `app._citable_page_text`.
 
 Until 2026-09-29 the only checks were "does the page exist, does the run match, is the text
 non-empty". A 4xx error page passes all three — its body ("Sorry, we could not find that

@@ -31,6 +31,9 @@ class CrawlRun:
     id: str
     crawl_type: str
     status: str
+    # GeekAPI's `ContentReadyAt`: stamped in the same PATCH that marks a run complete, once every
+    # persisted page carries blocks. Absent means the run is not indexable yet.
+    content_ready_at: Any = None
 
 
 @dataclass(frozen=True)
@@ -146,6 +149,7 @@ class MongoCorpus:
             id=str(doc.get("Id", run_id)),
             crawl_type=str(doc.get("CrawlType") or ""),
             status=str(doc.get("Status") or ""),
+            content_ready_at=doc.get("ContentReadyAt"),
         )
 
     async def count_pages(self, run_id: str) -> int:

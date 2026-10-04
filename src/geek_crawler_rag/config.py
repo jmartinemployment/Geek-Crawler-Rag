@@ -128,7 +128,10 @@ class Settings(BaseSettings):
     embed_batch_size: int = 64
 
     # Durable indexing scheduler, oldest-content-ready first (see mongo.find_oldest_content_ready_run).
-    index_scheduler_enabled: bool = True
+    # Off unless the environment turns it on. Indexing is triggered by POST /v1/index, which GeekAPI
+    # calls when a run completes. Production sets INDEX_SCHEDULER_ENABLED explicitly in the box's
+    # compose file, so this default decides nothing there; it decides what a fresh deploy does.
+    index_scheduler_enabled: bool = False
     index_scheduler_interval_seconds: int = 300
     index_scheduler_poll_seconds: int = 60
     index_job_lease_seconds: int = 900

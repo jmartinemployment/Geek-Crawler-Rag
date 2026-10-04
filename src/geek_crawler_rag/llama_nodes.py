@@ -10,6 +10,7 @@ from llama_index.core.schema import TextNode
 from geek_crawler_rag.chunk import parent_child_units
 from geek_crawler_rag.chunk_tokenizer import ChunkTokenizer
 from geek_crawler_rag.config import Settings
+from geek_crawler_rag.embedding_sanitize import sanitize_embedding_text
 from geek_crawler_rag.extract import host_from_origin_or_url, page_text_and_title
 from geek_crawler_rag.language import is_english
 from geek_crawler_rag.metadata import (
@@ -25,6 +26,28 @@ from geek_crawler_rag.metadata import (
 )
 from geek_crawler_rag.mongo import CrawlPage
 from geek_crawler_rag.qdrant_store import point_id
+
+
+def page_source_digest(page: CrawlPage) -> str:
+    """The one definition of a page's `sourceDigest`.
+
+    Stamped on every point at index time and answered by `POST /v1/verify`, so a caller holding a
+    passage can tell whether the page it was cut from is the page a quote was verified against.
+    Two definitions of this value existed before this function did.
+    """
+    return hashlib.sha256(
+        (page.content_html or page.html or "").encode("utf-8")
+    ).hexdigest()
+
+
+def text_digest(embed_text: str) -> str:
+    """SHA-256 of the exact string the embedder receives, stored on the point as `textDigest`.
+
+    Sanitised first because `embed_and_upsert` sanitises before embedding: two raw strings that
+    differ only in a zero-width character are one embedded text and one vector, and this is the
+    key the indexer collapses repeats on (`IndexService._admit_page_nodes`).
+    """
+    return hashlib.sha256(sanitize_embedding_text(embed_text).encode("utf-8")).hexdigest()
 
 
 def page_to_nodes(
@@ -70,9 +93,7 @@ def page_to_nodes(
     # used to sit inside _node(), which the loop below calls for every chunk -- so
     # a page producing fifty chunks hashed the entire page fifty times, on the
     # event loop, for a value that is per page by definition.
-    source_digest = hashlib.sha256(
-        (page.content_html or page.html or "").encode("utf-8")
-    ).hexdigest()
+    source_digest = page_source_digest(page)
 
     nodes: list[TextNode] = []
     seen_parents: set[int] = set()
@@ -232,6 +253,7 @@ def _node(
         "lastCrawled": page.crawled_at,
         "anchors": anchors,
         "sourceDigest": source_digest,
+        "textDigest": text_digest(embed_text),
         "sourceRights": resolve_source_rights(
             host=host,
             consented_hosts=tuple(

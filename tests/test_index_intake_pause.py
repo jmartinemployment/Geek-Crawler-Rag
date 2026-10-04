@@ -100,6 +100,7 @@ async def test_the_scheduled_path_is_refused_and_creates_no_row():
 async def test_the_scheduled_path_still_works_when_intake_is_open():
     store, _ = _store_over(None)
     svc = _service(store)
+    svc.readiness_refusal = AsyncMock(return_value=None)  # type: ignore[method-assign]
     svc._enqueue = AsyncMock(return_value=(MagicMock(), True))  # type: ignore[method-assign]
 
     assert await svc.enqueue_scheduled("some-run") is True

@@ -9,8 +9,13 @@ Two deliberate decisions, not gaps:
 
 - `Indexer.start()` does **not** call `claim_recoverable` — *"that path was
   re-queuing cancelled deploy jobs. Operator must re-enqueue deliberately."*
-- The scheduler is deprecated; `INDEX_SCHEDULER_ENABLED` stays `false`, so
-  `find_oldest_content_ready_run` never runs.
+- The scheduler is not a designed recovery path, though production runs it
+  (`INDEX_SCHEDULER_ENABLED: "true"` in the box's compose, checked 2026-10-04). It
+  skips any run whose row is `complete`, `failed` or `skipped`, or `pending`/`running`
+  under a live lease (`status_store.excluded_run_ids`). So a job a graceful stop
+  marked `failed` is never re-driven. A row a SIGKILL stranded stops being excluded
+  once its lease lapses, and the scheduler may then pick that run again: incidental,
+  bounded by `INDEX_SCHEDULER_MAX_ATTEMPTS`, and not something to wait on.
 
 The worker queue is an in-process `asyncio.Queue` at concurrency 1. **A restart
 empties it.** The Mongo rows in `rag_index_jobs` survive, so they are the only

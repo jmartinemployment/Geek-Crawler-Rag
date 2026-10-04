@@ -816,6 +816,45 @@ class QdrantStore:
             logger.exception("Text search scroll failed for runId=%s", run_id)
             raise
 
+    async def run_text_owners(self, run_id: str) -> tuple[dict[str, str], int]:
+        """`textDigest -> pageId` for every point this run already wrote, and how many lacked one.
+
+        This is how a resumed index run rebuilds its repeat set: the set lives in memory during a
+        run, and a retry that skips the delete starts with an empty one, so without this it would
+        write a second copy of every repeat whose first page was committed before the failure.
+
+        Filtered on runId alone, the same key every retrieval filters on. A point with no
+        `textDigest` was written before the field existed; it is counted and returned so the
+        caller can say so, not silently treated as unique.
+
+        Raises on any Qdrant failure. An empty answer would mean "nothing was written yet", and
+        the indexer would act on that by writing the copies this set exists to prevent.
+        """
+        owners: dict[str, str] = {}
+        missing = 0
+        offset: Any = None
+        run_filter = qm.Filter(
+            must=[qm.FieldCondition(key="runId", match=qm.MatchValue(value=run_id))]
+        )
+        while True:
+            points, offset = await self._client.scroll(
+                collection_name=self._collection,
+                scroll_filter=run_filter,
+                limit=1000,
+                offset=offset,
+                with_payload=["textDigest", "pageId"],
+                with_vectors=False,
+            )
+            for point in points:
+                payload = point.payload or {}
+                digest = payload.get("textDigest")
+                if not digest:
+                    missing += 1
+                    continue
+                owners.setdefault(str(digest), str(payload.get("pageId") or ""))
+            if offset is None:
+                return owners, missing
+
     async def find_host_index_payload(self, host: str) -> dict[str, Any] | None:
         """
         The raw payload of an indexed chunk for a host, if any exists, else None.

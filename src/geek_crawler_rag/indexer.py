@@ -233,8 +233,33 @@ class IndexService:
                 reason,
             )
             return False
+        not_ready = await self.readiness_refusal(run_id)
+        if not_ready is not None:
+            logger.warning(
+                "Refused scheduled index enqueue for runId=%s: %s", run_id, not_ready
+            )
+            return False
         _, accepted = await self._enqueue(run_id, trigger="scheduled", force=False)
         return accepted
+
+    async def readiness_refusal(self, run_id: str) -> str | None:
+        """Why this run may not be indexed yet, or None when it may.
+
+        Readiness is `ContentReadyAt`, which GeekAPI stamps in the same PATCH that marks a run
+        complete and refuses to omit once pages are stored. Until 2026-10-04 only the scheduler
+        honoured it -- its candidate query filters on the field -- while `POST /v1/index` indexed
+        whatever it was handed and merely logged a non-terminal status. Checked before the claim,
+        like the intake pause, so a refusal leaves no job row that never reaches a terminal state.
+        """
+        run = await self._mongo.get_run(run_id.strip())
+        if run is None:
+            return f"Run not found: {run_id}"
+        if run.content_ready_at is None or run.content_ready_at == "":
+            return (
+                f"runId={run_id} has no ContentReadyAt (status={run.status or 'unknown'}); "
+                "its pages are not content-ready, so there is nothing indexable yet"
+            )
+        return None
 
     async def _enqueue(
         self, run_id: str, *, trigger: str, force: bool
@@ -584,6 +609,7 @@ class IndexService:
         status.pages_skipped_empty = 0
         status.pages_skipped_unusable = 0
         status.chunks_upserted = 0
+        status.chunks_skipped_repeat = 0
         status.embedding_rate_limit_retries = 0
         status.embedding_wait_seconds = 0.0
         embedding_baseline = self._embedding_stats()
@@ -641,14 +667,22 @@ class IndexService:
         await self._store.ensure_collection()
         # Deterministic point IDs make upserts idempotent. Skipping delete on
         # retries preserves vectors after transient failures / process restarts.
+        #
+        # text_owners maps each embedded text's digest to the first page of this run that carried
+        # it. A fresh run starts empty because the delete just emptied the run; a retry keeps its
+        # points and so must rebuild the map from them (inside the try below, so a failed read
+        # fails the job instead of writing copies against an empty map).
+        text_owners: dict[str, str] | None
         if status.attempt <= 1:
             await self._delete_run_points(run_id)
+            text_owners = {}
         else:
             logger.info(
                 "Skipping Qdrant delete for retry runId=%s attempt=%s",
                 run_id,
                 status.attempt,
             )
+            text_owners = None
 
         pending: list[TextNode] = []
         entity_cache: dict[str, object] = {}
@@ -664,6 +698,25 @@ class IndexService:
         run_started = time.perf_counter()
 
         try:
+            if text_owners is None:
+                text_owners, untagged = await self._store.run_text_owners(run_id)
+                logger.info(
+                    "Rebuilt repeat set for retry runId=%s texts=%s pointsWithoutTextDigest=%s",
+                    run_id,
+                    len(text_owners),
+                    untagged,
+                )
+                if untagged:
+                    # Written by a build that did not stamp textDigest, so their texts are not in
+                    # the set and a later page can write a second copy of one. Re-index from
+                    # attempt 1 to collapse them.
+                    logger.warning(
+                        "Retry runId=%s has %s points without textDigest; repeats among them "
+                        "are not collapsed until the run is re-indexed from scratch",
+                        run_id,
+                        untagged,
+                    )
+
             async for pages in self._mongo.iter_pages(
                 run_id, batch_size=self._settings.page_batch_size
             ):
@@ -710,7 +763,9 @@ class IndexService:
                         continue
 
                     status.pages_english += 1
-                    pending.extend(nodes)
+                    pending.extend(
+                        _admit_page_nodes(page.id, nodes, text_owners, status)
+                    )
                     if len(pending) >= self._settings.embed_batch_size:
                         self._raise_if_killed(run_id)
                         _t = time.perf_counter()
@@ -814,13 +869,50 @@ class IndexService:
             self._settings.embed_batch_size,
         )
         logger.info(
-            "Index complete for runId=%s chunksUpserted=%s pagesEnglish=%s "
-            "skippedUnusable=%s skippedLang=%s skippedEmpty=%s",
+            "Index complete for runId=%s chunksUpserted=%s chunksSkippedRepeat=%s "
+            "pagesEnglish=%s skippedUnusable=%s skippedLang=%s skippedEmpty=%s",
             run_id,
             status.chunks_upserted,
+            status.chunks_skipped_repeat,
             status.pages_english,
             status.pages_skipped_unusable,
             status.pages_skipped_lang,
             status.pages_skipped_empty,
         )
         await self._persist(status)
+
+
+def _admit_page_nodes(
+    page_id: str,
+    nodes: list[TextNode],
+    text_owners: dict[str, str],
+    status: IndexStatusResponse,
+) -> list[TextNode]:
+    """Drop a page's chunks whose exact text an earlier page of this run already emitted.
+
+    One point per distinct embedded text per run. Site chrome -- a footer call-to-action, a
+    template paragraph on every `/charge-finder/*` page -- repeats on hundreds of pages, each copy
+    with the same vector, and those copies filled both retrieval candidate lists before the query
+    path could collapse them: a 33,728-point run answered a keyword question with one passage.
+    Collapsing here, once, removes them for every consumer instead of in each retrieval path.
+
+    Repeats *within* one page are kept: a section shorter than the child window emits a child
+    equal to its parent's text, and both belong to that page. The query path's exact-text dedup
+    still handles those.
+
+    Cost: a repeated block is retrievable from the first page that carried it and no other. Quote
+    verification still holds, because that page does contain the text.
+    """
+    kept: list[TextNode] = []
+    for node in nodes:
+        digest = str(node.metadata.get("textDigest") or "")
+        owner = text_owners.get(digest) if digest else None
+        if owner is not None and owner != page_id:
+            status.chunks_skipped_repeat += 1
+            continue
+        kept.append(node)
+    for node in kept:
+        digest = str(node.metadata.get("textDigest") or "")
+        if digest:
+            text_owners.setdefault(digest, page_id)
+    return kept

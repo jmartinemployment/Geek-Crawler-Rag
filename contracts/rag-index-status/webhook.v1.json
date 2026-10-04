@@ -16,6 +16,7 @@
     "pagesSkippedEmpty": "int",
     "pagesSkippedUnusable": "int",
     "chunksUpserted": "int",
+    "chunksSkippedRepeat": "int",
     "attempt": "int",
     "trigger": "string",
     "embeddingRateLimitRetries": "int",

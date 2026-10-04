@@ -29,7 +29,7 @@ See [`architecture.md`](./architecture.md) and [`plans/geek-crawler-rag.md`](./p
 > | Corpus body | typed **`blocks`** (`heading`+`level`, `paragraph`, `listItem`, `quote`, `code`, `row`+`cells`, `term`, `definition`; each with `text`/`cells`, `html`, `anchors`) |
 > | Display / audit | **`contentHtml`** |
 > | Page as a string | **one** projection — `block_text.derive_plaintext_from_blocks` |
-> | Quote verification | `citation_verify.quote_in_text(quote, plain_text, blocks)` against that same string |
+> | Quote verification | `citation_verify.quote_in_text(quote, plain_text, blocks)` against that same string, served by `POST /v1/verify` |
 > | Page read API | `GET /v1/pages…` → `PageTextResponse.text` |
 > | Run readiness | **`ContentReadyAt`** |
 >
@@ -123,6 +123,7 @@ Geek-Crawler-v2 → MongoDB → Geek-Crawler-Rag/Qdrant
 | `POST` | `/v1/templates/query` | Retrieve few-shot templates by need (+ channel/framework/tags) |
 | `GET` | `/v1/pages/{pageId}?runId=…` | Run-scoped block-text projection for citation reads (`PageTextResponse`) |
 | `GET` | `/v1/pages?runId=&url=` | Same lookup by run + URL |
+| `POST` | `/v1/verify` | Is each quote on its page? `{ runId, quotes: [{ pageId, quote }] }` → `found`, `reason`, `sourceDigest` per quote |
 
 RAG in this repository is **library-only**: index, query, and page block text. There is no `POST /v1/generate` endpoint.
 
@@ -199,24 +200,26 @@ At index start the service logs **`mongoPageCount`**. Runs with `mongoPageCount`
 
 ### Indexing trigger
 
-**The index scheduler is deprecated.** Indexing is triggered by `POST /v1/index`.
-`INDEX_SCHEDULER_ENABLED` is `false`; `scheduler.py` and
-`mongo.find_oldest_content_ready_run` remain in the tree without being the live route.
+Indexing is triggered by `POST /v1/index`, which GeekAPI calls when a crawl completes. The route
+refuses a run with no `ContentReadyAt` (409, nothing queued) — the same readiness the scheduler's
+candidate query filters on, checked by `IndexService.readiness_refusal` at both entrances before the
+claim, so a refused run leaves no job row.
 
-Keep the flag set in the environment rather than relying on a default — `config.py:50` and
-`deploy/hostinger-compose.yml:45` (`${INDEX_SCHEDULER_ENABLED:-true}`) both default it on. Until
-`78c143b` it also could not have selected a run, because the filter matched nothing; the flag is now
-the only thing holding it off. If it ever did run it would cost embedding spend, not corpus —
-indexing is read-only (`indexer._skip_unusable`).
+`INDEX_SCHEDULER_ENABLED` defaults to `false` in `config.py` and `deploy/hostinger-compose.yml`.
+**Production sets it `true`** in the box's own compose file (`/docker/geek-crawler-rag/docker-compose.yml`,
+not in git), checked 2026-10-04: the scheduler polls every 300s and logs `found no eligible
+content-ready run` when there is nothing to do. The repo default decides what a fresh deploy does;
+the box decides what production does. Check the box, not this file, before asserting either.
+If it runs it costs embedding spend, not corpus — indexing is read-only (`indexer._skip_unusable`).
 
-When it did run, the scheduler persisted its next due time in Mongo, took an atomic lease, and chose the
+When it runs, the scheduler persists its next due time in Mongo, takes an atomic lease, and chooses the
 completed run with the OLDEST `ContentReadyAt` — the crawl-level marker confirming every persisted page
 carries extracted content — that is not already indexed (`INDEX_SCHEDULER_INTERVAL_SECONDS`, 300s in production).
 
 Index jobs — scheduled or manual — use Mongo leases and heartbeats. There is **no** automatic
-stale-job recovery: `Indexer.start()` deliberately does not `claim_recoverable`, and with the
-scheduler off nothing re-drives a `pending` row, so a restart strands every queued job until an
-operator re-posts it. Failed jobs are **not** auto-retried in-process; they fail closed, and an
+stale-job recovery: `Indexer.start()` deliberately does not `claim_recoverable`. A graceful stop
+(a deploy) marks in-flight jobs `failed`, and the scheduler skips failed runs, so they wait for an
+operator to re-post them. Failed jobs are **not** auto-retried in-process; they fail closed, and an
 operator or a new enqueue starts a fresh attempt. See
 [`plans/rules.md`](./plans/rules.md) §3a (**No Retries. No Fallbacks. No Crappy Code.**) and
 [`docs/index-job-recovery-after-restart.md`](./docs/index-job-recovery-after-restart.md) for the
@@ -332,7 +335,7 @@ Live stack on KVM 2 (alongside Mongo):
 
 Caps: Qdrant `mem_limit: 3g`, `cpus: 0.5`, `MAX_SEARCH_THREADS=1`; API
 `mem_limit: 2g`. Corpus indexing pauses two seconds between Qdrant batches.
-The Hostinger compose enables the two-hour scheduler by default.
+The repo compose defaults the scheduler off; the box turns it on (see *Indexing trigger*).
 Point `MONGO_CRAWLER_URL` at the existing Hostinger Mongo `geek_crawler` database. Normal indexing reads the corpus; controlled cleanup procedures may delete unusable crawl pages and related links.
 
 GeekAPI: set `GEEK_CRAWLER_RAG_URL` / optional `GEEK_CRAWLER_RAG_API_KEY`.
@@ -359,8 +362,10 @@ curl -s http://2.24.101.90:8080/health
 ```
 
 Qdrant is pinned to `v1.13.4`, so only the API container is recreated. A deploy
-interrupts any in-flight index run; the scheduler's lease/heartbeat recovery
-re-claims it on the next tick and no Qdrant points are wiped.
+interrupts any in-flight index run and nothing re-claims it: the queue is in-process, and
+`Indexer.start()` does not reclaim leases. No Qdrant points are wiped. Re-post the run — see
+[`docs/index-job-recovery-after-restart.md`](./docs/index-job-recovery-after-restart.md). Do not
+push while an index run is in flight.
 
 A green `/health` alone does **not** prove the new image is live — confirm the
 API container's uptime reset via `docker ps`.

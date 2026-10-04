@@ -28,6 +28,8 @@ def _wire(
     # The route checks intake before claiming, so this has to be awaitable here; open by
     # default, because these cases are about the accepted flag and not about the gate.
     indexer.intake_pause_reason = AsyncMock(return_value=intake_pause_reason)
+    # Same for readiness: these runs are content-ready; the readiness gate has its own tests.
+    indexer.readiness_refusal = AsyncMock(return_value=None)
     monkeypatch.setattr(state, "indexer", indexer, raising=False)
     return indexer
 

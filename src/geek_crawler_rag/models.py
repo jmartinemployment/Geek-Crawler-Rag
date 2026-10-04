@@ -40,6 +40,10 @@ class IndexStatusResponse(BaseModel):
     # breakdown that already existed.
     pages_skipped_unusable: int = Field(0, alias="pagesSkippedUnusable")
     chunks_upserted: int = Field(0, alias="chunksUpserted")
+    # Chunks not written because an earlier page of the same run already carried the exact text.
+    # Site chrome repeats on every page; a 2,025-page run held 7,046 such copies, and identical
+    # vectors fill the dense candidate list before anything downstream can collapse them.
+    chunks_skipped_repeat: int = Field(0, alias="chunksSkippedRepeat")
     attempt: int = 0
     trigger: str = "manual"
     embedding_rate_limit_retries: int = Field(0, alias="embeddingRateLimitRetries")
@@ -314,6 +318,43 @@ class PageTextResponse(BaseModel):
     # chunker embeds, so a quote taken from a chunk matches here.
     text: str
     excerpt: str | None = None
+
+    model_config = {"populate_by_name": True, "ser_json_by_alias": True}
+
+
+class QuoteCheck(BaseModel):
+    page_id: str = Field(..., alias="pageId", min_length=1)
+    quote: str = Field(..., min_length=1)
+
+    model_config = {"populate_by_name": True}
+
+
+class VerifyQuotesRequest(BaseModel):
+    """`POST /v1/verify`. One quote is a list of one; there is no second shape."""
+
+    run_id: str = Field(..., alias="runId", min_length=1)
+    quotes: list[QuoteCheck] = Field(..., min_length=1, max_length=200)
+
+    model_config = {"populate_by_name": True}
+
+
+class QuoteVerdict(BaseModel):
+    page_id: str = Field(..., alias="pageId")
+    quote: str
+    found: bool
+    # None when found. Otherwise one of: "page_not_found" (no such page in this run, or no text),
+    # "page_not_citable:<reason>" (the crawler's own signals condemn it), "not_on_page".
+    reason: str | None = None
+    # The page's sourceDigest, the same value stamped on every point cut from it. Present only
+    # when the page was read, so a caller can match a verdict to the passage it retrieved.
+    source_digest: str | None = Field(None, alias="sourceDigest")
+
+    model_config = {"populate_by_name": True, "ser_json_by_alias": True}
+
+
+class VerifyQuotesResponse(BaseModel):
+    run_id: str = Field(..., alias="runId")
+    results: list[QuoteVerdict]
 
     model_config = {"populate_by_name": True, "ser_json_by_alias": True}
 

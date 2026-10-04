@@ -83,9 +83,14 @@ from geek_crawler_rag.models import (
     ProducerCapabilities,
     QueryRequest,
     QueryResponse,
+    QuoteVerdict,
     SchedulerPauseRequest,
+    VerifyQuotesRequest,
+    VerifyQuotesResponse,
 )
-from geek_crawler_rag.mongo import MongoCorpus
+from geek_crawler_rag.citation_verify import quote_in_text
+from geek_crawler_rag.llama_nodes import page_source_digest
+from geek_crawler_rag.mongo import CrawlPage, MongoCorpus
 from geek_crawler_rag.qdrant_store import QdrantStore
 from geek_crawler_rag.unusable import classify_unusable_page
 from geek_crawler_rag.query import QueryService
@@ -354,6 +359,16 @@ async def start_index(body: IndexRunRequest) -> IndexEnqueueResponse:
             ),
         )
 
+    # 409, not 503: the run is in a state that cannot be indexed, and re-posting the same run
+    # will not change that. GeekAPI's EnqueueIndexAsync treats any non-2xx as "not queued".
+    not_ready = await state.indexer.readiness_refusal(body.run_id)
+    if not_ready is not None:
+        logger.warning("Refused index enqueue for runId=%s: %s", body.run_id, not_ready)
+        raise HTTPException(
+            status_code=409,
+            detail=f"{not_ready}. Nothing was queued for runId={body.run_id}.",
+        )
+
     status, accepted = await state.indexer.enqueue(body.run_id)
     if not accepted:
         logger.warning(
@@ -588,6 +603,57 @@ async def query_templates(body: AdTemplateQueryRequest) -> AdTemplateQueryRespon
     return await state.templates.query(body)
 
 
+def _citable_page_text(page: CrawlPage | None, run_id: str) -> tuple[str, str | None]:
+    """The page's plaintext projection, or why it may not be cited. ``(text, None)`` on success.
+
+    The one refusal rule for every citation read: both page routes and ``POST /v1/verify``. An
+    unusable page must be refused here, not just excluded at index time. Until 2026-09-29 the only
+    checks were "does the page exist, does the run match, is the text non-empty" -- and a 4xx
+    error page passes all three. Its body ("Sorry, we could not find that page") clears every
+    prose floor the pipeline has, so a page indexed before the reject gate existed could be
+    retrieved by /v1/query, quoted, and confirmed against its own error text.
+
+    Index-time rejection does not cover it, for two reasons: points already in Qdrant carry no
+    status in their payload, so retrieval cannot filter them out; and these routes read Mongo
+    directly, so they never consult the index at all.
+
+    `classify_unusable_page` is the one classifier, reused rather than re-deriving a status check
+    here -- the whole defect it closes was two readers of one field disagreeing. ``no_content`` is
+    not a refusal: an empty body is already "page_not_found", and this service re-adjudicating
+    "readable" is what destroyed 5,274 pages on 2026-09-18. What is refused is a page the
+    CRAWLER's own signals condemn.
+    """
+    if page is None or page.run_id != run_id:
+        return "", "page_not_found"
+    text = derive_plaintext_from_blocks(page.blocks)
+    if not text:
+        return "", "page_not_found"
+    reject = classify_unusable_page(
+        url=page.url,
+        final_url=page.final_url,
+        failure_reason=page.failure_reason,
+        robots_allowed=page.robots_allowed,
+        blocks=page.blocks,
+        status_code=page.status_code,
+    )
+    if reject is not None and reject != "no_content":
+        logger.warning(
+            "Refusing citation read for unusable page pageId=%s runId=%s reason=%s status=%s",
+            page.id,
+            page.run_id,
+            reject,
+            page.status_code,
+        )
+        return "", f"page_not_citable:{reject}"
+    return text, None
+
+
+def _refusal_detail(refusal: str, not_found: str) -> str:
+    if refusal.startswith("page_not_citable:"):
+        return f"Page is not citable ({refusal.split(':', 1)[1]})."
+    return not_found
+
+
 @app.get(
     "/v1/pages/{page_id}",
     response_model=PageTextResponse,
@@ -598,55 +664,18 @@ async def get_page_text(
     page_id: str,
     run_id: Annotated[str, ApiQuery(alias="runId", min_length=1)],
 ) -> PageTextResponse:
-    """Return the page's plaintext projection for citation reads (404 if empty or unusable).
+    """Return the page's plaintext projection (404 if absent, empty or not citable).
 
-    This is the read side of citation verification: GeekAPI's
-    `GccV2PartnerExtractionVerify.VerifyAgainstLibraryAsync` fetches text here and matches a
-    model's quote against it, then stamps the citation verified.
-
-    So an unusable page must 404 here, not just be excluded at index time. Until 2026-09-29
-    the only checks were "does the page exist, does the run match, is the text non-empty" --
-    and a 4xx error page passes all three. Its body ("Sorry, we could not find that page")
-    clears every prose floor the pipeline has, so a page indexed before the reject gate
-    existed could be retrieved by /v1/query, quoted, confirmed against this endpoint, and
-    stamped QuoteVerified=true on a citation to a URL the server said it did not serve.
-
-    Index-time rejection does not cover it, for two reasons: points already in Qdrant carry
-    no status in their payload, so retrieval cannot filter them out; and this endpoint reads
-    Mongo directly, so it never consults the index at all.
-
-    `classify_unusable_page` is the one classifier, reused rather than re-deriving a status
-    check here -- the whole defect it now closes was two readers of one field disagreeing.
+    A read, not a verdict. Whether a quote is on the page is answered by ``POST /v1/verify``; a
+    caller that fetches text here and compares it itself is a second implementation of
+    ``quote_in_text`` and will disagree with it on whitespace and case.
     """
     page = await state.mongo.get_page(page_id)
-    text = derive_plaintext_from_blocks(page.blocks) if page is not None else ""
-    if page is None or page.run_id != run_id or not text:
+    text, refusal = _citable_page_text(page, run_id)
+    if refusal is not None or page is None:
         raise HTTPException(
             status_code=404,
-            detail="No text for the authorized page.",
-        )
-    reject = classify_unusable_page(
-        url=page.url,
-        final_url=page.final_url,
-        failure_reason=page.failure_reason,
-        robots_allowed=page.robots_allowed,
-        blocks=page.blocks,
-        status_code=page.status_code,
-    )
-    if reject is not None and reject != "no_content":
-        # no_content is excluded: an empty body is already covered by `not text` above, and
-        # this service re-adjudicating "readable" is what destroyed 5,274 pages on
-        # 2026-09-18. What is refused here is a page the CRAWLER's own signals condemn.
-        logger.warning(
-            "Refusing citation read for unusable page pageId=%s runId=%s reason=%s status=%s",
-            page.id,
-            page.run_id,
-            reject,
-            page.status_code,
-        )
-        raise HTTPException(
-            status_code=404,
-            detail=f"Page is not citable ({reject}).",
+            detail=_refusal_detail(refusal or "", "No text for the authorized page."),
         )
     return PageTextResponse(
         page_id=page.id,
@@ -675,37 +704,17 @@ async def get_page_text_by_url(
     so the documented `GET /v1/pages?runId=...&url=...` answered 422 -- the endpoint could
     not be called the way its own contract specifies. Nothing noticed because GeekAPI only
     ever calls the by-id form (HttpGeekCrawlerRagClient) and so does
-    scripts/staging_citation_smoke.py, which is also why the missing status gate below
+    scripts/staging_citation_smoke.py, which is also why the missing status gate
     survived here: this adapter has never been exercised in production.
 
-    Same unusable-page refusal as the by-id handler, for the same reason.
+    Same refusal rule as the by-id handler, from the same helper.
     """
     page = await state.mongo.get_page_by_url(run_id=run_id, url=url)
-    text = derive_plaintext_from_blocks(page.blocks) if page is not None else ""
-    if page is None or not text:
+    text, refusal = _citable_page_text(page, run_id)
+    if refusal is not None or page is None:
         raise HTTPException(
             status_code=404,
-            detail=f"No text for runId={run_id} url={url}",
-        )
-    reject = classify_unusable_page(
-        url=page.url,
-        final_url=page.final_url,
-        failure_reason=page.failure_reason,
-        robots_allowed=page.robots_allowed,
-        blocks=page.blocks,
-        status_code=page.status_code,
-    )
-    if reject is not None and reject != "no_content":
-        logger.warning(
-            "Refusing citation read for unusable page pageId=%s runId=%s reason=%s status=%s",
-            page.id,
-            page.run_id,
-            reject,
-            page.status_code,
-        )
-        raise HTTPException(
-            status_code=404,
-            detail=f"Page is not citable ({reject}).",
+            detail=_refusal_detail(refusal or "", f"No text for runId={run_id} url={url}"),
         )
     return PageTextResponse(
         page_id=page.id,
@@ -716,6 +725,55 @@ async def get_page_text_by_url(
         text=text,
         excerpt=None,
     )
+
+
+@app.post(
+    "/v1/verify",
+    response_model=VerifyQuotesResponse,
+    response_model_by_alias=True,
+    dependencies=[Depends(require_api_key)],
+)
+async def verify_quotes(body: VerifyQuotesRequest) -> VerifyQuotesResponse:
+    """Is each quote on its page? The only place that question is answered.
+
+    `quote_in_text` against the same block projection the chunker embeds, so a quote cut from a
+    retrieved passage is checked against the text that passage came from. GeekAPI's verify pass
+    used to fetch text from ``GET /v1/pages/{id}`` and compare with its own case-insensitive
+    ``IndexOf``: two rules for one question, which disagree on whitespace. Callers send the quote
+    here instead and keep no comparison of their own.
+
+    Fail closed per item: a page that is missing, outside this run, empty or not citable answers
+    ``found: false`` with the reason. Nothing is ever reported found without being compared.
+    """
+    pages: dict[str, CrawlPage | None] = {}
+    for page_id in dict.fromkeys(item.page_id for item in body.quotes):
+        pages[page_id] = await state.mongo.get_page(page_id)
+
+    results: list[QuoteVerdict] = []
+    for item in body.quotes:
+        page = pages[item.page_id]
+        text, refusal = _citable_page_text(page, body.run_id)
+        if refusal is not None or page is None:
+            results.append(
+                QuoteVerdict(
+                    page_id=item.page_id,
+                    quote=item.quote,
+                    found=False,
+                    reason=refusal or "page_not_found",
+                )
+            )
+            continue
+        found = quote_in_text(item.quote, text, page.blocks)
+        results.append(
+            QuoteVerdict(
+                page_id=item.page_id,
+                quote=item.quote,
+                found=found,
+                reason=None if found else "not_on_page",
+                source_digest=page_source_digest(page),
+            )
+        )
+    return VerifyQuotesResponse(run_id=body.run_id, results=results)
 
 
 @app.post(

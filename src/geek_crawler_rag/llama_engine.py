@@ -235,8 +235,9 @@ class LlamaIndexEngine:
         * **Within the flush.** A heading section shorter than ``child_chunk_size_tokens`` cannot be
           sliced, so ``parent_child_units`` emits a child byte-identical to its parent. Both points
           are written and both carry the same vector.
-        * **Across the run.** Site chrome repeats on every page. One footer CTA appears as 270
-          separate points in the live corpus.
+        * **Across the run.** Site chrome repeats on every page. The indexer now writes one point
+          per distinct text per run (`indexer._admit_page_nodes`), so this case reaches here only
+          on a retry whose repeat set lacked a text, and the cache covers it.
         * **Across runs.** A re-crawl produces chunks byte-identical to the last crawl's, and the
           point id carries the runId, so nothing else would collapse them.
 
