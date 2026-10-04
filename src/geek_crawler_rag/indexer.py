@@ -665,24 +665,18 @@ class IndexService:
             return
 
         await self._store.ensure_collection()
-        # Deterministic point IDs make upserts idempotent. Skipping delete on
-        # retries preserves vectors after transient failures / process restarts.
-        #
-        # text_owners maps each embedded text's digest to the first page of this run that carried
-        # it. A fresh run starts empty because the delete just emptied the run; a retry keeps its
-        # points and so must rebuild the map from them (inside the try below, so a failed read
-        # fails the job instead of writing copies against an empty map).
-        text_owners: dict[str, str] | None
-        if status.attempt <= 1:
-            await self._delete_run_points(run_id)
-            text_owners = {}
-        else:
-            logger.info(
-                "Skipping Qdrant delete for retry runId=%s attempt=%s",
-                run_id,
-                status.attempt,
-            )
-            text_owners = None
+        # Indexing a run replaces that run's index: delete, then write. Every attempt, not only the
+        # first. Until 2026-10-04 an attempt above 1 skipped the delete and skipped point ids that
+        # already existed, and the attempt counter rises on every claim -- so re-posting a run that
+        # had completed merged into its old points instead of replacing them, and a change to what
+        # a point carries never reached a run indexed before it. A failed run's vectors are not
+        # worth keeping either: embeddings are cached across runs (rag_vector_cache), so a re-post
+        # pays for the Qdrant writes, not for the model.
+        await self._delete_run_points(run_id)
+
+        # Digest of each embedded text -> the first page of this run that carried it. Starts empty
+        # because the delete above just emptied the run.
+        text_owners: dict[str, str] = {}
 
         pending: list[TextNode] = []
         entity_cache: dict[str, object] = {}
@@ -698,25 +692,6 @@ class IndexService:
         run_started = time.perf_counter()
 
         try:
-            if text_owners is None:
-                text_owners, untagged = await self._store.run_text_owners(run_id)
-                logger.info(
-                    "Rebuilt repeat set for retry runId=%s texts=%s pointsWithoutTextDigest=%s",
-                    run_id,
-                    len(text_owners),
-                    untagged,
-                )
-                if untagged:
-                    # Written by a build that did not stamp textDigest, so their texts are not in
-                    # the set and a later page can write a second copy of one. Re-index from
-                    # attempt 1 to collapse them.
-                    logger.warning(
-                        "Retry runId=%s has %s points without textDigest; repeats among them "
-                        "are not collapsed until the run is re-indexed from scratch",
-                        run_id,
-                        untagged,
-                    )
-
             async for pages in self._mongo.iter_pages(
                 run_id, batch_size=self._settings.page_batch_size
             ):

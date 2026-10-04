@@ -6,12 +6,13 @@ filled the dense candidate list and the query path's exact-text dedup collapsed 
 nothing left behind them. A keyword question to that run returned one passage.
 
 These pin the index-time collapse: a later page does not re-emit a text an earlier page of the run
-already emitted, a retry rebuilds that set from the points it already wrote, and a failure to
-rebuild it fails the job rather than writing copies.
+already emitted, and every attempt -- a re-post included -- deletes the run's points and builds
+that set from nothing, so indexing replaces a run's index and never merges into it.
 """
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -24,6 +25,7 @@ from geek_crawler_rag.llama_nodes import text_digest
 from geek_crawler_rag.metadata import EntityRef
 from geek_crawler_rag.models import IndexState, IndexStatusResponse
 from geek_crawler_rag.mongo import CrawlPage, CrawlRun
+from geek_crawler_rag.status_store import _from_doc
 
 FOOTER = "Start saving with Ramp today and close your books eight times faster than before."
 
@@ -82,7 +84,6 @@ def _service(pages: list[CrawlPage]) -> tuple[IndexService, MagicMock, MagicMock
     store = MagicMock()
     store.delete_by_run_id = AsyncMock()
     store.ensure_collection = AsyncMock()
-    store.run_text_owners = AsyncMock(return_value=({}, 0))
 
     llama = MagicMock()
     llama.chunk_tokenizer = FakeChunkTokenizer()
@@ -160,49 +161,52 @@ def test_repeats_within_one_page_are_kept():
 
 
 @pytest.mark.asyncio
-async def test_a_retry_rebuilds_the_repeat_set_from_the_points_it_already_wrote():
-    """Attempt 2 skips the delete, so the in-memory set starts empty. Without the rebuild, page B
-    would write a second footer because page A's footer was committed by attempt 1."""
-    svc, store, llama = _service([PAGE_B])
+async def test_a_re_post_deletes_the_run_and_collapses_from_nothing():
+    """`attempt` rises on every claim, so a re-post of a completed run arrives as attempt 2.
+
+    It used to skip the delete and skip point ids already present: the run's old points stayed,
+    the new attempt merged into them, and a change to what a point carries never reached a run
+    indexed before it. Indexing a run replaces its index.
+    """
+    svc, store, llama = _service([PAGE_A, PAGE_B])
     svc._statuses["r-rep"] = IndexStatusResponse(
         run_id="r-rep", state=IndexState.PENDING, attempt=2
-    )
-
-    # The digest key must be what the chunker really emits for the footer section, or this
-    # test passes for the wrong reason. Read it off a fresh attempt-1 run of page A.
-    probe, _, probe_llama = _service([PAGE_A])
-    await probe._index_run("r-rep")
-    footer_digests = {
-        n.metadata["textDigest"]
-        for n in _upserted(probe_llama)
-        if FOOTER in n.get_content()
-    }
-    assert footer_digests
-    store.run_text_owners = AsyncMock(
-        return_value=({d: "pa" for d in footer_digests}, 0)
     )
 
     await svc._index_run("r-rep")
 
     status = await svc.get_status("r-rep")
     assert status is not None and status.state == IndexState.COMPLETE
-    store.run_text_owners.assert_awaited_once_with("r-rep")
-    store.delete_by_run_id.assert_not_awaited()
-    assert not any(FOOTER in n.get_content() for n in _upserted(llama))
+    store.delete_by_run_id.assert_awaited_once_with(
+        "r-rep", owner_id="system:crawler", visibility="service"
+    )
+    by_page = _texts_by_page(_upserted(llama))
+    assert [pid for pid, texts in by_page.items() if any(FOOTER in t for t in texts)] == ["pa"]
     assert status.chunks_skipped_repeat >= 1
 
 
-@pytest.mark.asyncio
-async def test_a_retry_whose_repeat_set_cannot_be_read_fails_without_writing():
-    """An empty set would read as "nothing written yet" and every repeat would be written again."""
-    svc, store, llama = _service([PAGE_A, PAGE_B])
-    store.run_text_owners = AsyncMock(side_effect=RuntimeError("qdrant unavailable"))
-    svc._statuses["r-rep"] = IndexStatusResponse(
-        run_id="r-rep", state=IndexState.PENDING, attempt=2
+def test_the_job_store_reads_back_every_status_field():
+    """The store writes the whole model and reads it back field by field. chunksSkippedRepeat was
+    written and not read, so GET /v1/index/{runId} reported 0 while the run skipped 7,045."""
+    status = IndexStatusResponse(
+        run_id="r",
+        state=IndexState.COMPLETE,
+        crawl_type="partner",
+        mongo_page_count=9,
+        pages_seen=9,
+        pages_english=7,
+        pages_skipped_lang=1,
+        pages_skipped_empty=1,
+        pages_skipped_unusable=2,
+        chunks_upserted=40,
+        chunks_skipped_repeat=12,
+        attempt=3,
+        trigger="scheduled",
+        embedding_rate_limit_retries=1,
+        embedding_wait_seconds=2.5,
+        error="e",
+        started_at_utc=datetime(2026, 10, 4, 14, 0, tzinfo=timezone.utc),
+        finished_at_utc=datetime(2026, 10, 4, 14, 5, tzinfo=timezone.utc),
     )
 
-    await svc._index_run("r-rep")
-
-    status = await svc.get_status("r-rep")
-    assert status is not None and status.state == IndexState.FAILED
-    llama.embed_and_upsert.assert_not_awaited()
+    assert _from_doc(status.model_dump(by_alias=True, mode="python")) == status

@@ -1,10 +1,10 @@
 """Reuse embeddings across runs, keyed on the text that produced them.
 
 A re-crawl of a site produces chunks byte-identical to the previous crawl's, and
-every one of them was embedded again from scratch. Nothing was wrong with the
-existing skip: point IDs are deterministic (``qdrant_store.point_id``) and
-``find_existing_point_ids`` skips chunks already committed - but the id is
-``uuid5(f"{run_id}:{page_id}:{chunk_key}")``, so a new runId misses every time.
+every one of them was embedded again from scratch. Point ids are
+``uuid5(f"{run_id}:{page_id}:{chunk_key}")``, so nothing keyed on the point can be
+shared across runs, and indexing deletes a run's points before writing them, so
+nothing keyed on the point survives a re-post of the same run either.
 
 **This caches the vector, not the point.** That distinction is the whole design.
 Reusing a point id from an earlier run would hand back a point whose payload

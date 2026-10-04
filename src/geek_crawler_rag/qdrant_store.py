@@ -46,34 +46,6 @@ def _is_missing_collection(exc: BaseException, collection: str) -> bool:
     )
 
 
-async def find_existing_point_ids(
-    client: AsyncQdrantClient,
-    collection: str,
-    ids: list[str],
-    *,
-    batch: int = 256,
-) -> set[str]:
-    """Return the subset of `ids` already present in `collection`.
-
-    Point IDs are deterministic (see `point_id`), so a re-run can skip chunks
-    it already committed instead of re-embedding them. Payload and vectors are
-    left off so this stays cheap.
-    """
-    found: set[str] = set()
-    for start in range(0, len(ids), batch):
-        chunk = ids[start : start + batch]
-        if not chunk:
-            continue
-        records = await client.retrieve(
-            collection_name=collection,
-            ids=chunk,
-            with_payload=False,
-            with_vectors=False,
-        )
-        found.update(str(rec.id) for rec in records)
-    return found
-
-
 class QdrantStore:
     def __init__(
         self,
@@ -94,14 +66,6 @@ class QdrantStore:
 
     async def close(self) -> None:
         await self._client.close()
-
-    async def points_exist(
-        self, ids: list[str], *, batch: int = 256
-    ) -> set[str]:
-        """Subset of `ids` already in this collection. See find_existing_point_ids."""
-        return await find_existing_point_ids(
-            self._client, self._collection, ids, batch=batch
-        )
 
     async def ping(self) -> bool:
         """Qdrant is reachable. Says nothing about whether OUR collection is there."""
@@ -815,45 +779,6 @@ class QdrantStore:
             # the boundary from ever seeing it.
             logger.exception("Text search scroll failed for runId=%s", run_id)
             raise
-
-    async def run_text_owners(self, run_id: str) -> tuple[dict[str, str], int]:
-        """`textDigest -> pageId` for every point this run already wrote, and how many lacked one.
-
-        This is how a resumed index run rebuilds its repeat set: the set lives in memory during a
-        run, and a retry that skips the delete starts with an empty one, so without this it would
-        write a second copy of every repeat whose first page was committed before the failure.
-
-        Filtered on runId alone, the same key every retrieval filters on. A point with no
-        `textDigest` was written before the field existed; it is counted and returned so the
-        caller can say so, not silently treated as unique.
-
-        Raises on any Qdrant failure. An empty answer would mean "nothing was written yet", and
-        the indexer would act on that by writing the copies this set exists to prevent.
-        """
-        owners: dict[str, str] = {}
-        missing = 0
-        offset: Any = None
-        run_filter = qm.Filter(
-            must=[qm.FieldCondition(key="runId", match=qm.MatchValue(value=run_id))]
-        )
-        while True:
-            points, offset = await self._client.scroll(
-                collection_name=self._collection,
-                scroll_filter=run_filter,
-                limit=1000,
-                offset=offset,
-                with_payload=["textDigest", "pageId"],
-                with_vectors=False,
-            )
-            for point in points:
-                payload = point.payload or {}
-                digest = payload.get("textDigest")
-                if not digest:
-                    missing += 1
-                    continue
-                owners.setdefault(str(digest), str(payload.get("pageId") or ""))
-            if offset is None:
-                return owners, missing
 
     async def find_host_index_payload(self, host: str) -> dict[str, Any] | None:
         """

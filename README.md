@@ -281,8 +281,9 @@ inside ~1 GiB of headroom — vectors are `on_disk` now and the headroom is ~9 G
 condition it guarded is no longer the live one. If Qdrant RSS climbs toward its limit
 during ingest again, restore the delay first.
 
-Re-running a failed job resumes rather than restarting: point IDs are
-deterministic, so chunks already committed to Qdrant are skipped. Identical
+Re-running a job replaces the run's index: every attempt deletes the run's points
+before writing, so nothing from an earlier attempt survives. Embeddings are reused
+through `rag_vector_cache`, so a re-run mostly costs Qdrant writes. Identical
 strings within a batch are embedded once and the vector reused for every point
 that shares that text (short heading sections yield a child identical to its
 parent, ~29% of calls on marketing pages).

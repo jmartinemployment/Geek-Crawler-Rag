@@ -58,8 +58,7 @@ Learned the hard way on 2026-09-25. A job can sit `running` while advancing noth
 re-posting it makes things **worse**: `claim(force=True)` rewrites the Mongo row but does
 **not** cancel the running asyncio task. The zombie keeps holding
 `LlamaIndexEngine._embedding_call_lock`, which every embed call needs, so the new attempt
-sails through the resume-skip batches (skips need no embedding) and then blocks forever on
-a lock nobody will release. Two jobs, one lock, no progress, and nothing in the log
+deletes the run's points and then blocks forever on a lock nobody will release. Two jobs, one lock, no progress, and nothing in the log
 because a lock acquisition prints nothing.
 
 **Tell them apart by the heartbeat, not the state.** A live job renews its lease every 60s.
@@ -121,7 +120,7 @@ carry no such decision — nothing is waiting on a human — so those still go.
 `/var/log/rag-requeue.log`. It runs the same script with `--requeue --skip-failed`, so it
 only ever *adds* to the queue and never stops, cancels or restarts anything. It fixes
 stranding; it does **not** rescue a hung job (see above), which is deliberate — detecting
-a hang reliably means auto-restarting the container, and a long resume-scan is
+a hang reliably means auto-restarting the container, and a long re-index is
 indistinguishable from a hang for minutes at a time.
 
 ```bash
@@ -164,11 +163,13 @@ queues nothing. `state=pending` in the response is not proof anything was
 accepted. Check `attempt` incremented, or the log line `Enqueued index job for
 runId=… trigger=manual`.
 
-**Re-posting resumes; it does not duplicate.** Point IDs are deterministic and
-`attempt > 1` skips the delete-by-runId at start, so committed chunks are
-skipped. A first attempt *does* delete the run's existing points first
-(`Deleted Qdrant points for runId=…`) — that is the idempotent rebuild, not data
-loss.
+**Re-posting replaces; it never merges.** Every attempt deletes the run's points
+first (`Deleted Qdrant points for runId=…`) and writes the run again. Until
+2026-10-04 an attempt above 1 skipped that delete and skipped point ids already
+present, and `attempt` rises on every claim — so re-posting a completed run merged
+into its old points, and a change to what a point carries never reached it.
+Embeddings are cached across runs (`rag_vector_cache`), so a re-post costs the
+Qdrant writes, not the model.
 
 ## Verifying it took
 
