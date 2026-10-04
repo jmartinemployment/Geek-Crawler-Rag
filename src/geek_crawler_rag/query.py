@@ -1,4 +1,4 @@
-"""Query pipeline: LlamaIndex dense + BM25/text RRF + optional Cohere rerank."""
+"""Query pipeline: hybrid (dense + sparse BM25) candidates, in-process BM25 re-rank, RRF, optional Cohere rerank."""
 
 from __future__ import annotations
 
@@ -128,20 +128,6 @@ class QueryService:
                 categories=request.categories,
                 min_quality=request.min_quality,
             )
-            lexical_hits = await self._store.search_text(
-                request.need,
-                run_id=request.run_id,
-                owner_id=request.owner_id,
-                visibility=request.visibility,
-                crawl_type=request.crawl_type,
-                host=host,
-                top_k=max(fetch_target, self._settings.hybrid_lexical_limit),
-                chunk_role=search_role,
-                source_types=request.source_types,
-                entity_names=request.entity_names,
-                categories=request.categories,
-                min_quality=request.min_quality,
-            )
         except Exception as ex:
             logger.exception("Query failed for runId=%s: %s", request.run_id, ex)
             return QueryResponse(
@@ -151,7 +137,13 @@ class QueryService:
                 retrieval="error",
             )
 
-        candidates = _merge_candidates(dense_nodes, lexical_hits)
+        # The hybrid list alone (D15, 2026-10-04). A third list, a Qdrant scroll filtered by
+        # MatchText, used to be fused in. With no text index on the body fields MatchText is an
+        # exact substring test of the whole question, so it returned nothing for four of five Ramp
+        # questions, and what it did return came in storage order under made-up scores. The ranked
+        # keyword signal is the sparse BM25 half of the hybrid query, and the in-process BM25
+        # re-rank below.
+        candidates = _candidates(dense_nodes)
         if not candidates:
             warning = f"No chunks for runId={request.run_id}; notify-and-skip research"
             logger.warning(warning)
@@ -166,9 +158,8 @@ class QueryService:
         docs_for_bm25 = [_lexical_doc(c["payload"]) for c in candidates]
         bm25_order = bm25_rank_indices(request.need, docs_for_bm25)
         bm25_ids = [candidates[i]["id"] for i in bm25_order]
-        lexical_ids = [str(h.id) for h in lexical_hits]
 
-        fused = reciprocal_rank_fusion([dense_ids, bm25_ids, lexical_ids])
+        fused = reciprocal_rank_fusion([dense_ids, bm25_ids])
         id_to_cand = {c["id"]: c for c in candidates}
         fused_candidates = [id_to_cand[i] for i, _ in fused if i in id_to_cand]
 
@@ -285,9 +276,7 @@ def _node_id(node: NodeWithScore) -> str:
     return str(node.node.node_id)
 
 
-def _merge_candidates(
-    dense_nodes: list[NodeWithScore], lexical_hits: list[Any]
-) -> list[dict[str, Any]]:
+def _candidates(dense_nodes: list[NodeWithScore]) -> list[dict[str, Any]]:
     out: dict[str, dict[str, Any]] = {}
     for hit in dense_nodes:
         pid = _node_id(hit)
@@ -299,15 +288,6 @@ def _merge_candidates(
             "id": pid,
             "payload": meta,
             "dense_score": float(hit.score or 0.0),
-        }
-    for hit in lexical_hits:
-        pid = str(hit.id)
-        if pid in out:
-            continue
-        out[pid] = {
-            "id": pid,
-            "payload": hit.payload or {},
-            "dense_score": None,
         }
     return list(out.values())
 

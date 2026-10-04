@@ -133,7 +133,6 @@ def test_should_collapse_parents_only_for_prefer_parent():
 @pytest.mark.asyncio
 async def test_query_hybrid_maps_hits():
     store = MagicMock()
-    store.search_text = AsyncMock(return_value=[])
 
     node = _child_node(
         node_id="p1",
@@ -162,7 +161,6 @@ async def test_query_hybrid_maps_hits():
 @pytest.mark.asyncio
 async def test_query_hybrid_collapses_sibling_parents_and_backfills():
     store = MagicMock()
-    store.search_text = AsyncMock(return_value=[])
 
     nodes = [
         _child_node(
@@ -251,7 +249,6 @@ async def test_query_hybrid_collapses_sibling_parents_and_backfills():
 @pytest.mark.asyncio
 async def test_query_hybrid_prefer_child_keeps_sibling_children():
     store = MagicMock()
-    store.search_text = AsyncMock(return_value=[])
 
     nodes = [
         _child_node(
@@ -288,7 +285,6 @@ async def test_query_hybrid_prefer_child_keeps_sibling_children():
 @pytest.mark.asyncio
 async def test_query_hybrid_reranks_full_pool_even_when_topk_smaller():
     store = MagicMock()
-    store.search_text = AsyncMock(return_value=[])
 
     nodes = [
         _child_node(
@@ -331,7 +327,6 @@ async def test_query_hybrid_reranks_full_pool_even_when_topk_smaller():
 @pytest.mark.asyncio
 async def test_query_graph_mode_returns_themes():
     store = MagicMock()
-    store.search_text = AsyncMock(return_value=[])
 
     node = _child_node(
         node_id="p1",
@@ -407,36 +402,22 @@ def test_select_ranked_candidates_fills_top_k_with_distinct_text():
 
 
 @pytest.mark.asyncio
-async def test_a_broken_lexical_search_is_an_error_not_a_dense_only_answer():
-    """A failed text scroll must not quietly downgrade hybrid retrieval.
+async def test_a_broken_hybrid_query_is_an_error_not_an_empty_corpus():
+    """The hybrid query is the only retrieval call since the keyword scroll was deleted (D15).
 
-    search_text used to catch its own exception and return [], so the lexical
-    half disappeared, the query carried on with dense hits alone, and the
-    response still reported retrieval as hybrid. The caller could not tell a run
-    with no lexical matches from one whose lexical search broke.
+    If it raises, the answer is retrieval="error" with a stated warning -- never chunks=[] reported
+    as if the run simply had nothing, which the writer cannot tell from a real empty corpus.
     """
     store = MagicMock()
-    store.search_text = AsyncMock(side_effect=RuntimeError("scroll failed"))
-
-    node = _child_node(
-        node_id="p1",
-        parent_text="parent section about pricing plans",
-        child_text="child text about pricing",
-    )
     llama = MagicMock()
-    # A MagicMock chunk_tokenizer fails chunk_text's budget check; give it the real protocol.
     llama.chunk_tokenizer = FakeChunkTokenizer()
-    llama.dense_query = AsyncMock(return_value=[NodeWithScore(node=node, score=0.9)])
+    llama.dense_query = AsyncMock(side_effect=RuntimeError("qdrant unavailable"))
 
     settings = Settings(openai_api_key="test", hybrid_dense_limit=5, rerank_pool_size=5)
     svc = QueryService(store, settings, llama=llama, reranker=Reranker(None, enabled=False))
 
     resp = await svc.query(QueryRequest(need="pricing plans", runId="r1", topK=3))
 
-    # The clean failure state QueryService already had for retrieval errors.
     assert resp.retrieval == "error"
     assert resp.chunks == []
-    assert resp.warning is not None
-    # Dense hits existed. Returning them under a hybrid label is exactly what
-    # this prevents: the answer would look complete and be half-sourced.
     assert "error" in (resp.warning or "").lower()
