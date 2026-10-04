@@ -34,8 +34,7 @@ from geek_crawler_rag.diagnostic_models import (
     SchemaValidationFinding,
     SectionFactDensity,
 )
-from geek_crawler_rag.citation_verify import verify_citations
-from geek_crawler_rag.models import GenerateCitation, GenerateSource
+from geek_crawler_rag.citation_verify import quote_in_text
 
 _HEADING = re.compile(r"(?m)^(#{1,6})\s+(.+?)\s*$")
 _SENTENCE = re.compile(r"(?<=[.!?])(?:\s+|$)|(?<=:)\n")
@@ -546,34 +545,13 @@ def _sentences_with_offsets(text: str) -> list[tuple[str, int, int]]:
 def _verified_evidence(
     document: DiagnosticDocument, text: str
 ) -> tuple[list[EvidenceReference], set[str]]:
-    source = GenerateSource(
-        pageId=document.source.source_id,
-        url=document.source.url or f"source://{document.source.source_id}",
-        title=document.source.title,
-        sourceDigest=hashlib.sha256(text.encode()).hexdigest(),
-    )
-    citations = [
-        GenerateCitation(
-            pageId=item.source_id,
-            url=source.url,
-            quote=item.quote,
-            sourceDigest=source.source_digest,
-        )
-        for item in document.evidence
-        if item.source_id == document.source.source_id
-    ]
-    kept, _ = verify_citations(
-        citations,
-        [source],
-        [
-            {
-                "pageId": document.source.source_id,
-                "url": source.url,
-                "text": text,
-            }
-        ],
-    )
-    kept_quotes = {(item.page_id, item.quote) for item in kept}
+    """Evidence whose quote is in this document's own visible text, at its stated span if any.
+
+    `quote_in_text` directly. This went through `citation_verify.verify_citations`, which also
+    compared a digest it had just computed from the same text -- a check that could not fail -- and
+    carried a second definition of sourceDigest beside the corpus one. That function is deleted;
+    the corpus verdict is `POST /v1/verify`, and this checks a caller-supplied document, not a page.
+    """
     verified: list[EvidenceReference] = []
     invalid: set[str] = set()
     for item in document.evidence:
@@ -582,7 +560,11 @@ def _verified_evidence(
             or item.end_char is None
             or text[item.start_char : item.end_char] == item.quote
         )
-        if (item.source_id, item.quote) in kept_quotes and exact_span:
+        if (
+            item.source_id == document.source.source_id
+            and quote_in_text(item.quote, text)
+            and exact_span
+        ):
             verified.append(item)
         else:
             invalid.add(item.evidence_id)

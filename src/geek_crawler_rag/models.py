@@ -345,8 +345,9 @@ class QuoteVerdict(BaseModel):
     # None when found. Otherwise one of: "page_not_found" (no such page in this run, or no text),
     # "page_not_citable:<reason>" (the crawler's own signals condemn it), "not_on_page".
     reason: str | None = None
-    # The page's sourceDigest, the same value stamped on every point cut from it. Present only
-    # when the page was read, so a caller can match a verdict to the passage it retrieved.
+    # sha256 of the page's contentHtml (llama_nodes.page_source_digest), the value stamped on every
+    # point cut from it. Identification only, never a verdict. Absent when the page was not read or
+    # has no contentHtml.
     source_digest: str | None = Field(None, alias="sourceDigest")
 
     model_config = {"populate_by_name": True, "ser_json_by_alias": True}
@@ -358,41 +359,6 @@ class VerifyQuotesResponse(BaseModel):
 
     model_config = {"populate_by_name": True, "ser_json_by_alias": True}
 
-
-class GenerateCitation(BaseModel):
-    page_id: str | None = Field(None, alias="pageId")
-    run_id: str | None = Field(None, alias="runId")
-    url: str
-    title: str | None = None
-    section_title: str | None = Field(None, alias="sectionTitle")
-    section_key: str | None = Field(None, alias="sectionKey")
-    quote: str
-    crawl_type: str | None = Field(None, alias="crawlType")
-    source_digest: str | None = Field(
-        None, alias="sourceDigest", pattern=r"^[0-9a-f]{64}$"
-    )
-    source_rights: str | None = Field(
-        None,
-        alias="sourceRights",
-        pattern=r"^(consented|licensed|unknown|prohibited)$",
-    )
-    coordinates: dict[str, Any] | None = None
-
-    model_config = {"populate_by_name": True, "ser_json_by_alias": True}
-
-
-class GenerateSource(BaseModel):
-    url: str
-    title: str | None = None
-    entity: str | None = None
-    crawl_type: str | None = Field(None, alias="crawlType")
-    kind: str | None = None
-    page_id: str | None = Field(None, alias="pageId")
-    source_digest: str | None = Field(
-        None, alias="sourceDigest", pattern=r"^[0-9a-f]{64}$"
-    )
-
-    model_config = {"populate_by_name": True, "ser_json_by_alias": True}
 
 class ProducerCapabilities(BaseModel):
     """Library capability advertisement. Generate versions/stages stay empty."""

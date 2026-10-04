@@ -160,3 +160,27 @@ def test_an_empty_request_is_refused():
         VerifyQuotesRequest(runId="run-1", quotes=[])
     with pytest.raises(ValidationError):
         VerifyQuotesRequest(runId="run-1", quotes=[{"pageId": "p", "quote": ""}])
+
+
+@pytest.mark.asyncio
+async def test_a_quote_cut_by_the_csharp_projection_from_a_row_with_empty_cells_is_found(
+    monkeypatch,
+):
+    """F-R10 through the route: C# drops empty cells (`A | B`), Python keeps them (`A |  | B`)."""
+    page = _page(blocks=[{"kind": "row", "cells": ["AI invoice capture", "", "", "Included on Plus"]}])
+    _wire(monkeypatch, {"page-1": page})
+
+    out = await verify_quotes(_request(("page-1", "AI invoice capture | Included on Plus")))
+
+    assert out.results[0].found is True
+
+
+@pytest.mark.asyncio
+async def test_a_page_without_content_html_has_no_source_digest(monkeypatch):
+    """One definition, sha256(contentHtml). There is no fallback to the raw html."""
+    _wire(monkeypatch, {"page-1": _page(content_html=None, html="<html>raw</html>")})
+
+    out = await verify_quotes(_request(("page-1", "Pay vendors by ACH, card or check.")))
+
+    assert out.results[0].found is True
+    assert out.results[0].source_digest is None

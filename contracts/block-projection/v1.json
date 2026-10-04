@@ -1,0 +1,216 @@
+{
+  "$comment": "F-R10. The same blocks through both block->text projections: Geek-Crawler-Rag block_text.render_block_text (Python, `python`) and GeekAPI GccCorpusBlockMapper.MapBlocks (C#, `csharp`). Where `differs` is null the two must be byte-equal and `csharp` is omitted. Where it is set, the difference is one of exactly two kinds, both present in the corpus on 2026-10-04 (36,090 rows with empty cells; 28 prose blocks with escaped markup), and POST /v1/verify normalises exactly those (citation_verify.verify_quote). Each repo's test pins its own projection against its own copy; the cross-repo workflow requires the two copies to be byte-identical. Cases are single runs of blocks that C# turns into paragraphs; headings are omitted because C# emits no paragraph for them.",
+  "version": 1,
+  "cases": [
+    {
+      "name": "paragraph",
+      "blocks": [
+        {
+          "kind": "paragraph",
+          "text": "Ramp bill pay sends vendor payments by ACH, card or check."
+        }
+      ],
+      "python": [
+        "Ramp bill pay sends vendor payments by ACH, card or check."
+      ],
+      "differs": null
+    },
+    {
+      "name": "curly quotes, apostrophe and dash are left as the page has them",
+      "blocks": [
+        {
+          "kind": "paragraph",
+          "text": "Ramp’s “Bill Pay” — one approval queue for every vendor."
+        }
+      ],
+      "python": [
+        "Ramp’s “Bill Pay” — one approval queue for every vendor."
+      ],
+      "differs": null
+    },
+    {
+      "name": "edge whitespace is trimmed by both",
+      "blocks": [
+        {
+          "kind": "paragraph",
+          "text": "  Approvers release each payment.  "
+        }
+      ],
+      "python": [
+        "Approvers release each payment."
+      ],
+      "differs": null
+    },
+    {
+      "name": "ordered list items",
+      "blocks": [
+        {
+          "kind": "listItem",
+          "ordered": true,
+          "text": "Upload the invoice."
+        },
+        {
+          "kind": "listItem",
+          "ordered": true,
+          "text": "Approve it."
+        }
+      ],
+      "python": [
+        "Upload the invoice.",
+        "Approve it."
+      ],
+      "differs": null
+    },
+    {
+      "name": "quote",
+      "blocks": [
+        {
+          "kind": "quote",
+          "text": "We closed the books eight days faster."
+        }
+      ],
+      "python": [
+        "We closed the books eight days faster."
+      ],
+      "differs": null
+    },
+    {
+      "name": "code",
+      "blocks": [
+        {
+          "kind": "code",
+          "text": "curl -H 'Authorization: Bearer <token>' https://api.ramp.com/v1/bills"
+        }
+      ],
+      "python": [
+        "curl -H 'Authorization: Bearer <token>' https://api.ramp.com/v1/bills"
+      ],
+      "differs": null
+    },
+    {
+      "name": "term and definition",
+      "blocks": [
+        {
+          "kind": "term",
+          "text": "Three-way match"
+        },
+        {
+          "kind": "definition",
+          "text": "Matching the purchase order, receipt and invoice before payment."
+        }
+      ],
+      "python": [
+        "Three-way match",
+        "Matching the purchase order, receipt and invoice before payment."
+      ],
+      "differs": null
+    },
+    {
+      "name": "row with every cell filled",
+      "blocks": [
+        {
+          "kind": "row",
+          "cells": [
+            "Plus",
+            "$15/month"
+          ]
+        }
+      ],
+      "python": [
+        "Plus | $15/month"
+      ],
+      "differs": null
+    },
+    {
+      "name": "row with empty cells between filled ones",
+      "blocks": [
+        {
+          "kind": "row",
+          "cells": [
+            "AI parsing engine",
+            "",
+            "",
+            "Yes"
+          ]
+        }
+      ],
+      "python": [
+        "AI parsing engine |  |  | Yes"
+      ],
+      "differs": "empty-cells",
+      "csharp": [
+        "AI parsing engine | Yes"
+      ]
+    },
+    {
+      "name": "row with trailing empty cells",
+      "blocks": [
+        {
+          "kind": "row",
+          "cells": [
+            "AI parsing engine",
+            "",
+            "",
+            "",
+            ""
+          ]
+        }
+      ],
+      "python": [
+        "AI parsing engine |  |  |  | "
+      ],
+      "differs": "empty-cells",
+      "csharp": [
+        "AI parsing engine"
+      ]
+    },
+    {
+      "name": "escaped ampersand in prose",
+      "blocks": [
+        {
+          "kind": "paragraph",
+          "text": "Spend u0026 Category Savings u0026 ROI for every sourcing team"
+        }
+      ],
+      "python": [
+        "Spend & Category Savings & ROI for every sourcing team"
+      ],
+      "differs": "escaped-markup",
+      "csharp": [
+        "Spend u0026 Category Savings u0026 ROI for every sourcing team"
+      ]
+    },
+    {
+      "name": "escaped anchor in prose",
+      "blocks": [
+        {
+          "kind": "paragraph",
+          "text": "Click here u003ca href=u0022#videou0022u003eVideo u003c/au003e to see approvals"
+        }
+      ],
+      "python": [
+        "Click here Video to see approvals"
+      ],
+      "differs": "escaped-markup",
+      "csharp": [
+        "Click here u003ca href=u0022#videou0022u003eVideo u003c/au003e to see approvals"
+      ]
+    },
+    {
+      "name": "escaped ampersand with a backslash",
+      "blocks": [
+        {
+          "kind": "paragraph",
+          "text": "Terms \\u0026 Conditions apply to every card program"
+        }
+      ],
+      "python": [
+        "Terms & Conditions apply to every card program"
+      ],
+      "differs": "escaped-markup",
+      "csharp": [
+        "Terms \\u0026 Conditions apply to every card program"
+      ]
+    }
+  ]
+}

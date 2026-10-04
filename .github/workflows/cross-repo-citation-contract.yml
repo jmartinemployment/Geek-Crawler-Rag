@@ -87,7 +87,8 @@ jobs:
             --configuration Release --list-tests --nologo)"
           status=0
           for cls in HttpGeekCrawlerRagClientTests GccV2GeekCrawlerResearchResolverTests \
-                     RagIndexStatusWebhookContractTests PatchRagIndexStatusHopTests; do
+                     RagIndexStatusWebhookContractTests PatchRagIndexStatusHopTests \
+                     GccCorpusBlockProjectionContractTests; do
             if ! grep -q "$cls" <<<"$listed"; then
               echo "::error::$cls matches no test in GeekBackend.Tests. It was renamed, moved or \
           deleted, and the --filter below would have passed silently."
@@ -101,7 +102,7 @@ jobs:
           dotnet test GeekBackend.Tests/GeekBackend.Tests.csproj
           --configuration Release
           --filter
-          "FullyQualifiedName~HttpGeekCrawlerRagClientTests|FullyQualifiedName~GccV2GeekCrawlerResearchResolverTests|FullyQualifiedName~RagIndexStatusWebhookContractTests|FullyQualifiedName~PatchRagIndexStatusHopTests"
+          "FullyQualifiedName~HttpGeekCrawlerRagClientTests|FullyQualifiedName~GccV2GeekCrawlerResearchResolverTests|FullyQualifiedName~RagIndexStatusWebhookContractTests|FullyQualifiedName~PatchRagIndexStatusHopTests|FullyQualifiedName~GccCorpusBlockProjectionContractTests"
       - name: Run deterministic cross-service protocol tests
         working-directory: GeekBackend
         run: >-
@@ -208,6 +209,17 @@ jobs:
           python3 Geek-Crawler-Rag/scripts/compare_webhook_contract.py \
             Geek-Crawler-Rag/contracts/rag-index-status/webhook.v1.json \
             GeekBackend/contracts/rag-index-status/webhook.v1.json
+      # F-R10. GeekAPI's C# block projection and this repo's Python one are each pinned to their
+      # own copy of one fixture (tests/test_block_projection_contract.py and
+      # GccCorpusBlockProjectionContractTests.cs). Byte-identical, not field-compared: the fixture's
+      # blocks and expected strings are the whole contract, so any edit to one copy is a contract
+      # change that has to land in both.
+      - name: Compare the two copies of the block-projection fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmp Geek-Crawler-Rag/contracts/block-projection/v1.json \
+            GeekBackend/contracts/block-projection/v1.json
 
   creator-deterministic:
     name: Creator deterministic

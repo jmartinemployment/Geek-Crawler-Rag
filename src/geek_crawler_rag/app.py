@@ -88,7 +88,7 @@ from geek_crawler_rag.models import (
     VerifyQuotesRequest,
     VerifyQuotesResponse,
 )
-from geek_crawler_rag.citation_verify import quote_in_text
+from geek_crawler_rag.citation_verify import verify_quote
 from geek_crawler_rag.llama_nodes import page_source_digest
 from geek_crawler_rag.mongo import CrawlPage, MongoCorpus
 from geek_crawler_rag.qdrant_store import QdrantStore
@@ -736,11 +736,18 @@ async def get_page_text_by_url(
 async def verify_quotes(body: VerifyQuotesRequest) -> VerifyQuotesResponse:
     """Is each quote on its page? The only place that question is answered.
 
-    `quote_in_text` against the same block projection the chunker embeds, so a quote cut from a
-    retrieved passage is checked against the text that passage came from. GeekAPI's verify pass
-    used to fetch text from ``GET /v1/pages/{id}`` and compare with its own case-insensitive
-    ``IndexOf``: two rules for one question, which disagree on whitespace. Callers send the quote
-    here instead and keep no comparison of their own.
+    **`found` is the only verdict.** A caller acts on `found` and on nothing else. `reason` says why
+    a quote was not found; `sourceDigest` (sha256 of the page's `contentHtml`, the value stamped on
+    every point cut from the page) identifies which page version was read. Neither is a verdict,
+    and a caller must not compare digests, re-fetch the page or match the quote itself to reach or
+    override one: a second comparison is a second rule, and two rules disagree.
+
+    `verify_quote` against the same block projection the chunker embeds, so a quote cut from a
+    retrieved passage is checked against the text that passage came from. It normalises exactly
+    the two places where GeekAPI's C# block projection differs from this one (F-R10, see
+    `citation_verify`), and nothing more. GeekAPI's verify pass used to fetch text from
+    ``GET /v1/pages/{id}`` and compare with its own case-insensitive ``IndexOf``: two rules for one
+    question, which disagree on whitespace.
 
     Fail closed per item: a page that is missing, outside this run, empty or not citable answers
     ``found: false`` with the reason. Nothing is ever reported found without being compared.
@@ -763,7 +770,7 @@ async def verify_quotes(body: VerifyQuotesRequest) -> VerifyQuotesResponse:
                 )
             )
             continue
-        found = quote_in_text(item.quote, text, page.blocks)
+        found = verify_quote(item.quote, text, page.blocks)
         results.append(
             QuoteVerdict(
                 page_id=item.page_id,

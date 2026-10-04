@@ -28,16 +28,19 @@ from geek_crawler_rag.mongo import CrawlPage
 from geek_crawler_rag.qdrant_store import point_id
 
 
-def page_source_digest(page: CrawlPage) -> str:
-    """The one definition of a page's `sourceDigest`.
+def page_source_digest(page: CrawlPage) -> str | None:
+    """The one definition of a page's `sourceDigest`: sha256 of its `contentHtml`.
 
-    Stamped on every point at index time and answered by `POST /v1/verify`, so a caller holding a
-    passage can tell whether the page it was cut from is the page a quote was verified against.
-    Two definitions of this value existed before this function did.
+    Stamped on every point at index time and returned by `POST /v1/verify`, so a passage and a
+    verdict can be matched to the same page version. It is identification, never a verdict.
+
+    None when the page has no `contentHtml`. It used to fall back to the raw `html`, which made the
+    value mean two different things depending on the page; a page without the clean fragment has
+    no sourceDigest rather than one computed from something else.
     """
-    return hashlib.sha256(
-        (page.content_html or page.html or "").encode("utf-8")
-    ).hexdigest()
+    if not page.content_html:
+        return None
+    return hashlib.sha256(page.content_html.encode("utf-8")).hexdigest()
 
 
 def text_digest(embed_text: str) -> str:
@@ -198,7 +201,7 @@ def page_to_nodes(
 def _node(
     *,
     run_id: str,
-    source_digest: str,
+    source_digest: str | None,
     crawl_type: str,
     host: str,
     page: CrawlPage,
