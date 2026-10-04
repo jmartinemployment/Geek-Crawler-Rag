@@ -36,20 +36,6 @@ class Settings(BaseSettings):
     # does need backpressure - it just is not paid by default any more.
     qdrant_upsert_delay_seconds: float = 0.0
 
-    # Hybrid retrieval over the named sparse vector.
-    #
-    # On. The precondition it guards is met by construction rather than by backfill: the collection
-    # is created with both vectors (QdrantStore.ensure_collection) and every chunk indexed into it
-    # gets SPLADE weights at write time, so there is no window in which the sparse branch queries
-    # values nothing wrote. That window is what this flag was false for.
-    #
-    # It stays a setting because the guarantee is per collection, not per deploy. Pointed at a
-    # collection created before the unified schema -- one with no "text-sparse" vector, or with the
-    # vector but unpopulated points -- a hybrid query errors, and _query_hybrid converts that into
-    # chunks=[] on HTTP 200, an empty corpus the writer cannot tell from a real one. Set
-    # HYBRID_RETRIEVAL_ENABLED=false to fall back to dense without a deploy.
-    hybrid_retrieval_enabled: bool = True
-
     # Sparse model for the hybrid branch. One setting because three places have to agree:
     # llama_engine encodes queries with it, scripts/migrate_sparse_vectors.py encodes the backfill
     # with it, and the indexer encodes new chunks with it. Two different sparse models produce

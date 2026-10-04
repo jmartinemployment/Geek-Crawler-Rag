@@ -92,7 +92,6 @@ class LlamaIndexEngine:
             client_kwargs["api_key"] = settings.qdrant_api_key
         self._client = QdrantClient(**client_kwargs)
         self._aclient = AsyncQdrantClient(**client_kwargs)
-        self._hybrid_enabled = settings.hybrid_retrieval_enabled
         # Both sparse encoders are passed explicitly, and that is load-bearing rather than tidy.
         # QdrantVectorStore only picks its own encoder when these are None, and its pick is decided
         # by use_old_sparse_encoder(), which returns True for a collection carrying a vector named
@@ -101,17 +100,13 @@ class LlamaIndexEngine:
         # vocabularies, so that mismatch raises nothing: it scores query terms against an index
         # built from other terms and returns plausible, wrong passages. Passing both functions keeps
         # index time, query time and the migration on the one model in settings.sparse_model.
-        sparse_encoder = (
-            fastembed_sparse_encoder(model_name=settings.sparse_model)
-            if self._hybrid_enabled
-            else None
-        )
+        sparse_encoder = fastembed_sparse_encoder(model_name=settings.sparse_model)
         self._vector_store = QdrantVectorStore(
             client=self._client,
             aclient=self._aclient,
             collection_name=settings.qdrant_collection,
             batch_size=settings.embed_batch_size,
-            enable_hybrid=self._hybrid_enabled,
+            enable_hybrid=True,
             sparse_vector_name=SPARSE_VECTOR_NAME,
             sparse_doc_fn=sparse_encoder,
             sparse_query_fn=sparse_encoder,
@@ -429,20 +424,16 @@ class LlamaIndexEngine:
             categories=categories,
             min_quality=min_quality,
         )
-        # HYBRID only when the sparse vector is actually populated. VectorStoreQueryMode.HYBRID
-        # against a collection whose points carry no sparse values is not a no-op -- it is an error
-        # the caller sees as an empty corpus.
+        # Hybrid, always: dense vectors plus the sparse BM25 channel, which is the ranked keyword
+        # search. There is no dense-only mode to fall back to. A collection without the sparse
+        # vector is refused at startup (QdrantStore schema check), so no query reaches one.
         result = await self._vector_store.aquery(
             VectorStoreQuery(
                 query_embedding=query_embedding,
                 similarity_top_k=top_k,
                 filters=filters,
-                mode=(
-                    VectorStoreQueryMode.HYBRID
-                    if self._hybrid_enabled
-                    else VectorStoreQueryMode.DEFAULT
-                ),
-                sparse_top_k=top_k if self._hybrid_enabled else None,
+                mode=VectorStoreQueryMode.HYBRID,
+                sparse_top_k=top_k,
             )
         )
         nodes = list(result.nodes or [])
