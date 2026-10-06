@@ -17,28 +17,64 @@ Hostinger VPS `root@2.24.101.90` (key `~/.ssh/hostinger_rag_ed25519`); the live 
 **Pushing to `main` deploys** (build → GHCR → VPS) and recreates the API container, which kills any
 index job in flight. There are no branches.
 
-## 2. Rules that shape the work (Jeff's, this week)
+## 2. Rules that shape the work, by where each came from
 
-- **Indexing a run replaces it; it never merges.** Every attempt deletes the run's points, then
-  writes the run whole. There is no resume. "Never have two URLs the same." (2026-10-04)
-- **Hybrid always.** Retrieval is dense + sparse BM25 in one Qdrant query; there is no dense-only mode
-  and no setting to make one.
-- **Re-index only per R1:** one run at a time, only runs a saved project declares, each checked at
-  `GET /v1/index/{run_id}` before the next is posted. **Jeff queues sites himself.** Never the corpus,
-  never several at once, never the `requeue-stranded.sh` cron. (A 62-run re-index was queued on
-  2026-10-04 and killed; do not repeat it.)
-- **No push while any index job is pending or running.** Check `rag_index_jobs` first (§6).
-- **Do not touch the production scheduler.** It is on (`INDEX_SCHEDULER_ENABLED: "true"` in the VPS
-  compose); the repo default is off. Turning it off is Jeff's change.
-- **Every measurement asks what GeekAPI asks:** `GccGroundingResolver.BuildNeed` in GeekBackend —
-  the topic's keyword (whole string if no `descriptor: keyword` colon), trimmed, capped at 150, then
-  `" -- the cost, delay and error rate of the manual or status-quo way, the capability that removes
-  it, and measured outcomes"`, `topK` 32, `crawlType` `partner`. Never the bare keyword.
-- **Do exactly what was asked.** When a plan or a measurement suggests more, report and ask. Do not
-  override a recorded plan decision on your own judgement.
-- **Fail closed, no fallbacks, no Markdown** (CLAUDE.md §1a, §2). Commit to `main`.
-- **One session per repository** (content-creator-v2 `AGENTS.md`). A contract change is committed on
-  both sides together (the plan accepts that); otherwise read other repos, do not change them.
+**Jeff, in the 2026-10-04 session (his words quoted).**
+
+1. **Indexing a run replaces it; it never merges.** Every attempt deletes the run's points, then
+   writes the run whole. There is no resume. *"Never have two URLs the same, delete or update as
+   appropriate. RAG Indexing seems to me as a delete."*
+2. **Hybrid always.** *"HYBRID ALWAYS?"* Retrieval is dense + sparse BM25 in one Qdrant query; there
+   is no dense-only mode and no setting to make one. Consequences: production already ran hybrid, so
+   results did not change; what changed is that there is no switch to degrade to meaning-only search.
+   If the sparse half breaks (its model fails to load, or the collection lacks the `text-sparse`
+   vector), queries fail with `retrieval="error"` -- or the service refuses to start -- instead of
+   quietly answering with half the signal. The fix is then to repair the sparse half, not flip a flag.
+3. **Jeff queues re-indexes himself, one site at a time.** *"I will queue sites to be re-index as i
+   need them no shotgun approach."* (A 62-run re-index was queued and killed; do not repeat it.)
+
+**The plans writer's instruction list (2026-10-04, relayed by Jeff).**
+
+4. Re-index only by R1's rule: one run at a time, only runs a saved project declares, each checked at
+   `GET /v1/index/{run_id}` before the next is posted. Never the corpus, never the
+   `requeue-stranded.sh` cron.
+5. No push while any index job is pending or running. Check `rag_index_jobs` first (§6).
+6. **Do not touch the production scheduler** (`INDEX_SCHEDULER_ENABLED: "true"` in the VPS compose;
+   the repo default is off). It is not a benign switch:
+   - It is the only automatic catch-up for a lost enqueue. GeekAPI's `POST /v1/index` fails closed and
+     only logs when the Library is down; on 2026-09-24 eleven crawls completed that way unindexed.
+     Every 5 minutes the scheduler picks the oldest content-ready run with no job row and indexes it.
+     Off, such a run stays unindexed until someone re-posts it.
+   - It also re-picks a run whose job was SIGKILLed once the lease lapses (bounded by
+     `INDEX_SCHEDULER_MAX_ATTEMPTS`). A graceful stop marks the job `failed`, which it skips.
+   - It does not re-index a run that already has a `complete`/`failed`/`skipped` row. But deleting a
+     run's job row (`DELETE /v1/index/runs/{id}`) makes that run a candidate again within 5 minutes.
+   - Changing the env flag means editing the VPS compose and recreating the container, which kills
+     any job in flight. The functional method already exists and needs no restart:
+     `POST /v1/index-scheduler/pause` with a reason (persisted in Mongo, shown by
+     `GET /v1/index-scheduler`) and `POST /v1/index-scheduler/resume`. If it is ever stopped, use
+     that -- and only on Jeff's word.
+7. **Measurements ask what GeekAPI asks.** This is a testing rule, not an app requirement; it changes
+   nothing in the app. GeekAPI sends `GccGroundingResolver.BuildNeed` -- the keyword (whole topic if
+   no `descriptor: keyword` colon), trimmed, capped at 150, then `" -- the cost, delay and error rate
+   of the manual or status-quo way, the capability that removes it, and measured outcomes"`, `topK`
+   32, `crawlType` `partner`. Measuring the bare keyword measures a question the app never sends, and
+   the answers differ (Ramp, "Automated Payment Execution": 26 distinct pages bare, 20 with
+   `BuildNeed`). Copy the text from the current GeekBackend code; if `BuildNeed` changes, the
+   measurement follows it.
+8. Commit to `main`. No branches.
+
+**The session's own inference, not stated as a rule.**
+
+9. Do exactly what was asked; when a plan or a measurement suggests more, report and ask. Do not
+   override a recorded plan decision on your own judgement. (Drawn from Jeff stopping the
+   corpus-wide re-index and the D15 exchange.)
+
+**Standing rules, older than this week.**
+
+10. Fail closed, no fallbacks, no Markdown -- `CLAUDE.md` §1a, §2.
+11. One session per repository -- content-creator-v2 `AGENTS.md`. A contract change is committed on
+    both sides together (the plan accepts that); otherwise read other repos, do not change them.
 
 ## 3. What is deployed right now
 
