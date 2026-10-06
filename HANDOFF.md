@@ -1,10 +1,28 @@
 # Handoff — Geek-Crawler-Rag, 2026-10-06
 
-For whoever picks this repository up next. Checked on 2026-10-06 against the repository, the VPS
+> **Read first — retrieval has never been hybrid in production (found 2026-10-06, not fixed).**
+> `llama_engine.dense_query` builds `VectorStoreQuery(query_embedding=…, mode=HYBRID, …)` with no
+> `query_str`. LlamaIndex's `QdrantVectorStore.aquery` takes its hybrid branch only when
+> `query.query_str is not None` (installed `llama_index/vector_stores/qdrant/base.py`, the
+> `elif query.mode == HYBRID and … and query.query_str is not None` branch); otherwise it falls
+> through to `elif self.enable_hybrid:  # search for dense vectors only`. So every query has run on
+> the dense (meaning) half alone while reporting `retrieval="llamaindex-hybrid"`. The keyword
+> (BM25 sparse) half has never run at query time. Found by the hybrid half logging in `2cd443f`: a
+> live query produced no `hybrid_halves` line at all, because the fusion is never called.
+> `tests/test_hybrid_sparse_retrieval.py` passes because it calls the store directly with
+> `query_str="Dext"`, not through `dense_query`.
+> **Consequences:** D15's premise ("the dense list is already a dense-plus-sparse hybrid") was false
+> in practice; R2's before/after (identical) was measured on dense-only retrieval; the only keyword
+> signal left in a query is the in-process BM25 re-rank over the dense candidates.
+> **The fix is one argument** (`query_str=need` in `dense_query`) plus a test that goes through
+> `dense_query`. It changes retrieval, so it is **Jeff's decision**; after it, re-run the R2
+> questions on Ramp `4563f7ec` with `BuildNeed` text and expect `hybrid_halves` lines in the log.
+
+For whoever picks this repository up next. Checked on 2026-10-06 against the repositories, the VPS
 and live Mongo/Qdrant; where something was not checked, it says so. Authority for rules is
-`/Users/jeffmartin/development/.claude/CLAUDE.md`; the plan is
-`content-creator-v2/plans/fix-geek-crawler-rag.md` (read its **Status** section first, then the
-stages). This file says where things stand and what to do next.
+`/Users/jeffmartin/development/.claude/CLAUDE.md`. The plan is in `content-creator-v2/plans/`:
+`fix-overview.md` (rules, decisions, wave order) and `fix-geek-crawler-rag.md` (this repo's stages;
+read its **Status** section first). This file says where things stand and what to do next.
 
 ## 1. What this repository is
 
@@ -19,108 +37,122 @@ index job in flight. There are no branches.
 
 ## 2. Rules that shape the work, by where each came from
 
-**Jeff, in the 2026-10-04 session (his words quoted).**
+**Jeff, in the 2026-10-04 and 2026-10-06 sessions (his words quoted).**
 
 1. **Indexing a run replaces it; it never merges.** Every attempt deletes the run's points, then
    writes the run whole. There is no resume. *"Never have two URLs the same, delete or update as
    appropriate. RAG Indexing seems to me as a delete."*
-2. **Hybrid always.** *"HYBRID ALWAYS?"* Retrieval is dense + sparse BM25 in one Qdrant query; there
-   is no dense-only mode and no setting to make one. Consequences: production already ran hybrid, so
-   results did not change; what changed is that there is no switch to degrade to meaning-only search.
-   If the sparse half breaks (its model fails to load, or the collection lacks the `text-sparse`
-   vector), queries fail with `retrieval="error"` -- or the service refuses to start -- instead of
-   quietly answering with half the signal. The fix is then to repair the sparse half, not flip a flag.
-3. **Jeff queues re-indexes himself, one site at a time.** *"I will queue sites to be re-index as i
-   need them no shotgun approach."* (A 62-run re-index was queued and killed; do not repeat it.)
+2. **Hybrid always.** *"HYBRID ALWAYS?"* Retrieval is dense (meaning) + sparse BM25 (keyword) in one
+   Qdrant query; there is no dense-only mode and no setting to make one. **But see the box at the
+   top: the query omits `query_str`, so LlamaIndex has been running dense-only regardless.** The
+   setting is gone; the hybrid query itself still has to be fixed to honour this rule.
+3. **Log before any fallback, so a failure can be fully understood** (2026-10-06). Every failure
+   path of hybrid retrieval is logged, including the silent one where a half returns nothing (§8).
+   Nothing may ever be built that degrades a path without first logging what failed.
+4. **Jeff queues re-indexes himself, one site at a time.** *"I will queue sites to be re-index as i
+   need them no shotgun approach."* (A 62-run re-index was queued on 2026-10-04 and killed.)
+5. **The scheduler stays on** (2026-10-06: "put scheduler default back on"). It is the only automatic
+   catch-up when GeekAPI's index enqueue is lost (GeekAPI fails closed and only logs; on 2026-09-24
+   eleven crawls completed unindexed that way). Every 300s it indexes the oldest content-ready run
+   that has no job row. It also re-picks a SIGKILLed job once its lease lapses (bounded by
+   `INDEX_SCHEDULER_MAX_ATTEMPTS`); it skips any run with a `complete`/`failed`/`skipped` row. Note:
+   deleting a run's job row (`DELETE /v1/index/runs/{id}`) makes that run a candidate again within 5
+   minutes. It defaults on in `config.py` and the repo compose, and production sets it on. **If it
+   is ever to be stopped, that is Jeff's call, and the method is `POST /v1/index-scheduler/pause`
+   with a reason** (recorded in Mongo, shown by `GET /v1/index-scheduler`, undone by `/resume`, no
+   restart). Editing the env flag recreates the container and kills any job in flight.
 
 **The plans writer's instruction list (2026-10-04, relayed by Jeff).**
 
-4. Re-index only by R1's rule: one run at a time, only runs a saved project declares, each checked at
-   `GET /v1/index/{run_id}` before the next is posted. Never the corpus, never the
-   `requeue-stranded.sh` cron.
-5. No push while any index job is pending or running. Check `rag_index_jobs` first (§6).
-6. **Do not touch the production scheduler** (`INDEX_SCHEDULER_ENABLED: "true"` in the VPS compose;
-   the repo default is off). It is not a benign switch:
-   - It is the only automatic catch-up for a lost enqueue. GeekAPI's `POST /v1/index` fails closed and
-     only logs when the Library is down; on 2026-09-24 eleven crawls completed that way unindexed.
-     Every 5 minutes the scheduler picks the oldest content-ready run with no job row and indexes it.
-     Off, such a run stays unindexed until someone re-posts it.
-   - It also re-picks a run whose job was SIGKILLed once the lease lapses (bounded by
-     `INDEX_SCHEDULER_MAX_ATTEMPTS`). A graceful stop marks the job `failed`, which it skips.
-   - It does not re-index a run that already has a `complete`/`failed`/`skipped` row. But deleting a
-     run's job row (`DELETE /v1/index/runs/{id}`) makes that run a candidate again within 5 minutes.
-   - Changing the env flag means editing the VPS compose and recreating the container, which kills
-     any job in flight. The functional method already exists and needs no restart:
-     `POST /v1/index-scheduler/pause` with a reason (persisted in Mongo, shown by
-     `GET /v1/index-scheduler`) and `POST /v1/index-scheduler/resume`. If it is ever stopped, use
-     that -- and only on Jeff's word.
-7. **Measurements ask what GeekAPI asks.** This is a testing rule, not an app requirement; it changes
-   nothing in the app. GeekAPI sends `GccGroundingResolver.BuildNeed` -- the keyword (whole topic if
-   no `descriptor: keyword` colon), trimmed, capped at 150, then `" -- the cost, delay and error rate
-   of the manual or status-quo way, the capability that removes it, and measured outcomes"`, `topK`
-   32, `crawlType` `partner`. Measuring the bare keyword measures a question the app never sends, and
-   the answers differ (Ramp, "Automated Payment Execution": 26 distinct pages bare, 20 with
-   `BuildNeed`). Copy the text from the current GeekBackend code; if `BuildNeed` changes, the
-   measurement follows it.
-8. Commit to `main`. No branches.
+6. Re-index only by R1's rule: one run at a time, only runs a saved project declares, each checked at
+   `GET /v1/index/{run_id}` before the next is posted. Never the corpus, never several at once,
+   never the `requeue-stranded.sh` cron.
+7. No push while any index job is pending or running. Check `rag_index_jobs` first (§6).
+8. Do not touch the production scheduler (see 5).
+9. **Measurements ask what GeekAPI asks.** A testing rule, not an app requirement; it changes nothing
+   in the app. GeekAPI sends `GccGroundingResolver.BuildNeed` — the keyword (whole topic if no
+   `descriptor: keyword` colon), trimmed, capped at 150, then `" -- the cost, delay and error rate of
+   the manual or status-quo way, the capability that removes it, and measured outcomes"`, `topK` 32,
+   `crawlType` `partner`. The bare keyword is a question the app never sends, and answers differ
+   (Ramp, "Automated Payment Execution": 26 distinct pages bare, 20 with `BuildNeed`). Copy the text
+   from the current GeekBackend code; if `BuildNeed` changes, the measurement follows it.
+10. Commit to `main`. No branches.
 
 **The session's own inference, not stated as a rule.**
 
-9. Do exactly what was asked; when a plan or a measurement suggests more, report and ask. Do not
-   override a recorded plan decision on your own judgement. (Drawn from Jeff stopping the
-   corpus-wide re-index and the D15 exchange.)
+11. Do exactly what was asked; when a plan or a measurement suggests more, report and ask. Do not
+    override a recorded plan decision on your own judgement.
 
 **Standing rules, older than this week.**
 
-10. Fail closed, no fallbacks, no Markdown -- `CLAUDE.md` §1a, §2.
-11. One session per repository -- content-creator-v2 `AGENTS.md`. A contract change is committed on
-    both sides together (the plan accepts that); otherwise read other repos, do not change them.
+12. Fail closed, no fallbacks, no Markdown — `CLAUDE.md` §1a, §2; `fix-overview.md` §0.
+13. One session per repository — content-creator-v2 `AGENTS.md`. Read other repos, change nothing
+    there. A contract change is committed on both sides together (the plan accepts that).
 
 ## 3. What is deployed right now
 
 | Repository | `main` | Deployed | Checked |
 |---|---|---|---|
-| Geek-Crawler-Rag | `5e622b6` | VPS, API container created 2026-10-04 14:58 UTC | 2026-10-06 |
-| GeekBackend | `5671288` (carries `1c553fc`, `a8e284d` from this work) | Railway, not checked from here | — |
-| content-creator-v2 | origin `67456d3`; local has 2 unpushed commits from another session | — | — |
+| Geek-Crawler-Rag | `2cd443f` (this file committed after, not pushed) | VPS, API container recreated 2026-10-06 10:24 UTC; startup logs `Hybrid retrieval: dense model=BAAI/bge-small-en-v1.5, sparse (BM25) model=Qdrant/bm25` | 2026-10-06 |
+| GeekBackend | `5671288`, working tree clean | Railway, not checked from here | 2026-10-06 |
+| content-creator-v2 | origin `67456d3`; 2 local unpushed commits from another session | — | — |
 
-Commits from this work, in order: `1a25095` (R1/R4/R5 first cut), `03b02c7` (always delete, resume
-removed, status round-trip fix), `529a5df` (hybrid always), `9a0c901` (R4 fixed, F-R10), `5e622b6`
-(R2, scroll deleted). GeekBackend `1c553fc` (webhook field `chunksSkippedRepeat`), `a8e284d` (C#
-half of the block-projection fixture). content-creator-v2 `9f41697` (the six re-indexed runs).
+This repo's commits this week, in order: `1a25095` (R1/R4/R5 first cut), `03b02c7` (always delete,
+resume removed, status round-trip fix), `529a5df` (hybrid always), `9a0c901` (R4 fixed, F-R10),
+`5e622b6` (R2, scroll deleted), `2cd443f` (scheduler default on, hybrid half logging). GeekBackend
+`1c553fc` (webhook field `chunksSkippedRepeat`), `a8e284d` (C# half of the block-projection
+fixture). content-creator-v2 `9f41697` (the six re-indexed runs, in the Rag plan's status).
 
-## 4. The plan's stages, as they actually stand
+## 4. This repo's stages (`fix-geek-crawler-rag.md`)
 
-| Stage | State |
-|---|---|
-| **R1** one point per distinct text per run | **Done.** `textDigest` on every point; `indexer._admit_page_nodes`; `chunksSkippedRepeat` in status and webhook. Done-when met on the old Ramp run (33,728 → 26,683 points). |
-| **R2** keyword scroll deleted (D15) | **Done** (`5e622b6`). Distinct pages before/after on the old Ramp run, with `BuildNeed` questions: 20/19/28/25/23 → identical. |
-| **R3** collapse before the cut; measure near-copies | **Not started. Wave 2 — held.** Earlier near-copy numbers used the bare keyword and do not count. |
-| **R4** verify route | **Code done** (`9a0c901`): one digest `sha256(contentHtml)` (`llama_nodes.page_source_digest`), `verify_citations` deleted, `found` documented as the only verdict, F-R10 fixture. **Done-when not met:** GeekAPI's A1 must call `/v1/verify` with no comparison of its own — not built (GeekBackend's). |
-| **R5** readiness fail-closed | **Done.** `POST /v1/index` and the scheduler's entrance refuse a run without `ContentReadyAt` (409, no job row). |
-| **R6** tests | Partial. Done: cross-page collapse, verify route, readiness, F-R10. Open: flooded-pool test. The "ranked lexical list" test is moot now the list is deleted (say so to the plan writer). |
-| **R7** README drift | Wave 3. One line changed early; memory limit, upsert delay and retry wording still disagree with code. |
+| Stage | Wave | State |
+|---|---|---|
+| **R1** one point per distinct text per run | 1 | **Done.** `textDigest` on every point; `indexer._admit_page_nodes`; `chunksSkippedRepeat` in status and webhook. Met on the old Ramp run (33,728 → 26,683 points). |
+| **R4** verify route | 1 | **Code done** (`9a0c901`): one digest `sha256(contentHtml)`, `verify_citations` deleted, `found` the only verdict, F-R10 fixture. **Done-when waits on GeekAPI A1 full** (Wave 2): its verify pass must call `/v1/verify` and keep no comparison of its own. |
+| **R5** readiness fail-closed | 1 | **Done.** `POST /v1/index` and the scheduler's entrance refuse a run without `ContentReadyAt` (409, no job row). Scheduler default: on (rule 5). |
+| **R2** keyword scroll deleted (D15) | 2 | **Done early** (`5e622b6`). Distinct pages before/after on the old Ramp run with `BuildNeed` questions: 20/19/28/25/23, identical — **measured on dense-only retrieval** (box at top); re-measure once hybrid actually runs. |
+| **R3** collapse before the cut; measure near-copies | 2 | **Not started. Held** for the Wave 1 proof. Earlier near-copy numbers used the bare keyword and do not count. |
+| **R6** tests | 2 | Partial. Done: cross-page collapse, verify route, readiness, F-R10, hybrid half logging. Open: the flooded-pool test. "Ranked lexical list" is moot now the list is deleted. |
+| **R7** README drift | 3 | Open. Memory limit, upsert delay and retry wording still disagree with code. |
 
-**The wave gate:** no wave's end-to-end proof has been run. The proof is one Generate on the
-Accounts Payable project, all seven live types, read by Jeff, every quote found on the page it cites.
-**Wave 2 (R3, the rest of R6) waits for it.**
+**The Rag plan's Status section is stale on R4:** it lists the three R4 defects as open; all three
+are fixed in `9a0c901`. It also predates `2cd443f` (scheduler on, logging). The plan writer owns it.
 
-**The plan's Status section is stale on R4:** it still lists the three R4 defects (two digests, no
-F-R10 proof, `verify_citations`) as open. All three are fixed in `9a0c901`. Tell the plan writer;
-the status section is theirs to update.
+## 5. Outstanding steps in the whole plan (`fix-overview.md` §4), as of 2026-10-06
 
-## 5. Corpus state (2026-10-06)
+Read from each project plan and the repos' logs on 2026-10-06. "Committed" means a commit names the
+stage; it does not mean its done-when was checked. Each plan's own status section is the authority.
 
-- 104 crawl runs. No index job pending or running.
-- Runs indexed on the current code (collapsed, every point has `textDigest`): ramp.com `4563f7ec`
-  (re-crawled 2026-10-05; 2,150 pages, 28,150 points, 7,339 repeats skipped), lightyear.cloud
-  `84f4f34f` (1,727 / 593), bill.com `e17ef3c0` (11,720 / 2,956), and the five surviving runs of the
-  six re-indexed on 2026-10-04 (airbase `c60dc645`, fnshiftsolutions `d880fb46`, highnote `324af3f2`,
-  dost `dbd75d19`, invoiced `67ac7054`; lightyear `44ba341c` from that list is superseded).
-  Runs crawled after `5e622b6` and indexed since are also collapsed; not enumerated here.
-- The old Ramp run `f8a3aa8c`, on which R1 and R2 were measured, **no longer exists**. Any further
-  Ramp measurement uses `4563f7ec`.
-- Older runs keep their duplicate points until Jeff re-queues them.
+**The gate, next.** Wave 1 is built in every project, and persistence P0 has shipped (GeekBackend
+`6bef275`…`aefc443`, `a2a559d`; frontend `HANDOFF.md`). **No wave's end-to-end proof has been run.**
+The proof: one Generate on the Accounts Payable project, all seven live types (five tool pages, a
+pillar, a blog, one cold email, one social piece, one image-prompt set, one ads set), or each refused
+by name; Jeff reads them; every quote on every page is found on the page it cites. **Nothing in Wave
+2 or later starts until Jeff has read it.**
+
+| Wave | Project | Stage | State |
+|---|---|---|---|
+| 1 | Rag | R1, R4, R5 | Built (R4's done-when waits on A1 full) |
+| 1 | Crawler-v2 | C1+C2, C3, C5 | Done (`195e2df`…`106b8b9`, `d8e4341`) |
+| 1 | GeekAPI | A1 interim, A2, A5, A6, A7, A16 | Committed (`185df80`, `aab048f`, `3087efa`, `2775051`, `8917237`, `ebbaea9`, `f420d7b`) |
+| 1 | GeekRepository | D1 | Committed (`db918bb`) |
+| 1 | Frontend | F4, F5, F6 | Done (`3b3134e`…`683f186`) |
+| **1** | **all** | **Accounts Payable Generate, read by Jeff** | **Not run** |
+| 2 | Rag | R3 (measure), R6 rest | Open (R2 done early) |
+| 2 | Crawler-v2 | C4; re-crawl ramp, bill, a third declared partner | C4 done early; ramp `4563f7ec`, bill `e17ef3c0`, lightyear `84f4f34f` re-crawled and indexed 2026-10-05. Open: the per-directory breakdown of `refused.directoryCap` needs a decision (ledger change) |
+| 2 | GeekAPI | **A1 full** (verify pass calls `/v1/verify`), A4, A13, A14 | A13 committed (`687242a`); A14 kept advisory (`ebbaea9`); **A1 full and A4 open** |
+| 2 | GeekRepository | D2, D3, D4 | D2 committed (`a117eec`); D3, D4 not found in the log |
+| 2 | Frontend | F2, F3 | Done early |
+| 3 | Rag | R7 | Open |
+| 3 | GeekAPI | A3, A8, A9, A10, A11, A12; also A17, A18, A19 | A11 partial (`5248c22`, latest-run read), A12 committed (`62efbad`); A3, A8, A9, A10, A17, A18, A19 not found in the log |
+| 3 | Frontend | F1; F7–F11 | F1 half done (second half needs A11); F7–F11 held, each needing a GeekAPI route that does not exist yet (frontend `HANDOFF.md` §5) |
+| 4 | GeekAPI | A15 (delete the dormant v2 cluster) | Open, last |
+| P1 | Persistence | GR4, GR5, GA3, GA4, GA5 | Open (`fix-project-persistence.md`) |
+| P2 | Persistence | GR6, GA6, GF5 (remove the create rows and routes) | Open, only after the report is empty and the proof is read |
+
+Also open, not in a wave: the GeekAPI plan's review items for A6 (figure grammar, strict-subset
+retry rule) and A13 (two types in parallel record only their own models) — check its status section
+before assuming them done.
 
 ## 6. How to check things
 
@@ -137,14 +169,16 @@ asyncio.run(m())
 EOF
 ```
 
-- One run's job: `GET /v1/index/{runId}` (header `X-API-Key: $API_KEY` inside the container; there is
-  no `curl` in the image — use `python -c` with `httpx`).
-- A run's points: Qdrant `count` with `runId` = run, and again with `textDigest` present; equal and
-  equal to `chunksUpserted` means it was rewritten whole on current code.
-- `uv run pytest` (≈494 tests). Cross-repo CI: `.github/workflows/cross-repo-citation-contract.yml`.
+- One run's job: `GET /v1/index/{runId}` (header `X-API-Key: $API_KEY` inside the container; the
+  image has no `curl` — use `python -c` with `httpx`).
+- A run's points: Qdrant `count` with `runId` = run, and again with `textDigest` present; both equal
+  to `chunksUpserted` means it was rewritten whole on current code.
+- Hybrid health: `docker compose logs api | grep -E "hybrid_halves|hybrid_half_empty"` (§8).
+- `uv run pytest` (≈497 tests). Cross-repo CI: `.github/workflows/cross-repo-citation-contract.yml`.
 - Do not print a range of the VPS compose: `MONGO_CRAWLER_URL` carries the Mongo password. Grep keys.
 - `docker compose exec -T` reads stdin: two in one ssh line and the second gets nothing. One per call.
 - A regex over `crawl_pages.Origin` scans the whole collection (minutes). Prefer `RunId`.
+- The GitHub API times out intermittently from here; re-list runs rather than trusting one watch.
 
 ## 7. Where the code is
 
@@ -152,39 +186,72 @@ EOF
 |---|---|
 | Index a run: delete, page loop, repeat collapse, readiness gate | `src/geek_crawler_rag/indexer.py` (`_index_run`, `_admit_page_nodes`, `readiness_refusal`) |
 | Chunks → nodes, `textDigest`, `sourceDigest` | `src/geek_crawler_rag/llama_nodes.py` (`text_digest`, `page_source_digest`) |
-| Embedding (dedupe within a flush, cross-run cache), hybrid query | `src/geek_crawler_rag/llama_engine.py` |
+| Embedding, hybrid query, hybrid half logging | `src/geek_crawler_rag/llama_engine.py` (`dense_query`, `logged_relative_score_fusion`) |
 | Query: hybrid candidates → BM25 re-rank → RRF → (Cohere off) → select | `src/geek_crawler_rag/query.py` |
 | Verify route, page reads, shared refusal helper | `src/geek_crawler_rag/app.py` (`verify_quotes`, `_citable_page_text`) |
 | Quote check and the F-R10 normalisation | `src/geek_crawler_rag/citation_verify.py` (`verify_quote`) |
 | Block → text, the one projection | `src/geek_crawler_rag/block_text.py` |
+| Scheduler, and its pause | `src/geek_crawler_rag/scheduler.py`; routes `/v1/index-scheduler*` in `app.py` |
 | Job rows (Mongo `rag_index_jobs`) | `src/geek_crawler_rag/status_store.py` |
 | Wire contracts, copied byte-identically into GeekBackend | `contracts/rag-index-status/webhook.v1.json`, `contracts/block-projection/v1.json` |
 
-## 8. Known and open
+## 8. Logging, and known gaps
 
-- **Cross-repo CI is red on four GeekBackend tests** (`RagClientContractTests` retry-model, 404s).
-  They failed before this work and are GeekBackend's.
-- **`diagnostics.py:629`** checks a caller-declared `sourceDigest` over a supplied document's text — a
+**What a hybrid failure leaves in the log (`2cd443f`):**
+
+| Failure | Log |
+|---|---|
+| Hybrid query raises (Qdrant down, keyword model error) | `Query failed for runId=…` with traceback (`query.py`); caller gets `retrieval="error"` |
+| **The hybrid branch is never taken (today, every query)** | **Nothing.** LlamaIndex's dense-only fall-through calls no fusion, so no `hybrid_*` line appears. The absence of `hybrid_halves` lines is the signal until the box at the top is fixed. |
+| One half returns nothing | `WARNING hybrid_half_empty runId=… dense=N sparse=0 fused=N -- this answer used the meaning half only` (or the keyword half, or neither). Ranking is unchanged; this only records it. |
+| Both halves answer | `INFO hybrid_halves runId=… dense=N sparse=N fused=N`, one line per query |
+| Keyword model fails to load | `Sparse (BM25 keyword) encoder failed to load model=… vector=…` with traceback, then startup stops |
+| Collection lacks the keyword vector, or it is not IDF | startup stops with a message naming it (`qdrant_store.py`) |
+| Keyword vectors fail while indexing | `Index failed for runId=…` with traceback; the job is `failed` with the error |
+
+At startup: `Hybrid retrieval: dense model=…, sparse (BM25) model=… on vector 'text-sparse'`.
+
+**Known and open.**
+- Cross-repo CI is red on four GeekBackend tests (`RagClientContractTests` retry-model, 404s). They
+  failed before this work and are GeekBackend's.
+- `diagnostics.py:629` checks a caller-declared `sourceDigest` over a supplied document's text — a
   second meaning of the name, for non-corpus documents. Left as is; flagged to the plan writer.
-- **`lexicalScore`** on `ChunkHit` is always null; kept because it is on the wire to GeekAPI.
-- **Curly vs straight quotes are not folded**, by instruction: both projections keep the page's
+- `lexicalScore` on `ChunkHit` is always null; kept because it is on the wire to GeekAPI.
+- Curly vs straight quotes are not folded, by instruction: both projections keep the page's
   characters. A model that straightens an apostrophe gets `found: false`.
-- **`CLAUDE.md` §1a** still names `mongo.find_smallest_content_ready_run`; the code is
+- `CLAUDE.md` §1a names `mongo.find_smallest_content_ready_run`; the code is
   `find_oldest_content_ready_run`.
-- **`plans/partner-evidence-reaches-the-writer.md`** is untracked here and is not this session's;
-  leave it to its author.
-- **Cohere rerank is off in production** (no key), so ranking is RRF over hybrid + BM25 (F-R7).
-- **Ramp's passages are mostly `/blog`** (21–27 of 32). Product pages were never fetched because of the
-  crawler's sitemap filter (Geek-Crawler-v2 Stage 2); a retrieval change cannot fix that.
+- `plans/partner-evidence-reaches-the-writer.md` is untracked here and not this session's.
+- Cohere rerank is off in production (no key), so ranking is RRF over hybrid + BM25 (F-R7).
+- Ramp's passages are mostly `/blog` (21–27 of 32) on the old run; the re-crawl (`4563f7ec`) follows
+  off-sitemap links (C1) and has not been measured.
 
-## 9. Pitfalls recorded this week
+## 9. Corpus state (2026-10-06)
 
-- **A claim read from code is not a fact about production.** Check Mongo/Qdrant/the VPS before saying
-  what happens there.
+- 104 crawl runs; no index job pending or running.
+- Collapsed on current code (every point carries `textDigest`): ramp.com `4563f7ec` (2,150 pages,
+  28,150 points, 7,339 repeats skipped), bill.com `e17ef3c0` (11,720 / 2,956), lightyear.cloud
+  `84f4f34f` (1,727 / 593), and from the 2026-10-04 six: airbase `c60dc645`, fnshiftsolutions
+  `d880fb46`, highnote `324af3f2`, dost `dbd75d19`, invoiced `67ac7054` (lightyear `44ba341c` is
+  superseded). Runs indexed after `03b02c7` are collapsed too; not enumerated here.
+- The old Ramp run `f8a3aa8c`, on which R1 and R2 were measured, no longer exists. Further Ramp
+  measurement uses `4563f7ec`.
+- Older runs keep their duplicate points until Jeff re-queues them.
+
+## 10. Pitfalls recorded this week
+
+- **A claim read from code is not a fact about production.** Check Mongo/Qdrant/the VPS first.
 - **Names hide behaviour.** `query.py` calls the hybrid query `dense_query` / `DenseRetriever`; the
   plan's audit missed that hybrid BM25 existed and decided to build a second keyword search.
+- **A document's claim spreads into a plan.** The README called the scheduler deprecated; the plan
+  took it as fact and R5 turned it off by default; nobody weighed what it does. Check the code.
 - **`attempt` rises on every claim**, including a re-post of a completed run. That is why the old
   "skip delete on attempt > 1" path merged instead of replacing; it is gone, do not bring it back.
 - **The job store reads fields back one by one** (`status_store._from_doc`); a new status field must
   be added there too. `test_the_job_store_reads_back_every_status_field` pins it.
+- **A test that calls the library directly proves the library, not our code.** The hybrid test
+  passed `query_str` to the store itself; `dense_query` never did, and production ran dense-only.
+  Test through the function production calls.
+- **A label is not evidence.** `retrieval="llamaindex-hybrid"` was stamped from the requested mode,
+  not from what ran. The log line is what showed the truth.
 - **zsh:** `echo ===` is command expansion and aborts the line.
