@@ -205,11 +205,14 @@ refuses a run with no `ContentReadyAt` (409, nothing queued) — the same readin
 candidate query filters on, checked by `IndexService.readiness_refusal` at both entrances before the
 claim, so a refused run leaves no job row.
 
-`INDEX_SCHEDULER_ENABLED` defaults to `false` in `config.py` and `deploy/hostinger-compose.yml`.
-**Production sets it `true`** in the box's own compose file (`/docker/geek-crawler-rag/docker-compose.yml`,
-not in git), checked 2026-10-04: the scheduler polls every 300s and logs `found no eligible
-content-ready run` when there is nothing to do. The repo default decides what a fresh deploy does;
-the box decides what production does. Check the box, not this file, before asserting either.
+`INDEX_SCHEDULER_ENABLED` defaults to `true` in `config.py` and `deploy/hostinger-compose.yml`, and
+production sets it `true` in the box's own compose file (`/docker/geek-crawler-rag/docker-compose.yml`,
+not in git). It is the only automatic catch-up for a lost enqueue: GeekAPI's `POST /v1/index` fails
+closed and only logs when the Library is unreachable, and every 300s the scheduler indexes the oldest
+content-ready run that has no job row. It logs `found no eligible content-ready run` when there is
+nothing to do. To stop it, use `POST /v1/index-scheduler/pause` with a reason (recorded in Mongo, no
+restart) and `/resume`; editing the flag means recreating the container, which kills any index job
+in flight.
 If it runs it costs embedding spend, not corpus — indexing is read-only (`indexer._skip_unusable`).
 
 When it runs, the scheduler persists its next due time in Mongo, takes an atomic lease, and chooses the
@@ -336,7 +339,7 @@ Live stack on KVM 2 (alongside Mongo):
 
 Caps: Qdrant `mem_limit: 3g`, `cpus: 0.5`, `MAX_SEARCH_THREADS=1`; API
 `mem_limit: 2g`. Corpus indexing pauses two seconds between Qdrant batches.
-The repo compose defaults the scheduler off; the box turns it on (see *Indexing trigger*).
+The scheduler is on in the repo compose and on the box (see *Indexing trigger*).
 Point `MONGO_CRAWLER_URL` at the existing Hostinger Mongo `geek_crawler` database. Normal indexing reads the corpus; controlled cleanup procedures may delete unusable crawl pages and related links.
 
 GeekAPI: set `GEEK_CRAWLER_RAG_URL` / optional `GEEK_CRAWLER_RAG_API_KEY`.

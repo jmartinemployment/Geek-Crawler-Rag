@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from contextvars import ContextVar
 from typing import Any
 
 from llama_index.core import Settings as LlamaSettings
@@ -15,9 +16,13 @@ from llama_index.core.vector_stores.types import (
     MetadataFilters,
     VectorStoreQuery,
     VectorStoreQueryMode,
+    VectorStoreQueryResult,
 )
 from llama_index.vector_stores.qdrant import QdrantVectorStore
-from llama_index.vector_stores.qdrant.utils import fastembed_sparse_encoder
+from llama_index.vector_stores.qdrant.utils import (
+    fastembed_sparse_encoder,
+    relative_score_fusion,
+)
 from qdrant_client import AsyncQdrantClient, QdrantClient
 
 from geek_crawler_rag.config import Settings
@@ -40,6 +45,50 @@ from geek_crawler_rag.embedding_batching import (
 )
 
 logger = logging.getLogger(__name__)
+
+# The runId of the hybrid query in flight, for the fusion log below. The fusion callback is called by
+# QdrantVectorStore with the two result sets only, so the run reaches it through the async context.
+_HYBRID_RUN_ID: ContextVar[str] = ContextVar("hybrid_run_id", default="")
+
+
+def logged_relative_score_fusion(
+    dense_result: VectorStoreQueryResult,
+    sparse_result: VectorStoreQueryResult,
+    alpha: float = 0.5,
+    top_k: int = 2,
+) -> VectorStoreQueryResult:
+    """LlamaIndex's own `relative_score_fusion`, unchanged, with each half's hit count logged.
+
+    A hybrid query runs a dense (meaning) search and a sparse BM25 (keyword) search and fuses them
+    inside the vector store. If one half comes back empty the fusion returns the other half alone,
+    and the answer looks the same as a healthy one: a silent drop to one signal. Logged before
+    anything is ever built on top of it, so a failure can be understood from the log alone (Jeff,
+    2026-10-06). Ranking is not touched; this only records what each half returned.
+    """
+    dense_n = len(dense_result.nodes or [])
+    sparse_n = len(sparse_result.nodes or [])
+    fused = relative_score_fusion(dense_result, sparse_result, alpha=alpha, top_k=top_k)
+    fused_n = len(fused.nodes or [])
+    run_id = _HYBRID_RUN_ID.get()
+    if dense_n == 0 or sparse_n == 0:
+        logger.warning(
+            "hybrid_half_empty runId=%s dense=%s sparse=%s fused=%s -- this answer used %s",
+            run_id,
+            dense_n,
+            sparse_n,
+            fused_n,
+            "neither half" if dense_n == sparse_n == 0
+            else ("the keyword half only" if dense_n == 0 else "the meaning half only"),
+        )
+    else:
+        logger.info(
+            "hybrid_halves runId=%s dense=%s sparse=%s fused=%s",
+            run_id,
+            dense_n,
+            sparse_n,
+            fused_n,
+        )
+    return fused
 
 
 def _node_meta(node: TextNode) -> dict[str, Any]:
@@ -100,7 +149,24 @@ class LlamaIndexEngine:
         # vocabularies, so that mismatch raises nothing: it scores query terms against an index
         # built from other terms and returns plausible, wrong passages. Passing both functions keeps
         # index time, query time and the migration on the one model in settings.sparse_model.
-        sparse_encoder = fastembed_sparse_encoder(model_name=settings.sparse_model)
+        try:
+            sparse_encoder = fastembed_sparse_encoder(model_name=settings.sparse_model)
+        except Exception:
+            # Hybrid has no dense-only mode, so without this encoder the service cannot answer a
+            # query. Named here so the log says which half failed, before startup stops.
+            logger.exception(
+                "Sparse (BM25 keyword) encoder failed to load model=%s vector=%s; hybrid retrieval "
+                "cannot run and the service will not start",
+                settings.sparse_model,
+                SPARSE_VECTOR_NAME,
+            )
+            raise
+        logger.info(
+            "Hybrid retrieval: dense model=%s, sparse (BM25) model=%s on vector '%s'",
+            settings.embedding_model,
+            settings.sparse_model,
+            SPARSE_VECTOR_NAME,
+        )
         self._vector_store = QdrantVectorStore(
             client=self._client,
             aclient=self._aclient,
@@ -110,6 +176,7 @@ class LlamaIndexEngine:
             sparse_vector_name=SPARSE_VECTOR_NAME,
             sparse_doc_fn=sparse_encoder,
             sparse_query_fn=sparse_encoder,
+            hybrid_fusion_fn=logged_relative_score_fusion,
             text_key="text",
         )
 
@@ -427,6 +494,7 @@ class LlamaIndexEngine:
         # Hybrid, always: dense vectors plus the sparse BM25 channel, which is the ranked keyword
         # search. There is no dense-only mode to fall back to. A collection without the sparse
         # vector is refused at startup (QdrantStore schema check), so no query reaches one.
+        _HYBRID_RUN_ID.set(run_id)
         result = await self._vector_store.aquery(
             VectorStoreQuery(
                 query_embedding=query_embedding,

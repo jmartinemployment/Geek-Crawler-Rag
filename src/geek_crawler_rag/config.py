@@ -114,10 +114,13 @@ class Settings(BaseSettings):
     embed_batch_size: int = 64
 
     # Durable indexing scheduler, oldest-content-ready first (see mongo.find_oldest_content_ready_run).
-    # Off unless the environment turns it on. Indexing is triggered by POST /v1/index, which GeekAPI
-    # calls when a run completes. Production sets INDEX_SCHEDULER_ENABLED explicitly in the box's
-    # compose file, so this default decides nothing there; it decides what a fresh deploy does.
-    index_scheduler_enabled: bool = False
+    # On. GeekAPI triggers indexing with POST /v1/index when a run completes, but that call fails
+    # closed and only logs when the Library is unreachable -- on 2026-09-24 eleven crawls completed
+    # unindexed that way. The scheduler is the only automatic catch-up: every interval it indexes the
+    # oldest content-ready run with no job row. It was defaulted off on 2026-10-04 to match a README
+    # that wrongly called it deprecated; that was a mistake and is reverted (Jeff, 2026-10-06).
+    # To stop it, use POST /v1/index-scheduler/pause (recorded, no restart), not this flag.
+    index_scheduler_enabled: bool = True
     index_scheduler_interval_seconds: int = 300
     index_scheduler_poll_seconds: int = 60
     index_job_lease_seconds: int = 900
