@@ -1,4 +1,10 @@
-"""Query pipeline: hybrid (dense + sparse BM25) candidates, in-process BM25 re-rank, RRF, optional Cohere rerank."""
+"""Query pipeline: hybrid (dense + sparse BM25) candidates, pool cut, optional Cohere rerank,
+page-diverse selection.
+
+The in-process BM25 re-rank and its RRF with the hybrid order are DISABLED (2026-10-08, Jeff); the
+code is kept in `_query_hybrid`, commented, so one keyword engine can be turned back on for
+comparison. See the note there before restoring it.
+"""
 
 from __future__ import annotations
 
@@ -8,7 +14,8 @@ from typing import Any, Protocol
 
 from llama_index.core.schema import NodeWithScore
 
-from geek_crawler_rag.bm25_rank import bm25_rank_indices
+# DISABLED 2026-10-08 -- restored together with the block in _query_hybrid:
+# from geek_crawler_rag.bm25_rank import bm25_rank_indices
 from geek_crawler_rag.config import Settings
 from geek_crawler_rag.extract import host_from_origin_or_url
 from geek_crawler_rag.graph_retrieve import (
@@ -19,7 +26,9 @@ from geek_crawler_rag.graph_retrieve import (
 from geek_crawler_rag.models import ChunkHit, QueryRequest, QueryResponse
 from geek_crawler_rag.qdrant_store import QdrantStore
 from geek_crawler_rag.rerank import Reranker
-from geek_crawler_rag.rrf import reciprocal_rank_fusion
+
+# DISABLED 2026-10-08 -- restored together with the block in _query_hybrid:
+# from geek_crawler_rag.rrf import reciprocal_rank_fusion
 
 logger = logging.getLogger(__name__)
 
@@ -141,8 +150,8 @@ class QueryService:
         # MatchText, used to be fused in. With no text index on the body fields MatchText is an
         # exact substring test of the whole question, so it returned nothing for four of five Ramp
         # questions, and what it did return came in storage order under made-up scores. The ranked
-        # keyword signal is the sparse BM25 half of the hybrid query, and the in-process BM25
-        # re-rank below.
+        # keyword signal is the sparse BM25 half of the hybrid query, fused with the meaning half
+        # inside Qdrant (relative score fusion, alpha 0.5); the order of `candidates` is that fusion.
         candidates = _candidates(dense_nodes)
         if not candidates:
             warning = f"No chunks for runId={request.run_id}; notify-and-skip research"
@@ -154,14 +163,25 @@ class QueryService:
                 retrieval="empty",
             )
 
-        dense_ids = [_node_id(n) for n in dense_nodes]
-        docs_for_bm25 = [_lexical_doc(c["payload"]) for c in candidates]
-        bm25_order = bm25_rank_indices(request.need, docs_for_bm25)
-        bm25_ids = [candidates[i]["id"] for i in bm25_order]
-
-        fused = reciprocal_rank_fusion([dense_ids, bm25_ids])
-        id_to_cand = {c["id"]: c for c in candidates}
-        fused_candidates = [id_to_cand[i] for i, _ in fused if i in id_to_cand]
+        # DISABLED 2026-10-08 (Jeff): the in-process BM25 re-rank and its RRF with the hybrid order.
+        #
+        # Written on 2026-09-07 (cfdb36e), when retrieval was meaning-only and this was the only
+        # keyword signal, fused 50/50 with the meaning order. Since 7c47fa1 the keyword half runs
+        # inside the hybrid query itself, so this pass scored the same keyword a second time and the
+        # RRF weighted the result about 3:1 keyword over meaning, with no single knob (alpha is the
+        # hybrid's). Kept rather than deleted because Jeff intends to turn one keyword engine back
+        # on for comparison. To restore: uncomment these seven lines and the two imports marked
+        # DISABLED at the top of this file; nothing else changed. `bm25_rank.py`, `rrf.py` and their
+        # tests are untouched. While disabled, `_lexical_doc` and `_node_id` below have no caller.
+        #
+        # dense_ids = [_node_id(n) for n in dense_nodes]
+        # docs_for_bm25 = [_lexical_doc(c["payload"]) for c in candidates]
+        # bm25_order = bm25_rank_indices(request.need, docs_for_bm25)
+        # bm25_ids = [candidates[i]["id"] for i in bm25_order]
+        # fused = reciprocal_rank_fusion([dense_ids, bm25_ids])
+        # id_to_cand = {c["id"]: c for c in candidates}
+        # fused_candidates = [id_to_cand[i] for i, _ in fused if i in id_to_cand]
+        fused_candidates = candidates
 
         pool_n = min(
             len(fused_candidates),

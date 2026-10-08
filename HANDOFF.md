@@ -59,12 +59,16 @@ index job in flight. There are no branches.
 7. No push while any index job is pending or running. Check `rag_index_jobs` first (§6).
 8. Do not touch the production scheduler (see 5).
 9. **Measurements ask what GeekAPI asks.** A testing rule, not an app requirement; it changes nothing
-   in the app. GeekAPI sends `GccGroundingResolver.BuildNeed` — the keyword (whole topic if no
-   `descriptor: keyword` colon), trimmed, capped at 150, then `" -- the cost, delay and error rate of
-   the manual or status-quo way, the capability that removes it, and measured outcomes"`, `topK` 32,
-   `crawlType` `partner`. The bare keyword is a question the app never sends, and answers differ
-   (Ramp, "Automated Payment Execution": 26 distinct pages bare, 20 with `BuildNeed`). Copy the text
-   from the current GeekBackend code; if `BuildNeed` changes, the measurement follows it.
+   in the app. **Since GeekBackend `bfd99c9` (2026-10-08) GeekAPI sends the keyword alone** —
+   `GccGroundingResolver.BuildNeed` returns `GccTopic.KeywordOf(topic)` (the part after the
+   `descriptor:` colon, or the whole topic without one), trimmed, capped at 150 — with `topK` 32 and
+   `crawlType` `partner`; the competitor query is unchanged. From `684cc59` (10-02) to `bfd99c9`
+   it appended 22 fixed words (`" -- the cost, delay and error rate of the manual or status-quo
+   way, the capability that removes it, and measured outcomes"`), a stand-in for the brief's niche
+   framing that the method never read; once the keyword half ran, every one of those words was a
+   search term, and Jeff had them deleted. Every measurement in this file dated before `bfd99c9`
+   that says "GeekAPI question" or "`BuildNeed`" used that 25-word text. Copy the text from the
+   current GeekBackend code; if `BuildNeed` changes, the measurement follows it.
 10. Commit to `main`. No branches.
 
 **The session's own inference, not stated as a rule.**
@@ -184,7 +188,7 @@ EOF
 | Index a run: delete, page loop, repeat collapse, readiness gate | `src/geek_crawler_rag/indexer.py` (`_index_run`, `_admit_page_nodes`, `readiness_refusal`) |
 | Chunks → nodes, `textDigest`, `sourceDigest` | `src/geek_crawler_rag/llama_nodes.py` (`text_digest`, `page_source_digest`) |
 | Embedding, hybrid query, hybrid half logging | `src/geek_crawler_rag/llama_engine.py` (`dense_query`, `logged_relative_score_fusion`) |
-| Query: hybrid candidates → BM25 re-rank → RRF → (Cohere off) → page-diverse select | `src/geek_crawler_rag/query.py` (`_query_hybrid`, `_select_ranked_candidates`, `_page_key`) |
+| Query: hybrid candidates (Qdrant fusion) → pool cut → (Cohere off) → page-diverse select. The in-process BM25 re-rank + RRF is **disabled 2026-10-08**, kept commented in `_query_hybrid` with restore instructions | `src/geek_crawler_rag/query.py` (`_query_hybrid`, `_select_ranked_candidates`, `_page_key`) |
 | Verify route, page reads, shared refusal helper | `src/geek_crawler_rag/app.py` (`verify_quotes`, `_citable_page_text`) |
 | Quote check and the F-R10 normalisation | `src/geek_crawler_rag/citation_verify.py` (`verify_quote`) |
 | Block → text, the one projection | `src/geek_crawler_rag/block_text.py` |
@@ -226,8 +230,10 @@ At startup: `Hybrid retrieval: dense model=…, sparse (BM25) model=… on vecto
 ## 9a. Page-diverse selection — before and after (2026-10-08, live box, topK 32, crawlType partner)
 
 Measured on the same two runs, same questions, the morning's deploy (`0eb139c`, hybrid on,
-rank-order selection) against `3092ccd` (page-diverse selection). "GeekAPI question" is
-`BuildNeed`'s 25 words; "bare" is the keyword alone.
+rank-order selection) against `3092ccd` (page-diverse selection). "GeekAPI question" is the
+25-word `BuildNeed` text that was live until GeekBackend `bfd99c9` later the same day; "bare" is
+the keyword alone, **which is what GeekAPI sends now**. Both were taken with the in-process BM25
+re-rank still on; it was disabled after (see §7 and §10).
 
 | Run | Question | Before: pages / max per page | After: pages / max per page |
 |---|---|---|---|
@@ -272,6 +278,19 @@ these pages and needs a readiness run.
   page reload or "Re-check the index" re-asks; and a filtered `grep` over `docker compose logs`
   twice returned nothing while the lines were present — dump raw `--since/--until` windows before
   concluding a log is empty.
+- **Every word sent to `/v1/query` is a search term.** A question written for meaning-only
+  retrieval ("…the cost, delay and error rate of the manual or status-quo way…") becomes noise
+  the moment the keyword half runs: on Melio those words put an accounts-receivable article in
+  slot two, while the operator's own `nicheFraming.coreProblem` pulled the pricing page and five
+  case studies. The 22 words were deleted (GeekBackend `bfd99c9`); the brief's framing still does
+  not reach retrieval, and feeding it to the meaning half with the keyword on the keyword half is
+  an open proposal Jeff wants to test before deciding.
+- **Two keyword passes, by accident.** The in-process BM25 + RRF (`cfdb36e`, 09-07) was the only
+  keyword signal while retrieval was meaning-only; once the hybrid's own keyword half ran
+  (`7c47fa1`) it scored the keyword a second time, about 3:1 keyword over meaning with no single
+  knob. Disabled 2026-10-08 at Jeff's instruction, kept commented in `_query_hybrid` because he
+  intends to turn one keyword engine back on for comparison. It cannot replace the hybrid's half
+  (it only ever ran on top of retrieval); re-enabling it means two passes again.
 - **A claim read from code is not a fact about production.** Check Mongo/Qdrant/the VPS first.
 - **Names hide behaviour.** `query.py` calls the hybrid query `dense_query` / `DenseRetriever`; the
   plan's audit missed that hybrid BM25 existed and decided to build a second keyword search.
