@@ -610,6 +610,7 @@ class IndexService:
         status.pages_skipped_unusable = 0
         status.chunks_upserted = 0
         status.chunks_skipped_repeat = 0
+        status.chunks_skipped_stub = 0
         status.embedding_rate_limit_retries = 0
         status.embedding_wait_seconds = 0.0
         embedding_baseline = self._embedding_stats()
@@ -719,7 +720,7 @@ class IndexService:
                         )
                     entity = entity_cache[host_key]
                     _chunk_started = time.perf_counter()
-                    nodes, skip = page_to_nodes(
+                    nodes, skip, stubs = page_to_nodes(
                         page=page,
                         run_id=run_id,
                         crawl_type=run.crawl_type,
@@ -738,6 +739,7 @@ class IndexService:
                         continue
 
                     status.pages_english += 1
+                    status.chunks_skipped_stub += stubs
                     pending.extend(
                         _admit_page_nodes(page.id, nodes, text_owners, status)
                     )
@@ -845,10 +847,11 @@ class IndexService:
         )
         logger.info(
             "Index complete for runId=%s chunksUpserted=%s chunksSkippedRepeat=%s "
-            "pagesEnglish=%s skippedUnusable=%s skippedLang=%s skippedEmpty=%s",
+            "chunksSkippedStub=%s pagesEnglish=%s skippedUnusable=%s skippedLang=%s skippedEmpty=%s",
             run_id,
             status.chunks_upserted,
             status.chunks_skipped_repeat,
+            status.chunks_skipped_stub,
             status.pages_english,
             status.pages_skipped_unusable,
             status.pages_skipped_lang,

@@ -200,6 +200,7 @@ def test_the_job_store_reads_back_every_status_field():
         pages_skipped_unusable=2,
         chunks_upserted=40,
         chunks_skipped_repeat=12,
+        chunks_skipped_stub=3,
         attempt=3,
         trigger="scheduled",
         embedding_rate_limit_retries=1,

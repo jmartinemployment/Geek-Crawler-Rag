@@ -30,7 +30,7 @@ def test_page_to_nodes_parent_and_child():
         title="Docs",
     )
     entity = EntityRef(None, "acme.com", "partner", ("acme.com",))
-    nodes, skip = page_to_nodes(
+    nodes, skip, _ = page_to_nodes(
         page=page,
         run_id="r1",
         crawl_type="partner",
@@ -63,7 +63,7 @@ def test_page_to_nodes_builds_text_from_blocks():
         title="Title",
     )
     entity = EntityRef(None, "acme.com", "partner", ("acme.com",))
-    nodes, skip = page_to_nodes(
+    nodes, skip, _ = page_to_nodes(
         page=page,
         run_id="r1",
         crawl_type="partner",
@@ -88,7 +88,7 @@ def test_page_to_nodes_rejects_a_page_with_no_blocks():
         blocks=[],
     )
     entity = EntityRef(None, "acme.com", "partner", ("acme.com",))
-    nodes, skip = page_to_nodes(
+    nodes, skip, _ = page_to_nodes(
         page=page,
         run_id="r1",
         crawl_type="partner",
@@ -132,7 +132,7 @@ def test_a_short_section_emits_no_parent_point() -> None:
     collection, competing with it for the same top-k slots, and inflating both df and N under BM25's
     idf modifier so that rare literals scored lower than they should.
     """
-    nodes, skip = _nodes(_page("short", _prose_blocks(
+    nodes, skip, _ = _nodes(_page("short", _prose_blocks(
         "Pricing", "A short English sentence about billing. ", 3)))
     assert skip == ""
     assert nodes
@@ -152,7 +152,7 @@ def test_a_long_section_still_emits_its_parent() -> None:
     multi-step procedures and qualifiers sitting far from what they qualify. The test is whether the
     difference is empty, not whether parents exist.
     """
-    nodes, skip = _nodes(_page("long", _prose_blocks(
+    nodes, skip, _ = _nodes(_page("long", _prose_blocks(
         "Integration", "This English sentence explains the partner integration thoroughly. ", 60)))
     assert skip == ""
     roles = [n.metadata.get("chunkRole") for n in nodes]

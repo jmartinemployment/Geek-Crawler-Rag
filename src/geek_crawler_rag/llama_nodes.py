@@ -7,7 +7,7 @@ from typing import Any
 
 from llama_index.core.schema import TextNode
 
-from geek_crawler_rag.chunk import parent_child_units
+from geek_crawler_rag.chunk import is_stub_text, parent_child_units
 from geek_crawler_rag.chunk_tokenizer import ChunkTokenizer
 from geek_crawler_rag.config import Settings
 from geek_crawler_rag.embedding_sanitize import sanitize_embedding_text
@@ -61,16 +61,23 @@ def page_to_nodes(
     entity: EntityRef,
     settings: Settings,
     tokenizer: ChunkTokenizer,
-) -> tuple[list[TextNode], str]:
-    """Return (nodes, skip_reason). skip_reason is empty on success."""
+) -> tuple[list[TextNode], str, int]:
+    """Return (nodes, skip_reason, stubs_skipped). skip_reason is empty on success.
+
+    stubs_skipped counts the units dropped by `chunk.is_stub_text` -- a heading standing alone, a
+    breadcrumb, a fragment of fewer than eight words -- which used to be indexed as passages and
+    took retrieval slots nothing could be quoted from (plans/retrieval-from-the-brief.md P3). The
+    indexer reports the total as `chunksSkippedStub`. A page whose every unit is a stub returns no
+    nodes and no skip reason: it is English and was read; it simply holds nothing to index.
+    """
     text, title, has_blocks = page_text_and_title(
         blocks=page.blocks,
         title=page.title,
     )
     if not text:
-        return [], "empty"
+        return [], "empty", 0
     if not is_english(text):
-        return [], "lang"
+        return [], "lang", 0
 
     host = host_from_origin_or_url(page.origin, page.url)
     category = infer_category(page.url, text)
@@ -90,7 +97,7 @@ def page_to_nodes(
         parent_overlap_tokens=settings.parent_chunk_overlap_tokens,
     )
     if not units:
-        return [], "empty"
+        return [], "empty", 0
 
     # Once per page, not once per node. This hashes the whole page body, and it
     # used to sit inside _node(), which the loop below calls for every chunk -- so
@@ -100,9 +107,16 @@ def page_to_nodes(
 
     nodes: list[TextNode] = []
     seen_parents: set[int] = set()
+    stubs_skipped = 0
     crawl_norm = (crawl_type or "").strip().lower()
     is_competitor = crawl_norm in {"competitor", "competitors"}
     for unit in units:
+        # A stub child means a stub parent: children are token windows of their parent, so the
+        # first window is full-size unless the parent itself is short. Skipping the unit skips
+        # both; a real parent's short tail window is skipped alone and the parent keeps its text.
+        if is_stub_text(unit.child_text, unit.section_title):
+            stubs_skipped += 1
+            continue
         unit_kind = (
             infer_competitor_chunk_kind(
                 url=page.url,
@@ -195,7 +209,7 @@ def page_to_nodes(
                 anchors=unit_anchors,
             )
         )
-    return nodes, ""
+    return nodes, "", stubs_skipped
 
 
 def _node(

@@ -9,6 +9,7 @@ disagree without anyone passing anything wrong, so there is no default to fall b
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, Iterable
 
@@ -287,3 +288,42 @@ def parent_child_units(
             parent_index += 1
 
     return units
+
+
+# A chunk with fewer words than this carries no claim a page could be quoted for. The verify floor
+# is 12 characters; this is about retrieval slots, not verification.
+STUB_MAX_WORDS = 8
+
+# "Home / AP Automation / Payment Reconciliation": one to six separators, short segments, nothing
+# else. A sentence with a slash in it ("24/7 support") has no spaced separators and is not matched.
+_BREADCRUMB = re.compile(r"^[^/\n]{1,40}(?:\s/\s[^/\n]{1,40}){1,6}$")
+
+_WORD = re.compile(r"[A-Za-z0-9][A-Za-z0-9'’&.-]*")
+
+
+def _normalised(text: str) -> str:
+    return " ".join((text or "").split()).strip().lower()
+
+
+def is_stub_text(text: str, section_title: str | None) -> bool:
+    """Whether a chunk is navigation or a heading standing alone, not content.
+
+    plans/retrieval-from-the-brief.md P3. On 2026-10-08 a blockquote probe on Tipalti got eight
+    candidates, three of which were a bare ebook title, a heading ("Tech Companies Payment
+    Automation FAQs") and a breadcrumb ("Home / AP Automation / Payment Reconciliation"). Each had
+    been indexed as a passage and each took a retrieval slot nothing could be quoted from. A
+    heading section with no body text under it emits a child equal to the heading, because
+    `split_blocks_into_sections` keeps the heading in the body.
+
+    Three tests, any one of which makes a stub: the text equals its own section title; it is a
+    breadcrumb; or it has fewer than `STUB_MAX_WORDS` words. Everything else is content, including
+    short table rows inside a real section, which a child window would not isolate.
+    """
+    plain = _normalised(text)
+    if not plain:
+        return True
+    if section_title and plain == _normalised(section_title):
+        return True
+    if _BREADCRUMB.match(plain) is not None:
+        return True
+    return len(_WORD.findall(plain)) < STUB_MAX_WORDS

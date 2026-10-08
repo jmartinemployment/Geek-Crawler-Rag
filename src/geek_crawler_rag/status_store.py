@@ -493,6 +493,7 @@ def _from_doc(doc: dict[str, Any]) -> IndexStatusResponse:
         pages_skipped_unusable=int(doc.get("pagesSkippedUnusable") or 0),
         chunks_upserted=int(doc.get("chunksUpserted") or 0),
         chunks_skipped_repeat=int(doc.get("chunksSkippedRepeat") or 0),
+        chunks_skipped_stub=int(doc.get("chunksSkippedStub") or 0),
         attempt=int(doc.get("attempt") or 0),
         trigger=str(doc.get("trigger") or "manual"),
         embedding_rate_limit_retries=int(

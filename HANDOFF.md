@@ -186,7 +186,7 @@ EOF
 | Concern | File |
 |---|---|
 | Index a run: delete, page loop, repeat collapse, readiness gate | `src/geek_crawler_rag/indexer.py` (`_index_run`, `_admit_page_nodes`, `readiness_refusal`) |
-| Chunks → nodes, `textDigest`, `sourceDigest` | `src/geek_crawler_rag/llama_nodes.py` (`text_digest`, `page_source_digest`) |
+| Chunks → nodes, `textDigest`, `sourceDigest`; stub chunks (a heading alone, a breadcrumb, under eight words) dropped and counted as `chunksSkippedStub` (plan P3, 2026-10-08) | `src/geek_crawler_rag/llama_nodes.py` (`text_digest`, `page_source_digest`, `page_to_nodes`), `chunk.py` (`is_stub_text`) |
 | Embedding, hybrid query, hybrid half logging | `src/geek_crawler_rag/llama_engine.py` (`dense_query`, `logged_relative_score_fusion`) |
 | Query: hybrid candidates (Qdrant fusion; `keyword` → keyword half, `need` → meaning half) → pool cut → (Cohere off) → page-diverse select. The in-process BM25 re-rank + RRF was disabled in `e2937f0` and **deleted** per `plans/retrieval-from-the-brief.md` P2 | `src/geek_crawler_rag/query.py` (`_query_hybrid`, `_select_ranked_candidates`, `_page_key`), `llama_engine.dense_query` |
 | Verify route, page reads, shared refusal helper | `src/geek_crawler_rag/app.py` (`verify_quotes`, `_citable_page_text`) |

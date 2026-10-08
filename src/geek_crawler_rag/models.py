@@ -44,6 +44,10 @@ class IndexStatusResponse(BaseModel):
     # Site chrome repeats on every page; a 2,025-page run held 7,046 such copies, and identical
     # vectors fill the dense candidate list before anything downstream can collapse them.
     chunks_skipped_repeat: int = Field(0, alias="chunksSkippedRepeat")
+    # Chunks not written because they were a heading standing alone, a breadcrumb or a fragment of
+    # fewer than eight words (`chunk.is_stub_text`). They used to be indexed as passages and took
+    # retrieval slots nothing could be quoted from (plans/retrieval-from-the-brief.md P3).
+    chunks_skipped_stub: int = Field(0, alias="chunksSkippedStub")
     attempt: int = 0
     trigger: str = "manual"
     embedding_rate_limit_retries: int = Field(0, alias="embeddingRateLimitRetries")
