@@ -2,7 +2,7 @@
 
 Standalone **Python** retrieval product for the Geek-Crawler Mongo corpus.
 **FastAPI** exposes `v1/*`; **LlamaIndex** owns ingest/embed/dense retrieval into Qdrant
-(parent/child chunks, hybrid BM25 RRF, optional Cohere rerank).
+(parent/child chunks, hybrid dense + BM25 fused by relative score, optional Cohere rerank).
 
 See [`architecture.md`](./architecture.md) and [`plans/geek-crawler-rag.md`](./plans/geek-crawler-rag.md).
 `contracts/` holds cross-repo wire contracts, both live and historical:

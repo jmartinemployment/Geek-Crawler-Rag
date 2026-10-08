@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 # Stable namespace for deterministic point IDs.
 _POINT_NS = uuid.UUID("a1b2c3d4-e5f6-7890-abcd-ef1234567890")
 
-#: Named sparse vector carrying SPLADE token weights for hybrid retrieval. The name is part of the
+#: Named sparse vector carrying the BM25 term weights for hybrid retrieval. The name is part of the
 #: on-disk contract: llama_engine binds its sparse branch to it, and scripts/migrate_sparse_vectors.py
 #: backfills it, so all three have to agree or a hybrid query scores against a vector nothing wrote.
 SPARSE_VECTOR_NAME = "text-sparse"

@@ -7,10 +7,13 @@
 
 - **`queries.json`** — the fixed query set. **Do not regenerate it for the "after" run.** Sampling
   fresh queries would compare two different questions and report the difference as a result.
-- **`before-openai-splade.json`** — captured 2026-09-30 against the live stack
-  (`text-embedding-3-small` 1536-d + `prithivida/Splade_PP_en_v1`), before any change.
+- **`baseline-bge-bm25-wordpiece.json`** — the live gate, captured 2026-10-01 against the current
+  stack (`BAAI/bge-small-en-v1.5` 384-d + `Qdrant/bm25` with IDF, WordPiece-sized chunks).
+- **`before-openai-splade.json`** — a record, not a gate: captured 2026-09-30 against the stack this
+  one replaced (`text-embedding-3-small` 1536-d + `prithivida/Splade_PP_en_v1`). Kept on purpose;
+  see below for why it cannot be diffed against.
 
-## The bar to beat
+## The bar the rebuild had to beat (2026-09-30)
 
 ```
 queries               80   (40 literal / 40 wide_parent)
@@ -53,25 +56,26 @@ separately.
 ## Usage
 
 ```bash
-# after the rebuild, reusing the SAME query set
+# after a change, reusing the SAME query set
 python scripts/retrieval_baseline.py --queries artifacts/retrieval-gate/queries.json \
                                      --out /tmp/after.json
 python scripts/retrieval_baseline.py --compare \
-    artifacts/retrieval-gate/before-openai-splade.json /tmp/after.json
+    artifacts/retrieval-gate/baseline-bge-bm25-wordpiece.json /tmp/after.json
 ```
 
 `--compare` exits non-zero on a regression and names every literal that stopped being found.
 
-## The 2026-09-30 baseline is gone, and why
+## The 2026-09-30 baseline is kept, and why it is not a gate
 
-`before-openai-splade.json` was deleted on 2026-10-01. It was captured at 13:50 on 2026-09-30
-against a corpus that was replaced the same evening: the five current runs were crawled between
-18:26 and 22:12, so none of the `runId`s in that file exist any more. `/v1/query` scopes by `runId`,
-so replaying it returns nothing — it could not be diffed against, and keeping it invited someone to
-diff `literal_rank1 35/40` against a later number and call the difference a result. Two different
-corpora are two different questions.
+`before-openai-splade.json` was deleted on 2026-10-01 (`3855e5d`) and restored the same day
+(`c76c26a`): it is a tracked artifact, and whether to keep it was not a call for one session to make
+alone. What the deletion was right about still holds. It was captured at 13:50 on 2026-09-30 against
+a corpus that was replaced the same evening: the five current runs were crawled between 18:26 and
+22:12, so none of the `runId`s in that file exist any more. `/v1/query` scopes by `runId`, so
+replaying it returns nothing. Do not diff `literal_rank1 35/40` against a later number and call the
+difference a result. Two different corpora are two different questions.
 
-`baseline-bge-bm25-wordpiece.json` replaces it, captured 2026-10-01 against the corpus rebuilt with
+`baseline-bge-bm25-wordpiece.json` is the gate, captured 2026-10-01 against the corpus rebuilt with
 bge-small + BM25/IDF + WordPiece-sized chunks (27,309 points, 5 runs):
 
     queries 80  literal 40  literal_found 40  literal_rank1 40

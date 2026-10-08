@@ -203,11 +203,12 @@ class LlamaIndexEngine:
         # Both sparse encoders are passed explicitly, and that is load-bearing rather than tidy.
         # QdrantVectorStore only picks its own encoder when these are None, and its pick is decided
         # by use_old_sparse_encoder(), which returns True for a collection carrying a vector named
-        # "text-sparse" -- ours -- and then encodes with naver/efficient-splade-VI-BT-large-doc.
-        # The backfill writes prithivida/Splade_PP_en_v1 weights. Two SPLADE models index different
-        # vocabularies, so that mismatch raises nothing: it scores query terms against an index
-        # built from other terms and returns plausible, wrong passages. Passing both functions keeps
-        # index time, query time and the migration on the one model in settings.sparse_model.
+        # "text-sparse" -- ours -- and then encodes with naver/efficient-splade-VI-BT-large-doc, a
+        # neural sparse model. The index carries Qdrant/bm25 term weights (settings.sparse_model),
+        # and the collection applies IDF on top. The two index different token spaces, so that
+        # mismatch raises nothing: it scores query terms against an index built from other terms
+        # and returns plausible, wrong passages. Passing both functions keeps index time, query
+        # time and the migration on the one model in settings.sparse_model.
         try:
             sparse_encoder = fastembed_sparse_encoder(model_name=settings.sparse_model)
         except Exception:

@@ -43,12 +43,12 @@ migration = _load_migration()
 
 
 def _sparse_by_token(texts: list[str]) -> tuple[list[list[int]], list[list[float]]]:
-    """A deterministic stand-in for SPLADE: one index per distinct lowercased word.
+    """A deterministic stand-in for the sparse encoder: one index per distinct lowercased word.
 
-    The real encoder is prithivida/Splade_PP_en_v1 and downloading 500MB of ONNX
-    weights is not something a unit test should do. What these tests need from an
+    The real encoder is the model in settings.sparse_model (Qdrant/bm25), and a unit
+    test should not depend on fastembed's model download. What these tests need from an
     encoder is that identical terms collide and different terms do not, which is
-    the property exact-term retrieval rests on; the model's expansion quality is a
+    the property exact-term retrieval rests on; the model's term weighting is a
     separate question and not one a test can assert.
     """
     indices: list[list[int]] = []
@@ -177,9 +177,9 @@ def test_explicit_encoders_keep_our_sparse_vector_name(client: QdrantClient) -> 
     QdrantVectorStore picks its own sparse encoder when these functions are None,
     and use_old_sparse_encoder() returns True for a collection carrying a vector
     named "text-sparse" -- ours -- which selects
-    naver/efficient-splade-VI-BT-large-doc. The backfill writes Splade_PP_en_v1
-    weights. Two SPLADE models index different vocabularies, so the mismatch raises
-    nothing and simply returns the wrong passages.
+    naver/efficient-splade-VI-BT-large-doc, a neural sparse model. The index carries
+    Qdrant/bm25 term weights. The two index different token spaces, so the mismatch
+    raises nothing and simply returns the wrong passages.
     """
     client.create_collection(
         "named",

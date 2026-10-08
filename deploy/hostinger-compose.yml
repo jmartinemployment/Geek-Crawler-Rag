@@ -91,9 +91,10 @@ services:
     # and these are ceilings, not reservations -- actual steady use is ~6.5 GiB total.
     mem_limit: 7g
     # 3.5, not 3.0. The same measurement: dense inference is CPU-bound and ONNX uses every thread it
-    # is allowed, so this cap is the throughput ceiling. Note an earlier read of 147% -- taken while
-    # SPLADE dominated and much of its cost was single-threaded post-processing -- said CPU was NOT
-    # the constraint. Local dense embedding changed that; the reading is 277-303% now.
+    # is allowed, so this cap is the throughput ceiling. Note an earlier read of 147% -- taken before
+    # the 2026-09-30 switch to BM25, when the neural sparse encoder's single-threaded post-processing
+    # dominated -- said CPU was NOT the constraint. Local dense embedding changed that; the reading
+    # is 277-303% now.
     cpus: "3.5"
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')\""]

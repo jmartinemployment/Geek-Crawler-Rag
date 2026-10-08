@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Backfill SPLADE sparse vectors onto points that predate hybrid retrieval.
+"""Backfill sparse (BM25) vectors onto points that predate hybrid retrieval.
 
 The collection gained a named sparse vector (`text-sparse`, added by
 `QdrantStore.ensure_collection`), but the points already in it carry no sparse
@@ -59,7 +59,7 @@ from geek_crawler_rag.config import Settings
 from geek_crawler_rag.qdrant_store import SPARSE_VECTOR_NAME
 from geek_crawler_rag.status_store import COLLECTION as INDEX_JOBS_COLLECTION
 
-#: Qdrant's own scroll ceiling is high, but 500 points of payload text plus a SPLADE forward pass is
+#: Qdrant's own scroll ceiling is high, but 500 points of payload text plus their sparse encoding is
 #: the part that has to fit in the VPS's RAM, so the batch is sized for the embedder, not the wire.
 DEFAULT_BATCH_SIZE = 500
 
