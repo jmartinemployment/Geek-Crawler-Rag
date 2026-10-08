@@ -223,6 +223,25 @@ At startup: `Hybrid retrieval: dense model=…, sparse (BM25) model=… on vecto
 - Ramp's passages are mostly `/blog` (21–27 of 32) on the old run; the re-crawl (`4563f7ec`) follows
   off-sitemap links (C1) and has not been measured.
 
+## 9a. Page-diverse selection — before and after (2026-10-08, live box, topK 32, crawlType partner)
+
+Measured on the same two runs, same questions, the morning's deploy (`0eb139c`, hybrid on,
+rank-order selection) against `3092ccd` (page-diverse selection). "GeekAPI question" is
+`BuildNeed`'s 25 words; "bare" is the keyword alone.
+
+| Run | Question | Before: pages / max per page | After: pages / max per page |
+|---|---|---|---|
+| tipalti.com partner `39bbce59` | GeekAPI question | 12 / 7 | **24 / 2** |
+| tipalti.com partner `39bbce59` | bare keyword | 21 / 6 | **30 / 2** |
+| stampli.com `ab551881` | GeekAPI question | 14 / 6 | **32 / 1** |
+| stampli.com `ab551881` | bare keyword | 16 / 13 | **32 / 1** |
+
+32 passages every time; the ranked pool is unchanged (64), only the cut is. The first slot is
+still the best-ranked passage overall (Stampli, GeekAPI question: the automated-invoice-approval
+blog post; bare: `/dynamic-approval-workflows/`). Not measured yet: whether the extra pages lift
+GeekAPI's category count (the Avidxchange 2-of-20 refusal) — that is GeekAPI's extraction over
+these pages and needs a readiness run.
+
 ## 9. Corpus state (2026-10-06)
 
 - 104 crawl runs; no index job pending or running.
