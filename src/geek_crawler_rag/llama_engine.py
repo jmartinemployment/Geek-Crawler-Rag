@@ -74,10 +74,11 @@ def logged_relative_score_fusion(
     2-15 of 64 chunks, the cut dropped 17-34 keyword-only and 15-44 meaning-only chunks per query,
     and the final 32 held between 4 (melio, a heavy-tailed keyword curve) and 21 (tipalti)
     keyword-only chunks -- while this line read `dense=64 sparse=64 fused=64` on every one of
-    them. Three sizes cannot show that, so the line now reports the composition: how many of the
-    kept are in both halves, in the meaning half only, in the keyword half only; how many of each
-    half's own hits were dropped and the best rank among them; and the fused score of the last
-    kept node.
+    them. Three sizes cannot show that, so the line reports: the overlap of the two halves; the
+    survivors in the fused list by class (overlap, meaning-only, keyword-only); how many of each
+    half's own hits were dropped and the best rank among them; the fused score of the last kept
+    node; and each half's raw score band, max..min -- the band min-max stretches to [0, 1], so a
+    band with one high hit far above the rest is the heavy tail that loses the cut.
     """
     dense_ids = _ranked_ids(dense_result)
     sparse_ids = _ranked_ids(sparse_result)
@@ -107,9 +108,9 @@ def logged_relative_score_fusion(
     dropped_sparse = [r for r, i in enumerate(sparse_ids, 1) if i not in dense_set and i not in fused_set]
     last_kept = (fused.similarities or [None])[-1]
     logger.info(
-        "hybrid_halves runId=%s dense=%s sparse=%s both=%s union=%s cut=%s fused=%s "
-        "kept=%s/%s/%s(both/denseOnly/sparseOnly) dropped=%s/%s(denseOnly/sparseOnly) "
-        "firstDropped=%s/%s(denseRank/sparseRank) lastKept=%s",
+        "hybrid_halves runId=%s dense=%s sparse=%s overlap=%s union=%s cut=%s fused=%s "
+        "survivors=%s/%s/%s(overlap/denseOnly/sparseOnly) dropped=%s/%s(denseOnly/sparseOnly) "
+        "firstDropped=%s/%s(denseRank/sparseRank) lastKept=%s denseRaw=%s sparseRaw=%s",
         run_id,
         dense_n,
         sparse_n,
@@ -125,8 +126,18 @@ def logged_relative_score_fusion(
         dropped_dense[0] if dropped_dense else "-",
         dropped_sparse[0] if dropped_sparse else "-",
         "-" if last_kept is None else f"{float(last_kept):.3f}",
+        _raw_band(dense_result),
+        _raw_band(sparse_result),
     )
     return fused
+
+
+def _raw_band(result: VectorStoreQueryResult) -> str:
+    """One half's raw scores as `max..min` -- the band min-max normalisation stretches to [0, 1]."""
+    sims = [float(s) for s in (result.similarities or [])]
+    if not sims:
+        return "-"
+    return f"{max(sims):.3f}..{min(sims):.3f}"
 
 
 def _ranked_ids(result: VectorStoreQueryResult) -> list[str]:

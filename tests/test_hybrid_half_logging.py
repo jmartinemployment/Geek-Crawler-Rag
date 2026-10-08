@@ -40,9 +40,10 @@ def test_both_halves_are_counted(caplog):
     [record] = [r for r in caplog.records if "hybrid_" in r.getMessage()]
     assert record.levelno == logging.INFO
     assert record.getMessage() == (
-        "hybrid_halves runId=run-1 dense=2 sparse=2 both=1 union=3 cut=5 fused=3 "
-        "kept=1/1/1(both/denseOnly/sparseOnly) dropped=0/0(denseOnly/sparseOnly) "
-        "firstDropped=-/-(denseRank/sparseRank) lastKept=0.000"
+        "hybrid_halves runId=run-1 dense=2 sparse=2 overlap=1 union=3 cut=5 fused=3 "
+        "survivors=1/1/1(overlap/denseOnly/sparseOnly) dropped=0/0(denseOnly/sparseOnly) "
+        "firstDropped=-/-(denseRank/sparseRank) lastKept=0.000 "
+        "denseRaw=1.000..0.900 sparseRaw=1.000..0.900"
     )
     assert [n.node_id for n in out.nodes] == [
         n.node_id for n in relative_score_fusion(_result("a", "b"), _result("b", "c"), top_k=5).nodes
@@ -64,9 +65,10 @@ def test_the_cut_is_reported_per_half_with_the_best_rank_dropped(caplog):
 
     [record] = [r for r in caplog.records if "hybrid_" in r.getMessage()]
     assert record.getMessage() == (
-        "hybrid_halves runId=run-4 dense=4 sparse=4 both=1 union=7 cut=4 fused=4 "
-        "kept=1/2/1(both/denseOnly/sparseOnly) dropped=1/2(denseOnly/sparseOnly) "
-        "firstDropped=4/3(denseRank/sparseRank) lastKept=0.333"
+        "hybrid_halves runId=run-4 dense=4 sparse=4 overlap=1 union=7 cut=4 fused=4 "
+        "survivors=1/2/1(overlap/denseOnly/sparseOnly) dropped=1/2(denseOnly/sparseOnly) "
+        "firstDropped=4/3(denseRank/sparseRank) lastKept=0.333 "
+        "denseRaw=1.000..0.700 sparseRaw=1.000..0.700"
     )
     assert [n.node_id for n in out.nodes] == ["c", "a", "b", "e"]
 

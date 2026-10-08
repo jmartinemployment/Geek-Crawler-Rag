@@ -86,7 +86,7 @@ index job in flight. There are no branches.
 
 | Repository | `main` | Deployed | Checked |
 |---|---|---|---|
-| Geek-Crawler-Rag | `main` (`query_str = keyword or need` since `d8a628e`; the fusion composition logged since the commit after `64f12ed`) | VPS, deploys on push; a live `/v1/query` leaves a `hybrid_halves runId=… dense=N sparse=N both=N … kept=b/d/s … dropped=d/s …` line in `docker compose logs api`. `dense`/`sparse` prove the keyword half *ran*; `kept`'s third number is how much of it *survived the fusion cut* — the first without the second said nothing (§9b) | 2026-10-08 |
+| Geek-Crawler-Rag | `main` (`query_str = keyword or need` since `d8a628e`; the fusion composition logged since `86c0a4f`, the raw bands since the commit after it) | VPS, deploys on push; a live `/v1/query` leaves a `hybrid_halves runId=… dense=N sparse=N overlap=N … survivors=o/d/s … dropped=d/s … denseRaw=max..min sparseRaw=max..min` line in `docker compose logs api`. `dense`/`sparse` prove the keyword half *ran*; `survivors`' third number is how much of it *survived the fusion cut* — the first without the second said nothing (§9b) | 2026-10-08 |
 | GeekBackend | `288dde3` on `main`. A local branch `fix-content-creator-stages` (9 commits, 2026-10-04: A8, A9, A10, A11, A12, A13, D2, D3, D4) was never pushed; A8, D3, D4 and A10's writer exist only there — see `plans/audit-content-creator.md` | Railway, SUCCESS 2026-10-08 15:32 UTC | 2026-10-08 |
 | content-creator-v2 | `4677b69` | Vercel production, READY | 2026-10-08 |
 
@@ -230,7 +230,7 @@ EOF
 | Hybrid query raises (Qdrant down, keyword model error) | `Query failed for runId=…` with traceback (`query.py`); caller gets `retrieval="error"` |
 | `query_str` missing again (the hybrid branch not taken) | **Nothing** — LlamaIndex's dense-only fall-through calls no fusion, so no `hybrid_*` line appears. A query with no `hybrid_halves` / `hybrid_half_empty` line ran dense-only. `test_dense_query_is_hybrid.py` pins the argument. |
 | One half returns nothing | `WARNING hybrid_half_empty runId=… dense=N sparse=0 fused=N -- this answer used the meaning half only` (or the keyword half, or neither). Ranking is unchanged; this only records it. |
-| Both halves answer | `INFO hybrid_halves runId=… dense=N sparse=N both=N union=N cut=N fused=N kept=b/d/s(both/denseOnly/sparseOnly) dropped=d/s(denseOnly/sparseOnly) firstDropped=r/r(denseRank/sparseRank) lastKept=0.xxx`, one line per query. `kept`'s third number is how many keyword-only chunks survived the fusion cut; `dropped`'s second is how many did not, and `firstDropped`'s second the best keyword rank among them (§9b) |
+| Both halves answer | `INFO hybrid_halves runId=… dense=N sparse=N overlap=N union=N cut=N fused=N survivors=o/d/s(overlap/denseOnly/sparseOnly) dropped=d/s(denseOnly/sparseOnly) firstDropped=r/r(denseRank/sparseRank) lastKept=0.xxx denseRaw=max..min sparseRaw=max..min`, one line per query. `overlap` is how many chunks both halves returned; `survivors`' third number is how many keyword-only chunks survived the fusion cut, `dropped`'s second how many did not, `firstDropped`'s second the best keyword rank among them; the raw bands are what min-max stretches — a band with one high hit far above the rest is the heavy tail that loses the cut (§9b) |
 | Keyword model fails to load | `Sparse (BM25 keyword) encoder failed to load model=… vector=…` with traceback, then startup stops |
 | Collection lacks the keyword vector, or it is not IDF | startup stops with a message naming it (`qdrant_store.py`) |
 | Keyword vectors fail while indexing | `Index failed for runId=…` with traceback; the job is `failed` with the error |
@@ -328,9 +328,11 @@ at alpha 0.5, and ties go to the meaning half (inserted first, stable sort).
    meaning curve was the steeper one and lost more, and the final held 10–21 keyword-only chunks.
    Raw bands: dense 0.71–0.86, BM25 8.5–19.0 on the bare keyword, 27–55 on the row questions.
 3. **The log line read `dense=64 sparse=64 fused=64` on all six.** Three sizes cannot show any of
-   this. It now reports `both`, `union`, `cut`, `kept=both/denseOnly/sparseOnly`,
-   `dropped=denseOnly/sparseOnly`, `firstDropped=denseRank/sparseRank` and `lastKept`
-   (`test_hybrid_half_logging.py` pins the shape).
+   this. It now reports `overlap`, `union`, `cut`, `survivors=overlap/denseOnly/sparseOnly`,
+   `dropped=denseOnly/sparseOnly`, `firstDropped=denseRank/sparseRank`, `lastKept`, and each
+   half's raw band `denseRaw=max..min sparseRaw=max..min` (`test_hybrid_half_logging.py` pins the
+   shape). Jeff: that line is the evidence masking is happening, and later the evidence that a
+   change fixed it.
 4. The specific mechanism hypothesised — a keyword hit at rank 2 losing to a meaning hit at rank
    15 — is not what happens on these runs: the best keyword-only rank dropped was 35–47 at fetch
    64 and 18–22 at fetch 30. The masking is real; it is a curve-shape effect at the tail, and it
