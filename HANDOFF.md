@@ -241,11 +241,12 @@ At startup: `Hybrid retrieval: dense model=…, sparse (BM25) model=… on vecto
   with one complete, indexed run for each. `/v1/index/hosts` resolved the host alone and answered
   the competitor run; GeekAPI probed it with `crawlType: partner`, got nothing, and excluded the
   partner ("its crawl finished, but a search of the index finds nothing from it"). Fixed
-  2026-10-08: the route takes `crawlType` and resolves `(host, crawlType)`; an untyped host
-  indexed under more than one type is refused with the types named. **GeekAPI must send the
-  type**: `HttpGeekCrawlerRagClient.cs:403` posts `new { urls }` and needs `crawlType`, which
-  `GccDeclaredUrlValidator.AnswerAsync` (`:185-186`) and `GccGroundingResolver` already hold.
-  Until it does, a two-list site is refused with the reason instead of answered wrongly.
+  2026-10-08 on both sides: this repo `0eb139c` — the route takes `crawlType` and resolves
+  `(host, crawlType)`; an untyped host indexed under more than one type is refused with the
+  types named. GeekBackend `2d7420b` — `HostsIndexedAsync(urls, crawlType, ct)` sends the type
+  from all four callers and refuses a blank one before any request. The proof, once GeekAPI's
+  deploy is up and a validation is re-run: the probe's `hybrid_halves runId=39bbce59…` (Tipalti's
+  partner run) in this service's log, where it used to be `5cbbb85b`.
 - **A claim read from code is not a fact about production.** Check Mongo/Qdrant/the VPS first.
 - **Names hide behaviour.** `query.py` calls the hybrid query `dense_query` / `DenseRetriever`; the
   plan's audit missed that hybrid BM25 existed and decided to build a second keyword search.
