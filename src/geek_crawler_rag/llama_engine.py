@@ -57,18 +57,34 @@ def logged_relative_score_fusion(
     alpha: float = 0.5,
     top_k: int = 2,
 ) -> VectorStoreQueryResult:
-    """LlamaIndex's own `relative_score_fusion`, unchanged, with each half's hit count logged.
+    """LlamaIndex's own `relative_score_fusion`, unchanged, with what it did to each half logged.
 
     A hybrid query runs a dense (meaning) search and a sparse BM25 (keyword) search and fuses them
     inside the vector store. If one half comes back empty the fusion returns the other half alone,
     and the answer looks the same as a healthy one: a silent drop to one signal. Logged before
     anything is ever built on top of it, so a failure can be understood from the log alone (Jeff,
-    2026-10-06). Ranking is not touched; this only records what each half returned.
+    2026-10-06). Ranking is not touched; this only records what happened.
+
+    What the fusion does, mechanically. Each half is min-max normalised over its own list, a node
+    absent from a half scores 0 there, the two are summed at `alpha`, and the list is cut at
+    `top_k` -- which `dense_query` leaves at the per-half fetch size, so up to half the union is
+    dropped here, before `query.py` sees a candidate. Which half loses is decided by the shape of
+    its score curve for that query, not by relevance: the steeper tail is cut harder. Measured on
+    the live box on 2026-10-08, six partner runs, the bare keyword at topK 32: the halves shared
+    2-15 of 64 chunks, the cut dropped 17-34 keyword-only and 15-44 meaning-only chunks per query,
+    and the final 32 held between 4 (melio, a heavy-tailed keyword curve) and 21 (tipalti)
+    keyword-only chunks -- while this line read `dense=64 sparse=64 fused=64` on every one of
+    them. Three sizes cannot show that, so the line now reports the composition: how many of the
+    kept are in both halves, in the meaning half only, in the keyword half only; how many of each
+    half's own hits were dropped and the best rank among them; and the fused score of the last
+    kept node.
     """
-    dense_n = len(dense_result.nodes or [])
-    sparse_n = len(sparse_result.nodes or [])
+    dense_ids = _ranked_ids(dense_result)
+    sparse_ids = _ranked_ids(sparse_result)
+    dense_n = len(dense_ids)
+    sparse_n = len(sparse_ids)
     fused = relative_score_fusion(dense_result, sparse_result, alpha=alpha, top_k=top_k)
-    fused_n = len(fused.nodes or [])
+    fused_ids = [n.node_id for n in (fused.nodes or [])]
     run_id = _HYBRID_RUN_ID.get()
     if dense_n == 0 or sparse_n == 0:
         logger.warning(
@@ -76,19 +92,51 @@ def logged_relative_score_fusion(
             run_id,
             dense_n,
             sparse_n,
-            fused_n,
+            len(fused_ids),
             "neither half" if dense_n == sparse_n == 0
             else ("the keyword half only" if dense_n == 0 else "the meaning half only"),
         )
-    else:
-        logger.info(
-            "hybrid_halves runId=%s dense=%s sparse=%s fused=%s",
-            run_id,
-            dense_n,
-            sparse_n,
-            fused_n,
-        )
+        return fused
+
+    dense_set, sparse_set, fused_set = set(dense_ids), set(sparse_ids), set(fused_ids)
+    both = dense_set & sparse_set
+    kept_both = sum(1 for i in fused_ids if i in both)
+    kept_dense_only = sum(1 for i in fused_ids if i in dense_set and i not in sparse_set)
+    kept_sparse_only = sum(1 for i in fused_ids if i in sparse_set and i not in dense_set)
+    dropped_dense = [r for r, i in enumerate(dense_ids, 1) if i not in sparse_set and i not in fused_set]
+    dropped_sparse = [r for r, i in enumerate(sparse_ids, 1) if i not in dense_set and i not in fused_set]
+    last_kept = (fused.similarities or [None])[-1]
+    logger.info(
+        "hybrid_halves runId=%s dense=%s sparse=%s both=%s union=%s cut=%s fused=%s "
+        "kept=%s/%s/%s(both/denseOnly/sparseOnly) dropped=%s/%s(denseOnly/sparseOnly) "
+        "firstDropped=%s/%s(denseRank/sparseRank) lastKept=%s",
+        run_id,
+        dense_n,
+        sparse_n,
+        len(both),
+        len(dense_set | sparse_set),
+        top_k,
+        len(fused_ids),
+        kept_both,
+        kept_dense_only,
+        kept_sparse_only,
+        len(dropped_dense),
+        len(dropped_sparse),
+        dropped_dense[0] if dropped_dense else "-",
+        dropped_sparse[0] if dropped_sparse else "-",
+        "-" if last_kept is None else f"{float(last_kept):.3f}",
+    )
     return fused
+
+
+def _ranked_ids(result: VectorStoreQueryResult) -> list[str]:
+    """Node ids of one half, best score first -- the rank each half gave its own hits."""
+    nodes = list(result.nodes or [])
+    sims = list(result.similarities or [])
+    if len(sims) != len(nodes):
+        return [n.node_id for n in nodes]
+    ordered = sorted(zip(sims, nodes, strict=True), key=lambda t: float(t[0]), reverse=True)
+    return [n.node_id for _, n in ordered]
 
 
 def _node_meta(node: TextNode) -> dict[str, Any]:

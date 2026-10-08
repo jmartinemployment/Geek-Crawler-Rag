@@ -86,7 +86,7 @@ index job in flight. There are no branches.
 
 | Repository | `main` | Deployed | Checked |
 |---|---|---|---|
-| Geek-Crawler-Rag | `eaa8c8a` (`query_str = keyword or need` since `d8a628e`), pushed | VPS, deploys on push; a live `/v1/query` must leave a `hybrid_halves runId=… dense=N sparse=N fused=N` line in `docker compose logs api` — that line is the proof the keyword half ran, nothing else is | 2026-10-08 |
+| Geek-Crawler-Rag | `main` (`query_str = keyword or need` since `d8a628e`; the fusion composition logged since the commit after `64f12ed`) | VPS, deploys on push; a live `/v1/query` leaves a `hybrid_halves runId=… dense=N sparse=N both=N … kept=b/d/s … dropped=d/s …` line in `docker compose logs api`. `dense`/`sparse` prove the keyword half *ran*; `kept`'s third number is how much of it *survived the fusion cut* — the first without the second said nothing (§9b) | 2026-10-08 |
 | GeekBackend | `288dde3` on `main`. A local branch `fix-content-creator-stages` (9 commits, 2026-10-04: A8, A9, A10, A11, A12, A13, D2, D3, D4) was never pushed; A8, D3, D4 and A10's writer exist only there — see `plans/audit-content-creator.md` | Railway, SUCCESS 2026-10-08 15:32 UTC | 2026-10-08 |
 | content-creator-v2 | `4677b69` | Vercel production, READY | 2026-10-08 |
 
@@ -230,7 +230,7 @@ EOF
 | Hybrid query raises (Qdrant down, keyword model error) | `Query failed for runId=…` with traceback (`query.py`); caller gets `retrieval="error"` |
 | `query_str` missing again (the hybrid branch not taken) | **Nothing** — LlamaIndex's dense-only fall-through calls no fusion, so no `hybrid_*` line appears. A query with no `hybrid_halves` / `hybrid_half_empty` line ran dense-only. `test_dense_query_is_hybrid.py` pins the argument. |
 | One half returns nothing | `WARNING hybrid_half_empty runId=… dense=N sparse=0 fused=N -- this answer used the meaning half only` (or the keyword half, or neither). Ranking is unchanged; this only records it. |
-| Both halves answer | `INFO hybrid_halves runId=… dense=N sparse=N fused=N`, one line per query |
+| Both halves answer | `INFO hybrid_halves runId=… dense=N sparse=N both=N union=N cut=N fused=N kept=b/d/s(both/denseOnly/sparseOnly) dropped=d/s(denseOnly/sparseOnly) firstDropped=r/r(denseRank/sparseRank) lastKept=0.xxx`, one line per query. `kept`'s third number is how many keyword-only chunks survived the fusion cut; `dropped`'s second is how many did not, and `firstDropped`'s second the best keyword rank among them (§9b) |
 | Keyword model fails to load | `Sparse (BM25 keyword) encoder failed to load model=… vector=…` with traceback, then startup stops |
 | Collection lacks the keyword vector, or it is not IDF | startup stops with a message naming it (`qdrant_store.py`) |
 | Keyword vectors fail while indexing | `Index failed for runId=…` with traceback; the job is `failed` with the error |
@@ -291,6 +291,78 @@ Melio: seven of eight pages the same, reordered. Tipalti: three kept, five chang
 and integration pages that an exact keyword re-score favoured gave way to the AP-software page,
 the procurement "why" page and the payables-automation guide. Each query logged
 `hybrid_halves dense=64 sparse=64 fused=64`; the order is now Qdrant's fusion alone.
+
+## 9b. What the fusion does to the keyword half — measured 2026-10-08 (live box, read-only)
+
+Jeff: "Nowhere have you brought up or diagnosed the exact mechanical flaw in both the fusion math
+and your diagnostic logging." Measured the same afternoon: nine questions on the six live partner
+runs, the fusion function wrapped to capture both halves, nothing written.
+
+**The mechanics.** `dense_query` fetches `max(topK·2, 30)` from each half and leaves LlamaIndex's
+`hybrid_top_k` unset, so `relative_score_fusion` cuts the union at that same number: 64 in from
+each half at topK 32, **64 out of up to 128**, before `query.py` sees a candidate (`query.py`'s own
+pool cut, `max(topK·2, 40)`, is a no-op after it). Each half is min-max normalised over its own
+list — its last hit scores exactly 0 — a node absent from a half scores 0 there, the two are summed
+at alpha 0.5, and ties go to the meaning half (inserted first, stable sort).
+
+| Query (crawlType partner) | halves d/s/**both** | fused kept both/dOnly/sOnly | dropped dOnly (from rank) / sOnly (from rank) | final 32: both/dOnly/sOnly |
+|---|---|---|---|---|
+| tipalti `6c648478` bare keyword | 64/64/**6** | 6/21/37 | 37 (25) / 21 (43) | 2/9/**21** |
+| stampli `ab551881` bare keyword | 64/64/**2** | 1/18/45 | 44 (20) / 17 (47) | 1/15/16 |
+| melio `639d23cb` bare keyword | 64/64/**15** | 15/34/15 | 15 (47) / 34 (26) | 7/21/**4** |
+| bill `ad836ec5` bare keyword | 64/64/**4** | 4/26/34 | 34 (29) / 26 (39) | 2/20/10 (26 pages) |
+| ramp `a88a9371` bare keyword | 64/64/**3** | 3/30/31 | 31 (33) / 30 (35) | 3/14/15 |
+| avidxchange `4ae1a2d5` bare keyword | 64/64/**2** | 2/27/35 | 35 (30) / 27 (38) | 1/17/14 |
+| tipalti core problem, topK 8 (fetch 30) | 30/30/2 | 2/12/16 | 16 (15) / 12 (18) | 2/3/3 |
+| tipalti row: reconciliation, topK 8 | 30/30/7 | 7/11/12 | 12 (15) / 11 (20) | 6/0/2 |
+| tipalti row: approval, topK 8 | 30/30/4 | 3/8/19 | 18 (10) / 7 (22) | 1/3/4 |
+
+**What it shows.**
+1. **The halves barely overlap**: 2–15 of 64 chunks for the bare keyword. Meaning and keyword
+   search pick nearly disjoint sets for the same words, so the fusion is a merge of two
+   independent lists and its "both" bonus rarely applies.
+2. **The cut drops 7–34 keyword-only and 12–44 meaning-only chunks per query** before selection,
+   and which half loses is the shape of its own score curve, not relevance: melio's keyword curve
+   is heavy-tailed (one dominant hit; normalised 0.48 at rank 5, 0.095 at rank 13), so 34 of its
+   49 keyword-only chunks went from rank 26 on and the final 32 held **4**; on the other five the
+   meaning curve was the steeper one and lost more, and the final held 10–21 keyword-only chunks.
+   Raw bands: dense 0.71–0.86, BM25 8.5–19.0 on the bare keyword, 27–55 on the row questions.
+3. **The log line read `dense=64 sparse=64 fused=64` on all six.** Three sizes cannot show any of
+   this. It now reports `both`, `union`, `cut`, `kept=both/denseOnly/sparseOnly`,
+   `dropped=denseOnly/sparseOnly`, `firstDropped=denseRank/sparseRank` and `lastKept`
+   (`test_hybrid_half_logging.py` pins the shape).
+4. The specific mechanism hypothesised — a keyword hit at rank 2 losing to a meaning hit at rank
+   15 — is not what happens on these runs: the best keyword-only rank dropped was 35–47 at fetch
+   64 and 18–22 at fetch 30. The masking is real; it is a curve-shape effect at the tail, and it
+   cuts either half.
+
+**Comparison, same nine questions**: reciprocal rank fusion (k = 60) over the two halves, no cut,
+pool = the union, the page-diverse selection unchanged.
+
+| Query | live: both/dOnly/sOnly (pages) | RRF, no cut: both/dOnly/sOnly (pages) |
+|---|---|---|
+| tipalti bare | 2/9/21 (32) | 3/14/15 (32) |
+| stampli bare | 1/15/16 (32) | 2/20/10 (32) |
+| melio bare | 7/21/4 (32) | 13/12/7 (32) |
+| bill bare | 2/20/10 (26) | 1/24/7 (**32**) |
+| ramp bare | 3/14/15 (32) | 3/16/13 (32) |
+| avidxchange bare | 1/17/14 (32) | 2/17/13 (32) |
+| tipalti core problem | 2/3/3 (8) | 2/5/1 (8) |
+| tipalti row: reconciliation | 6/0/2 (8) | 7/1/0 (8) |
+| tipalti row: approval | 1/3/4 (8) | 4/2/2 (8) |
+
+Rank fusion makes the halves symmetric by rank and rewards the overlap: melio's keyword-only
+4 → 7 and both 7 → 13; bill.com 26 → 32 pages; tipalti's keyword share 21 → 15, because under
+min-max it was the meaning tail being cut there. First eight on tipalti: live keeps the product
+pages (reconciliation, invoice-flow, procurement, AP software) in slots 2–6; RRF puts the
+music-royalties guide and `company/reviews` at 2–3 and the product pages after. The reconciliation
+row is the same eight pages reordered under both.
+
+**Not decided — Jeff's (fix-from-the-audit decision 11).** Three separable things: (a) the cut at
+fusion — remove it (`hybrid_top_k` = the union) so selection sees everything; (b) the order rule —
+min-max relative score (share decided by curve shape) or rank fusion (parity by rank, overlap
+rewarded; Qdrant's own default); (c) the pool cut when the reranker is off (today a no-op). The
+measurement script is in this session's scratchpad and is reproducible from §9b's inputs.
 
 ## 9. Corpus state (2026-10-06)
 

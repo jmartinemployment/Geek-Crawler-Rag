@@ -48,6 +48,12 @@ statements that contradict the code.
    CTA label "overrides" wording it never touches); and the prompts contradict each other, the
    guards and the schema in twenty-two places — including Markdown heading markers in the block
    headed as the publisher's own site.
+7. **Added after Jeff's correction, same day.** The Library's fusion cuts the union of the two
+   halves at the per-half fetch size, so up to half of what the keyword search returned is dropped
+   before selection, by the shape of each half's score curve — and the `hybrid_halves` line this
+   audit's author had been calling "the proof the keyword half ran" reported three equal sizes on
+   every query and could not show it. Measured: the halves overlap on 2–15 of 64 chunks; the final
+   32 held between 4 and 21 keyword-only chunks across six partners (F22).
 
 ## 1. Findings, ranked
 
@@ -280,9 +286,12 @@ as a live claim.
 **F19. Retrieval as it runs today** (facts, for the record). Dense `BAAI/bge-small-en-v1.5` + sparse
 `Qdrant/bm25`, fused by relative score with `alpha = 0.5` as a hard default (`llama_engine.py:57`);
 the keyword half searches `keyword` when sent, else `need` (`dense_query`, since `d8a628e`).
-Over-fetch `max(topK·2, 30)` (`query.py:121`, `config.py:132`); pool `max(topK·2, 40)`
-(`query.py:164-168`, `config.py:133`); page-diverse selection from the pool (`3092ccd`); exact-text
-dedupe **after** the pool cut, with no backfill (`query.py:372-384` — R3's first half, open); every
+Each half fetches `max(topK·2, 30)` (`query.py:121`, `config.py:132`) **and the fusion cuts the
+union at that same number** (`dense_query` leaves `hybrid_top_k` unset; LlamaIndex
+`base.py:1116`), so `query.py`'s pool cut `max(topK·2, 40)` (`query.py:164-168`) is a no-op after
+it — the pool *is* the fused cut (first written here as two cuts; corrected after F22). Page-diverse
+selection from the pool (`3092ccd`); exact-text dedupe **after** the pool cut, with no backfill
+(`query.py:372-384` — R3's first half, open); every
 GeekAPI query sends `minQuality: 0.55` (RAG:621) against a page-level `qualityScore` built from
 length, title and blocks (`metadata.py:164-181` — base 0.35, +0.15 title, +0.15 blocks, +0.15 at
 500 chars, +0.1 at 2,000, +0.1 at 5,000, −0.2 under 200), so an untitled page without blocks needs
@@ -299,6 +308,23 @@ was never read off the re-crawl `4563f7ec`; the near-copy measurement (same para
 swapped) was never run; whether page-diverse selection lifts the category count needs a readiness
 run and has not had one. The acceptance tests of `retrieval-from-the-brief.md` wait on Jeff's
 Tipalti re-crawl, re-index and evidence rows.
+
+**F22. The fusion cut drops keyword hits by curve shape, and the log could not show it** (S1 for
+retrieval; added after Jeff's correction, measured live the same day — `HANDOFF.md` §9b has the
+tables). `relative_score_fusion` min-max normalises each half over its own fetch (its last hit
+scores exactly 0), scores an absent node 0, sums at 0.5 and cuts the union at `top_k` = the
+per-half fetch: 64 in from each half at topK 32, 64 out of up to 128, before `query.py` sees a
+candidate. On the six live partner runs with the bare keyword: the halves overlapped on 2–15 of 64
+chunks; the cut dropped 17–34 keyword-only and 15–44 meaning-only chunks per query; which half lost
+was the steepness of its own score curve — melio's heavy-tailed keyword curve left **4** keyword-only
+chunks in the final 32, tipalti's flat one left 21. Every one of those queries logged
+`dense=64 sparse=64 fused=64`; the line the audit's author called "the proof the keyword half ran"
+proved execution and nothing about survival. Fixed the same day: the line reports the composition,
+the drops and the best rank dropped per half (`test_hybrid_half_logging.py`). **Not fixed, Jeff's
+decision (fix plan 11):** the cut itself and the order rule. Measured alongside: rank fusion (RRF,
+k 60) with no cut makes the halves symmetric by rank and rewards overlap — melio 4 → 7 keyword-only
+and 7 → 13 in both, bill.com 26 → 32 pages, tipalti 21 → 15 keyword-only — and reorders tipalti's
+first eight to put a guide and `company/reviews` above the product pages.
 
 **F21. Crawler counters that nothing increments** (`Geek-Crawler-v2/tests/KNOWN_GAPS.md`):
 `enqueueSuppressedQueue`, `browserRenders`, and `pagesWithoutContent` — the last reads 0 in
