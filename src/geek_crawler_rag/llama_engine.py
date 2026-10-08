@@ -49,6 +49,13 @@ logger = logging.getLogger(__name__)
 # The runId of the hybrid query in flight, for the fusion log below. The fusion callback is called by
 # QdrantVectorStore with the two result sets only, so the run reaches it through the async context.
 _HYBRID_RUN_ID: ContextVar[str] = ContextVar("hybrid_run_id", default="")
+# The question in flight, (need, keyword), same route. A line that says which run and how many
+# survived, but not what was asked of whom, is not evidence anyone can read (Jeff, 2026-10-08: "It
+# is not self evident what problem is being asked of what partner"). The host comes off the nodes.
+_HYBRID_QUESTION: ContextVar[tuple[str, str]] = ContextVar("hybrid_question", default=("", ""))
+
+_LOG_NEED_CHARS = 72
+_LOG_KEYWORD_CHARS = 48
 
 
 def logged_relative_score_fusion(
@@ -87,10 +94,16 @@ def logged_relative_score_fusion(
     fused = relative_score_fusion(dense_result, sparse_result, alpha=alpha, top_k=top_k)
     fused_ids = [n.node_id for n in (fused.nodes or [])]
     run_id = _HYBRID_RUN_ID.get()
+    host = _host_of(fused, dense_result, sparse_result)
+    need, keyword = _question_labels()
     if dense_n == 0 or sparse_n == 0:
         logger.warning(
-            "hybrid_half_empty runId=%s dense=%s sparse=%s fused=%s -- this answer used %s",
+            "hybrid_half_empty runId=%s host=%s need=%s keyword=%s dense=%s sparse=%s fused=%s "
+            "-- this answer used %s",
             run_id,
+            host,
+            need,
+            keyword,
             dense_n,
             sparse_n,
             len(fused_ids),
@@ -108,10 +121,14 @@ def logged_relative_score_fusion(
     dropped_sparse = [r for r, i in enumerate(sparse_ids, 1) if i not in dense_set and i not in fused_set]
     last_kept = (fused.similarities or [None])[-1]
     logger.info(
-        "hybrid_halves runId=%s dense=%s sparse=%s overlap=%s union=%s cut=%s fused=%s "
-        "survivors=%s/%s/%s(overlap/denseOnly/sparseOnly) dropped=%s/%s(denseOnly/sparseOnly) "
-        "firstDropped=%s/%s(denseRank/sparseRank) lastKept=%s denseRaw=%s sparseRaw=%s",
+        "hybrid_halves runId=%s host=%s need=%s keyword=%s dense=%s sparse=%s overlap=%s union=%s "
+        "cut=%s fused=%s survivors=%s/%s/%s(overlap/denseOnly/sparseOnly) "
+        "dropped=%s/%s(denseOnly/sparseOnly) firstDropped=%s/%s(denseRank/sparseRank) "
+        "lastKept=%s denseRaw=%s sparseRaw=%s",
         run_id,
+        host,
+        need,
+        keyword,
         dense_n,
         sparse_n,
         len(both),
@@ -138,6 +155,31 @@ def _raw_band(result: VectorStoreQueryResult) -> str:
     if not sims:
         return "-"
     return f"{max(sims):.3f}..{min(sims):.3f}"
+
+
+def _host_of(*results: VectorStoreQueryResult) -> str:
+    """The host the answer came from: the first node of any result set that carries one."""
+    for result in results:
+        for node in result.nodes or []:
+            host = (node.metadata or {}).get("host")
+            if host:
+                return str(host)
+    return "-"
+
+
+def _question_labels() -> tuple[str, str]:
+    """The question in flight as two quoted, length-bounded labels; `-` when not set."""
+    need, keyword = _HYBRID_QUESTION.get()
+    return _label(need, _LOG_NEED_CHARS), _label(keyword, _LOG_KEYWORD_CHARS)
+
+
+def _label(text: str, limit: int) -> str:
+    flat = " ".join((text or "").split())
+    if not flat:
+        return "-"
+    if len(flat) > limit:
+        flat = flat[: limit - 1] + "…"
+    return '"' + flat.replace('"', "'") + '"'
 
 
 def _ranked_ids(result: VectorStoreQueryResult) -> list[str]:
@@ -563,6 +605,7 @@ class LlamaIndexEngine:
         # common word in it is a term ("cost", "manual" matched every ERP page on 2026-10-08).
         _HYBRID_RUN_ID.set(run_id)
         keyword_text = (keyword or "").strip() or need
+        _HYBRID_QUESTION.set((need, (keyword or "").strip()))
         result = await self._vector_store.aquery(
             VectorStoreQuery(
                 query_str=keyword_text,

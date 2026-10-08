@@ -21,12 +21,16 @@ from llama_index.core.vector_stores.types import VectorStoreQueryResult
 from llama_index.vector_stores.qdrant.utils import relative_score_fusion
 
 from geek_crawler_rag import llama_engine
-from geek_crawler_rag.llama_engine import _HYBRID_RUN_ID, logged_relative_score_fusion
+from geek_crawler_rag.llama_engine import (
+    _HYBRID_QUESTION,
+    _HYBRID_RUN_ID,
+    logged_relative_score_fusion,
+)
 
 
-def _result(*ids: str) -> VectorStoreQueryResult:
+def _result(*ids: str, host: str | None = None) -> VectorStoreQueryResult:
     return VectorStoreQueryResult(
-        nodes=[TextNode(id_=i, text=f"text {i}") for i in ids],
+        nodes=[TextNode(id_=i, text=f"text {i}", metadata={"host": host} if host else {}) for i in ids],
         similarities=[1.0 - n * 0.1 for n in range(len(ids))],
         ids=list(ids),
     )
@@ -34,13 +38,18 @@ def _result(*ids: str) -> VectorStoreQueryResult:
 
 def test_both_halves_are_counted(caplog):
     _HYBRID_RUN_ID.set("run-1")
+    _HYBRID_QUESTION.set(("Automated payment reconciliation syncs results with the ERP", "payment reconciliation"))
     with caplog.at_level(logging.INFO, logger=llama_engine.__name__):
-        out = logged_relative_score_fusion(_result("a", "b"), _result("b", "c"), top_k=5)
+        out = logged_relative_score_fusion(
+            _result("a", "b", host="tipalti.com"), _result("b", "c", host="tipalti.com"), top_k=5
+        )
 
     [record] = [r for r in caplog.records if "hybrid_" in r.getMessage()]
     assert record.levelno == logging.INFO
     assert record.getMessage() == (
-        "hybrid_halves runId=run-1 dense=2 sparse=2 overlap=1 union=3 cut=5 fused=3 "
+        'hybrid_halves runId=run-1 host=tipalti.com '
+        'need="Automated payment reconciliation syncs results with the ERP" '
+        'keyword="payment reconciliation" dense=2 sparse=2 overlap=1 union=3 cut=5 fused=3 '
         "survivors=1/1/1(overlap/denseOnly/sparseOnly) dropped=0/0(denseOnly/sparseOnly) "
         "firstDropped=-/-(denseRank/sparseRank) lastKept=0.000 "
         "denseRaw=1.000..0.900 sparseRaw=1.000..0.900"
@@ -58,6 +67,7 @@ def test_the_cut_is_reported_per_half_with_the_best_rank_dropped(caplog):
     meaning-only, one keyword-only. Dropped: d (meaning rank 4), f and g (keyword ranks 3, 4).
     """
     _HYBRID_RUN_ID.set("run-4")
+    _HYBRID_QUESTION.set(("x" * 80, ""))
     with caplog.at_level(logging.INFO, logger=llama_engine.__name__):
         out = logged_relative_score_fusion(
             _result("a", "b", "c", "d"), _result("c", "e", "f", "g"), top_k=4
@@ -65,23 +75,28 @@ def test_the_cut_is_reported_per_half_with_the_best_rank_dropped(caplog):
 
     [record] = [r for r in caplog.records if "hybrid_" in r.getMessage()]
     assert record.getMessage() == (
-        "hybrid_halves runId=run-4 dense=4 sparse=4 overlap=1 union=7 cut=4 fused=4 "
+        'hybrid_halves runId=run-4 host=- need="' + "x" * 71 + '…" keyword=- '
+        "dense=4 sparse=4 overlap=1 union=7 cut=4 fused=4 "
         "survivors=1/2/1(overlap/denseOnly/sparseOnly) dropped=1/2(denseOnly/sparseOnly) "
         "firstDropped=4/3(denseRank/sparseRank) lastKept=0.333 "
         "denseRaw=1.000..0.700 sparseRaw=1.000..0.700"
-    )
+    ), "a need over 72 characters is cut with an ellipsis; no keyword and no host print as -"
     assert [n.node_id for n in out.nodes] == ["c", "a", "b", "e"]
 
 
 def test_an_empty_keyword_half_is_a_warning_naming_what_the_answer_used(caplog):
     _HYBRID_RUN_ID.set("run-2")
+    _HYBRID_QUESTION.set(("Automated Payment Execution", "Automated Payment Execution"))
     with caplog.at_level(logging.INFO, logger=llama_engine.__name__):
-        logged_relative_score_fusion(_result("a", "b"), _result(), top_k=5)
+        logged_relative_score_fusion(_result("a", "b", host="melio.com"), _result(), top_k=5)
 
     [record] = [r for r in caplog.records if "hybrid_" in r.getMessage()]
     assert record.levelno == logging.WARNING
     message = record.getMessage()
-    assert "hybrid_half_empty runId=run-2 dense=2 sparse=0" in message
+    assert (
+        'hybrid_half_empty runId=run-2 host=melio.com need="Automated Payment Execution" '
+        'keyword="Automated Payment Execution" dense=2 sparse=0'
+    ) in message
     assert "the meaning half only" in message
 
 
