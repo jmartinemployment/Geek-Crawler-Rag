@@ -358,8 +358,13 @@ still stand and are not repeated here.
 
 ## Status
 
-Nothing built. Rows are added here as stages land, with commit, deploy time and the measurement
-each stage's done-when asked for.
+| Stage | Built | Record |
+|---|---|---|
+| X12, fusion (decision 11) | Rag `3bc72cf`, VPS 20:25 UTC 2026-10-08 | HANDOFF §9b: every line `dropped=0/0`; bill.com 26 → 32 pages; the two first-eight lists await Jeff |
+| X1, first piece — the pillar's PAA FAQ written in calls of eight | GeekBackend `bcec6d4`, 2026-10-08 evening | The run's pillar refusal ("stopped at the output limit of 3072 tokens") cannot recur from the question count; a call answering nothing refuses naming the call. The Anthropic timeout and `stop_reason` parts of X1 are still open |
+
+Rows are added here as stages land, with commit, deploy time and the measurement each stage's
+done-when asked for.
 
 ## Rules that bind this plan
 

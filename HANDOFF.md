@@ -128,9 +128,16 @@ findings carry F-ids, severity, `file:line` evidence and the change each needs; 
 that **nothing in GeekAPI calls `/v1/verify`** — quotes are checked only against spans GeekAPI
 cuts for itself — and that GeekBackend's A8/D3/D4 sit on an unpushed branch. The plan that fixes
 it is `plans/fix-from-the-audit.md` (same day): thirteen stages, X1–X13, ordered by trust bought
-per commit, with ten decisions for Jeff at the end. Nothing in it is built. The false statements
-the audit listed in the other repositories' plans and handoffs were corrected the same afternoon
-at Jeff's instruction.
+per commit, with ten decisions for Jeff at the end. The false statements the audit listed in the
+other repositories' plans and handoffs were corrected the same afternoon at Jeff's instruction.
+
+**Built the same evening, on Jeff's "do whatever necessary to fix" after the first real run:**
+decision 11 / X12's fusion (`3bc72cf`, §9b) and, in GeekBackend (`bcec6d4`), the pillar's People
+Also Ask FAQ written in calls of eight questions — the run's pillar was refused because a brief
+with 37 PAA questions went to one FAQ call with a 3,072-token budget and OpenAI stopped at the
+limit. That is the first piece of X1 (a cut reply costs the call, not the page). The run's other
+findings — every batch 50–75% of the floor it is measured against, keyword quotas, one tool page
+without a quotation and the line not naming which — are X10b and X6, not yet built.
 In content-creator-v2: the rows on the form. In Geek-Crawler-v2: `/legal/`, `/privacy/`, terms,
 cookies and careers directories refused as `non_content_directory` (`05b2649`). All seven stages
 are built; what remains is Jeff's: a Tipalti re-crawl and re-index, evidence rows on the brief, a
@@ -371,8 +378,30 @@ question from ranks 12–25; the bands were wide, not peaked — and one competi
 three changes: (a) `dense_query` sends `hybrid_top_k` = both fetches, so fusion cuts nothing;
 (b) the order rule is reciprocal rank fusion, k 60 (`logged_rank_fusion`, the test that pinned
 "LlamaIndex's, unchanged" reversed on purpose); (c) `query.py`'s pool is the whole union unless
-the Cohere reranker is on. After the deploy every line reads `dropped=0/0`; the after-numbers on
-the nine §9b questions are appended below once measured.
+the Cohere reranker is on. After the deploy every line reads `dropped=0/0`.
+
+**After (`3bc72cf`, deployed 20:25 UTC), the same nine questions, read off the lines and the
+answers:**
+
+| Query | line: d/s/overlap · cut · fused · survivors (ov/dOnly/sOnly) · dropped | final |
+|---|---|---|
+| tipalti bare | 64/64/6 · 128 · 122 · 6/58/58 · **0/0** | 32 from 32 pages |
+| stampli bare | 64/64/2 · 128 · 126 · 2/62/62 · 0/0 | 32 / 32 |
+| melio bare | 64/64/15 · 128 · 113 · 15/49/49 · 0/0 | 32 / 32 |
+| bill bare | 64/64/4 · 128 · 124 · 4/60/60 · 0/0 | 32 / 32 (was 26 pages) |
+| ramp bare | 64/64/3 · 128 · 125 · 3/61/61 · 0/0 | 32 / 32 |
+| avidxchange bare | 64/64/2 · 128 · 126 · 2/62/62 · 0/0 | 32 / 32 |
+| tipalti core problem | 30/30/2 · 60 · 58 · 2/28/28 · 0/0 | 8 / 8 |
+| tipalti row: reconciliation | 30/30/7 · 60 · 53 · 7/23/23 · 0/0 | 8 / 8 |
+| tipalti row: approval | 30/30/4 · 60 · 56 · 4/26/26 · 0/0 | 8 / 8 |
+
+`cut` is now both fetches, `fused` the union, `survivors` the whole union by class — the line
+proves nothing was dropped before selection. First eight, tipalti bare keyword: services industry
+solutions, the music-royalties payment-automation guide, `company/reviews`, automated payment
+reconciliation, invoice-flow, `why/procurement`, travel industry solutions, `ap-automation/`.
+Reconciliation row: multi-entity, automated payment reconciliation, then the QuickBooks, Workday,
+Xero, Oracle Fusion and Microsoft ERP integrations, then the accounting-automation blog — the same
+eight pages as before, reordered. Those two lists are Jeff's to read.
 
 ## 9. Corpus state (2026-10-06)
 
