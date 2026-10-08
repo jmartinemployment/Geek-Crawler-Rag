@@ -1,5 +1,20 @@
 # Retrieval from the brief — plan, 2026-10-08
 
+## Status, 2026-10-08 (same day)
+
+| Stage | Commit | Deployed |
+|---|---|---|
+| P1 `keyword` on `/v1/query` → keyword half | Rag `d8a628e` | VPS 14:41 UTC; verified: `keyword: "payment reconciliation"` on pain 5 puts the reconciliation page in slot 1 |
+| P2 second BM25 deleted | Rag `d8a628e` | VPS 14:41; `bm25_rank` absent from the image |
+| P3 stub chunks dropped, `chunksSkippedStub` | Rag `b14c200` + GeekBackend `36283f1` | VPS 14:41, Railway 14:42; status carries the field (0 until a re-index) |
+| P4 evidence rows in the brief | content-creator-v2 `290440c` + GeekBackend `8f3ead6` | Vercel on push; GeekAPI with P5 |
+| P5 partner runs asked from the brief | GeekBackend (commit after `8f3ead6`) | Railway on push |
+| P6 probe asks the brief; missing blockquote is a gap | same commit as P5 | Railway on push |
+| P7 crawler: non-content directories | — | **open** |
+
+Acceptance tests 1–4 need a Tipalti re-crawl and re-index (Jeff queues both) and rows
+entered on the brief; test 5 holds on the live box.
+
 **Written for one session to implement, in order, across three repositories.** Decided with Jeff on
 2026-10-08 after a day of live measurement on project `cc480d8c` ("Accounts Payable: Automated
 Payment Execution"), scoped to Tipalti (`39bbce59`, the weakest partner) for the acceptance tests.

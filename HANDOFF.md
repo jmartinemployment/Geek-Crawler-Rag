@@ -111,6 +111,15 @@ fixture). content-creator-v2 `9f41697` (the six re-indexed runs, in the Rag plan
 **The Rag plan's Status section is stale on R4:** it lists the three R4 defects as open; all three
 are fixed in `9a0c901`. It also predates `2cd443f` (scheduler on, logging). The plan writer owns it.
 
+## 4a. The second plan: `plans/retrieval-from-the-brief.md` (2026-10-08)
+
+Written and implemented the same day, at Jeff's instruction, across three repositories; its
+Status table is the record. In this repo: `keyword` on `/v1/query` (the keyword half's own text),
+the second BM25 deleted, stub chunks dropped and counted. In GeekBackend: the brief's evidence
+rows read, a partner run asked its core problem then one question per row, the blockquote probe
+asking the brief's question, a missing blockquote reported as a gap instead of refusing the page.
+In content-creator-v2: the rows on the form. Open: P7, the crawler's non-content directories.
+
 ## 5. Outstanding steps in the whole plan (`fix-overview.md` §4), as of 2026-10-06
 
 Read from each project plan and the repos' logs on 2026-10-06. "Committed" means a commit names the
