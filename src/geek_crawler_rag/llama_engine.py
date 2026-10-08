@@ -491,12 +491,14 @@ class LlamaIndexEngine:
             categories=categories,
             min_quality=min_quality,
         )
-        # Hybrid, always: dense vectors plus the sparse BM25 channel, which is the ranked keyword
-        # search. There is no dense-only mode to fall back to. A collection without the sparse
-        # vector is refused at startup (QdrantStore schema check), so no query reaches one.
+        # `query_str` is what makes QdrantVectorStore run the keyword (BM25 sparse) half: its hybrid
+        # branch is taken only when `mode == HYBRID and query_str is not None`; without the text it
+        # falls through to a dense-only search and raises nothing. Absent until 2026-10-08, so every
+        # query before that ran on the meaning half alone. `test_dense_query_is_hybrid.py` pins it.
         _HYBRID_RUN_ID.set(run_id)
         result = await self._vector_store.aquery(
             VectorStoreQuery(
+                query_str=need,
                 query_embedding=query_embedding,
                 similarity_top_k=top_k,
                 filters=filters,

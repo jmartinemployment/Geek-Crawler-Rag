@@ -1,25 +1,8 @@
-# Handoff — Geek-Crawler-Rag, 2026-10-06
-
-> **Read first — retrieval has never been hybrid in production (found 2026-10-06, not fixed).**
-> `llama_engine.dense_query` builds `VectorStoreQuery(query_embedding=…, mode=HYBRID, …)` with no
-> `query_str`. LlamaIndex's `QdrantVectorStore.aquery` takes its hybrid branch only when
-> `query.query_str is not None` (installed `llama_index/vector_stores/qdrant/base.py`, the
-> `elif query.mode == HYBRID and … and query.query_str is not None` branch); otherwise it falls
-> through to `elif self.enable_hybrid:  # search for dense vectors only`. So every query has run on
-> the dense (meaning) half alone while reporting `retrieval="llamaindex-hybrid"`. The keyword
-> (BM25 sparse) half has never run at query time. Found by the hybrid half logging in `2cd443f`: a
-> live query produced no `hybrid_halves` line at all, because the fusion is never called.
-> `tests/test_hybrid_sparse_retrieval.py` passes because it calls the store directly with
-> `query_str="Dext"`, not through `dense_query`.
-> **Consequences:** D15's premise ("the dense list is already a dense-plus-sparse hybrid") was false
-> in practice; R2's before/after (identical) was measured on dense-only retrieval; the only keyword
-> signal left in a query is the in-process BM25 re-rank over the dense candidates.
-> **The fix is one argument** (`query_str=need` in `dense_query`) plus a test that goes through
-> `dense_query`. It changes retrieval, so it is **Jeff's decision**; after it, re-run the R2
-> questions on Ramp `4563f7ec` with `BuildNeed` text and expect `hybrid_halves` lines in the log.
+# Handoff — Geek-Crawler-Rag, 2026-10-08
 
 For whoever picks this repository up next. Checked on 2026-10-06 against the repositories, the VPS
-and live Mongo/Qdrant; where something was not checked, it says so. Authority for rules is
+and live Mongo/Qdrant, and on 2026-10-08 for the hybrid fix; where something was not checked, it
+says so. Authority for rules is
 `/Users/jeffmartin/development/.claude/CLAUDE.md`. The plan is in `content-creator-v2/plans/`:
 `fix-overview.md` (rules, decisions, wave order) and `fix-geek-crawler-rag.md` (this repo's stages;
 read its **Status** section first). This file says where things stand and what to do next.
@@ -43,9 +26,15 @@ index job in flight. There are no branches.
    writes the run whole. There is no resume. *"Never have two URLs the same, delete or update as
    appropriate. RAG Indexing seems to me as a delete."*
 2. **Hybrid always.** *"HYBRID ALWAYS?"* Retrieval is dense (meaning) + sparse BM25 (keyword) in one
-   Qdrant query; there is no dense-only mode and no setting to make one. **But see the box at the
-   top: the query omits `query_str`, so LlamaIndex has been running dense-only regardless.** The
-   setting is gone; the hybrid query itself still has to be fixed to honour this rule.
+   Qdrant query; there is no dense-only mode and no setting to make one. **Until 2026-10-08 the
+   query omitted `query_str`, the one argument that makes LlamaIndex run the keyword half, so every
+   production query ran dense-only while labelled `llamaindex-hybrid`.** `query_str` was never in any
+   commit: `448b25c` (built hybrid, 09-24) and `529a5df` (hybrid always, 10-04) both set
+   `mode=HYBRID` without it, and the hybrid test called the store directly with `query_str`, so it
+   proved LlamaIndex, not `dense_query`. Fixed 2026-10-08 by Jeff's instruction ("fix");
+   `tests/test_dense_query_is_hybrid.py` goes through `dense_query` and asserts the fusion ran.
+   Every retrieval measurement before that date (R2's before/after, the earlier near-copy numbers)
+   was taken on dense-only retrieval.
 3. **Log before any fallback, so a failure can be fully understood** (2026-10-06). Every failure
    path of hybrid retrieval is logged, including the silent one where a half returns nothing (§8).
    Nothing may ever be built that degrades a path without first logging what failed.
@@ -93,7 +82,7 @@ index job in flight. There are no branches.
 
 | Repository | `main` | Deployed | Checked |
 |---|---|---|---|
-| Geek-Crawler-Rag | `2cd443f` (this file committed after, not pushed) | VPS, API container recreated 2026-10-06 10:24 UTC; startup logs `Hybrid retrieval: dense model=BAAI/bge-small-en-v1.5, sparse (BM25) model=Qdrant/bm25` | 2026-10-06 |
+| Geek-Crawler-Rag | the hybrid fix commit of 2026-10-08 (`query_str=need`), pushed | VPS, deploys on push; after it, a live `/v1/query` must leave a `hybrid_halves runId=… dense=N sparse=N fused=N` line in `docker compose logs api` — that line is the proof the keyword half ran, nothing else is | 2026-10-08 |
 | GeekBackend | `5671288`, working tree clean | Railway, not checked from here | 2026-10-06 |
 | content-creator-v2 | origin `67456d3`; 2 local unpushed commits from another session | — | — |
 
@@ -110,7 +99,7 @@ fixture). content-creator-v2 `9f41697` (the six re-indexed runs, in the Rag plan
 | **R1** one point per distinct text per run | 1 | **Done.** `textDigest` on every point; `indexer._admit_page_nodes`; `chunksSkippedRepeat` in status and webhook. Met on the old Ramp run (33,728 → 26,683 points). |
 | **R4** verify route | 1 | **Code done** (`9a0c901`): one digest `sha256(contentHtml)`, `verify_citations` deleted, `found` the only verdict, F-R10 fixture. **Done-when waits on GeekAPI A1 full** (Wave 2): its verify pass must call `/v1/verify` and keep no comparison of its own. |
 | **R5** readiness fail-closed | 1 | **Done.** `POST /v1/index` and the scheduler's entrance refuse a run without `ContentReadyAt` (409, no job row). Scheduler default: on (rule 5). |
-| **R2** keyword scroll deleted (D15) | 2 | **Done early** (`5e622b6`). Distinct pages before/after on the old Ramp run with `BuildNeed` questions: 20/19/28/25/23, identical — **measured on dense-only retrieval** (box at top); re-measure once hybrid actually runs. |
+| **R2** keyword scroll deleted (D15) | 2 | **Done early** (`5e622b6`). Distinct pages before/after on the old Ramp run with `BuildNeed` questions: 20/19/28/25/23, identical — **measured on dense-only retrieval**, before the 2026-10-08 hybrid fix; re-measure on Ramp `4563f7ec`. On 2026-10-08, before the fix, the five "test" partners returned 32 passages from 19–23 distinct pages each. |
 | **R3** collapse before the cut; measure near-copies | 2 | **Not started. Held** for the Wave 1 proof. Earlier near-copy numbers used the bare keyword and do not count. |
 | **R6** tests | 2 | Partial. Done: cross-page collapse, verify route, readiness, F-R10, hybrid half logging. Open: the flooded-pool test. "Ranked lexical list" is moot now the list is deleted. |
 | **R7** README drift | 3 | Open. Memory limit, upsert delay and retry wording still disagree with code. |
@@ -124,11 +113,19 @@ Read from each project plan and the repos' logs on 2026-10-06. "Committed" means
 stage; it does not mean its done-when was checked. Each plan's own status section is the authority.
 
 **The gate, next.** Wave 1 is built in every project, and persistence P0 has shipped (GeekBackend
-`6bef275`…`aefc443`, `a2a559d`; frontend `HANDOFF.md`). **No wave's end-to-end proof has been run.**
-The proof: one Generate on the Accounts Payable project, all seven live types (five tool pages, a
-pillar, a blog, one cold email, one social piece, one image-prompt set, one ads set), or each refused
-by name; Jeff reads them; every quote on every page is found on the page it cites. **Nothing in Wave
-2 or later starts until Jeff has read it.**
+`6bef275`…`aefc443`, `a2a559d`; frontend `HANDOFF.md`). The proof as the plan words it: one
+Generate on the Accounts Payable project ("test"), all seven live types (five tool pages, a pillar,
+a blog, one cold email, one social piece, one image-prompt set, one ads set), or each refused by
+name; Jeff reads them; every quote on every page is found on the page it cites. **Where it stands
+(Jeff, 2026-10-06):** Jeff ran two Generates on "test" on 2026-10-05 — the first with serious
+errors, the second (18:24 UTC) confirming the fixes and exposing an unwanted drafts history, since
+removed (GeekBackend `b578480`). Both selected only tool, blog and pillar; he had not realised cold
+email and social had to be selected, and the ads set was not selected either. He questions the
+standalone image prompt as a proof type (he sees it as an on-demand retry, not a Generate output) —
+a plan change for the plan writer. **He will run a third Generate with the missed types once the
+projects reach a holding stage.** The two failed runs of 2026-10-06 10:05/10:06 UTC (OpenAI
+credits; Anthropic empty body, F-A19) were started by another session and are not his. Wave 2 work
+in this repo waits on his read of the third run.
 
 | Wave | Project | Stage | State |
 |---|---|---|---|
@@ -202,7 +199,7 @@ EOF
 | Failure | Log |
 |---|---|
 | Hybrid query raises (Qdrant down, keyword model error) | `Query failed for runId=…` with traceback (`query.py`); caller gets `retrieval="error"` |
-| **The hybrid branch is never taken (today, every query)** | **Nothing.** LlamaIndex's dense-only fall-through calls no fusion, so no `hybrid_*` line appears. The absence of `hybrid_halves` lines is the signal until the box at the top is fixed. |
+| `query_str` missing again (the hybrid branch not taken) | **Nothing** — LlamaIndex's dense-only fall-through calls no fusion, so no `hybrid_*` line appears. A query with no `hybrid_halves` / `hybrid_half_empty` line ran dense-only. `test_dense_query_is_hybrid.py` pins the argument. |
 | One half returns nothing | `WARNING hybrid_half_empty runId=… dense=N sparse=0 fused=N -- this answer used the meaning half only` (or the keyword half, or neither). Ranking is unchanged; this only records it. |
 | Both halves answer | `INFO hybrid_halves runId=… dense=N sparse=N fused=N`, one line per query |
 | Keyword model fails to load | `Sparse (BM25 keyword) encoder failed to load model=… vector=…` with traceback, then startup stops |
