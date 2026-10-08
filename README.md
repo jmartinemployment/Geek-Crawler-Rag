@@ -154,6 +154,14 @@ RAG in this repository is **library-only**: index, query, and page block text. T
   score identically, so the pair would otherwise occupy adjacent slots. Exact
   repeated text is dropped before the `topK` cap is applied, and the candidate
   pool over-fetches so `topK` is filled with distinct results.
+- **Results are page-diverse (2026-10-08).** Passages are ranked, then pages are
+  selected: every page's best passage first (pages in rank order of those best
+  passages), then every page's second-best, and so on until `topK` is filled. A
+  page can contribute several passages only after every page with an admissible
+  passage has had its first. Before this, the top `topK` came straight off the
+  ranked list and one page could take most of the slots — on Stampli the bare
+  keyword put 13 of 32 passages on one blog post. The returned order is the
+  selection order, so a consumer that truncates keeps the diversity.
 - `preferParent` / `preferChild` select which text a hit returns. They no longer
   affect de-duplication, which is unconditional. Setting `preferParent: true`
   additionally collapses sibling children that share one parent.

@@ -329,6 +329,17 @@ def _parent_lineage_key(payload: dict[str, Any]) -> str:
     return f"{page_id}|{section}|{digest}"
 
 
+def _page_key(payload: dict[str, Any]) -> str:
+    """The page a candidate belongs to, for page-diverse selection; "" when it has no page identity."""
+    page_id = str(payload.get("pageId") or "").strip()
+    if page_id:
+        return f"id:{page_id}"
+    url = str(payload.get("finalUrl") or payload.get("url") or "").strip().lower()
+    if url:
+        return f"url:{url}"
+    return ""
+
+
 def _select_ranked_candidates(
     pool: list[dict[str, Any]],
     ranked: list[tuple[int, float]],
@@ -337,33 +348,75 @@ def _select_ranked_candidates(
     target_top_k: int,
     collapse_parents: bool,
 ) -> list[tuple[dict[str, Any], float]]:
-    """Keep Cohere order; drop repeated text; optionally collapse siblings.
+    """Rank passages, then select pages: every page's best passage first, then every page's
+    second-best, and so on until ``target_top_k`` is filled.
 
-    Exact-text dedup runs unconditionally. A section shorter than the child
-    window yields a child identical to its parent, so both points score the same
-    and the duplicate lands in the adjacent slot. Deduping here rather than at
-    assembly means the top_k cap is spent on distinct text.
+    Until 2026-10-08 the top ``target_top_k`` were taken straight off the ranked list, so a page
+    that repeated the question's words could fill slot after slot -- on Stampli the bare keyword
+    put 13 of 32 passages on one blog post, and GeekAPI's extractor, which reads the pages behind
+    the passages, saw 14 pages where the pool held more. Pages are ordered by the rank of their
+    best passage; within a page, passages keep rank order. A page can still contribute several
+    passages, but only after every page with an admissible passage has had its first. The
+    returned order is the selection order, so a consumer that truncates keeps page diversity.
+
+    Exact-text dedup still runs unconditionally, in selection order: a section shorter than the
+    child window yields a child identical to its parent, so both points score the same and the
+    duplicate would land in the adjacent slot. Sibling collapse (``collapse_parents``) still runs
+    the same way. A skipped candidate does not use up its page's turn; the page's turn is taken by
+    its next admissible passage. A candidate with no page identity is its own page.
     """
-    selected: list[tuple[dict[str, Any], float]] = []
-    seen_parents: set[str] = set()
-    seen_text: set[str] = set()
+    if target_top_k <= 0:
+        return []
+
+    per_page: dict[str, list[tuple[dict[str, Any], float]]] = {}
+    page_order: list[str] = []
     for orig_idx, rerank_score in ranked:
-        if len(selected) >= target_top_k:
-            break
         if orig_idx < 0 or orig_idx >= len(pool):
             continue
         cand = pool[orig_idx]
-        text = _return_text(cand["payload"], request)
-        if text:
-            if text in seen_text:
+        key = _page_key(cand["payload"]) or f"cand:{cand['id']}"
+        if key not in per_page:
+            per_page[key] = []
+            page_order.append(key)
+        per_page[key].append((cand, float(rerank_score)))
+
+    selected: list[tuple[dict[str, Any], float]] = []
+    seen_parents: set[str] = set()
+    seen_text: set[str] = set()
+    cursor: dict[str, int] = {key: 0 for key in page_order}
+
+    def take_next_admissible(key: str) -> tuple[dict[str, Any], float] | None:
+        passages = per_page[key]
+        while cursor[key] < len(passages):
+            cand, score = passages[cursor[key]]
+            cursor[key] += 1
+            text = _return_text(cand["payload"], request)
+            if text:
+                if text in seen_text:
+                    continue
+                seen_text.add(text)
+            if collapse_parents:
+                lineage = _parent_lineage_key(cand["payload"])
+                if lineage in seen_parents:
+                    continue
+                seen_parents.add(lineage)
+            return cand, score
+        return None
+
+    while len(selected) < target_top_k:
+        admitted_this_round = 0
+        for key in page_order:
+            if len(selected) >= target_top_k:
+                break
+            if cursor[key] >= len(per_page[key]):
                 continue
-            seen_text.add(text)
-        if collapse_parents:
-            key = _parent_lineage_key(cand["payload"])
-            if key in seen_parents:
+            chosen = take_next_admissible(key)
+            if chosen is None:
                 continue
-            seen_parents.add(key)
-        selected.append((cand, float(rerank_score)))
+            selected.append(chosen)
+            admitted_this_round += 1
+        if admitted_this_round == 0:
+            break
     return selected
 
 

@@ -100,8 +100,8 @@ fixture). content-creator-v2 `9f41697` (the six re-indexed runs, in the Rag plan
 | **R4** verify route | 1 | **Code done** (`9a0c901`): one digest `sha256(contentHtml)`, `verify_citations` deleted, `found` the only verdict, F-R10 fixture. **Done-when waits on GeekAPI A1 full** (Wave 2): its verify pass must call `/v1/verify` and keep no comparison of its own. |
 | **R5** readiness fail-closed | 1 | **Done.** `POST /v1/index` and the scheduler's entrance refuse a run without `ContentReadyAt` (409, no job row). Scheduler default: on (rule 5). |
 | **R2** keyword scroll deleted (D15) | 2 | **Done early** (`5e622b6`). Distinct pages before/after on the old Ramp run with `BuildNeed` questions: 20/19/28/25/23, identical — **measured on dense-only retrieval**, before the 2026-10-08 hybrid fix; re-measure on Ramp `4563f7ec`. On 2026-10-08, before the fix, the five "test" partners returned 32 passages from 19–23 distinct pages each. |
-| **R3** collapse before the cut; measure near-copies | 2 | **Not started. Held** for the Wave 1 proof. Earlier near-copy numbers used the bare keyword and do not count. |
-| **R6** tests | 2 | Partial. Done: cross-page collapse, verify route, readiness, F-R10, hybrid half logging. Open: the flooded-pool test. "Ranked lexical list" is moot now the list is deleted. |
+| **R3** collapse before the cut; measure near-copies | 2 | **Selection rule done 2026-10-08** (Jeff: "proceed to fully implement this"): `_select_ranked_candidates` ranks passages then selects pages — every page's best first, then second-best, until `topK`; text dedupe and sibling collapse unchanged. Before/after on the live box is in §9. The near-copy measurement (same paragraph, merchant name swapped) is still open. |
+| **R6** tests | 2 | Done: cross-page collapse, verify route, readiness, F-R10, hybrid half logging, `dense_query` hybrid, hosts crawl type, **the flooded-pool test** (`tests/test_page_diverse_selection.py`, through the service). "Ranked lexical list" is moot now the list is deleted. |
 | **R7** README drift | 3 | Open. Memory limit, upsert delay and retry wording still disagree with code. |
 
 **The Rag plan's Status section is stale on R4:** it lists the three R4 defects as open; all three
@@ -184,7 +184,7 @@ EOF
 | Index a run: delete, page loop, repeat collapse, readiness gate | `src/geek_crawler_rag/indexer.py` (`_index_run`, `_admit_page_nodes`, `readiness_refusal`) |
 | Chunks → nodes, `textDigest`, `sourceDigest` | `src/geek_crawler_rag/llama_nodes.py` (`text_digest`, `page_source_digest`) |
 | Embedding, hybrid query, hybrid half logging | `src/geek_crawler_rag/llama_engine.py` (`dense_query`, `logged_relative_score_fusion`) |
-| Query: hybrid candidates → BM25 re-rank → RRF → (Cohere off) → select | `src/geek_crawler_rag/query.py` |
+| Query: hybrid candidates → BM25 re-rank → RRF → (Cohere off) → page-diverse select | `src/geek_crawler_rag/query.py` (`_query_hybrid`, `_select_ranked_candidates`, `_page_key`) |
 | Verify route, page reads, shared refusal helper | `src/geek_crawler_rag/app.py` (`verify_quotes`, `_citable_page_text`) |
 | Quote check and the F-R10 normalisation | `src/geek_crawler_rag/citation_verify.py` (`verify_quote`) |
 | Block → text, the one projection | `src/geek_crawler_rag/block_text.py` |
