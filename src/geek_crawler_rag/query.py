@@ -1,9 +1,10 @@
 """Query pipeline: hybrid (dense + sparse BM25) candidates, pool cut, optional Cohere rerank,
 page-diverse selection.
 
-The in-process BM25 re-rank and its RRF with the hybrid order are DISABLED (2026-10-08, Jeff); the
-code is kept in `_query_hybrid`, commented, so one keyword engine can be turned back on for
-comparison. See the note there before restoring it.
+One keyword pass, Qdrant's. An in-process BM25 re-rank fused by RRF with the retrieval order ran
+here from 2026-09-07 (cfdb36e) -- the only keyword signal while retrieval was meaning-only -- and
+scored the keyword a second time once the hybrid's own keyword half ran (7c47fa1). Disabled in
+e2937f0, deleted per plans/retrieval-from-the-brief.md P2 (Jeff, 2026-10-08).
 """
 
 from __future__ import annotations
@@ -14,8 +15,6 @@ from typing import Any, Protocol
 
 from llama_index.core.schema import NodeWithScore
 
-# DISABLED 2026-10-08 -- restored together with the block in _query_hybrid:
-# from geek_crawler_rag.bm25_rank import bm25_rank_indices
 from geek_crawler_rag.config import Settings
 from geek_crawler_rag.extract import host_from_origin_or_url
 from geek_crawler_rag.graph_retrieve import (
@@ -27,9 +26,6 @@ from geek_crawler_rag.models import ChunkHit, QueryRequest, QueryResponse
 from geek_crawler_rag.qdrant_store import QdrantStore
 from geek_crawler_rag.rerank import Reranker
 
-# DISABLED 2026-10-08 -- restored together with the block in _query_hybrid:
-# from geek_crawler_rag.rrf import reciprocal_rank_fusion
-
 logger = logging.getLogger(__name__)
 
 
@@ -40,6 +36,7 @@ class DenseRetriever(Protocol):
         *,
         run_id: str,
         top_k: int,
+        keyword: str | None = None,
         owner_id: str = "system:crawler",
         visibility: str = "service",
         crawl_type: str | None = None,
@@ -127,6 +124,7 @@ class QueryService:
                 request.need,
                 run_id=request.run_id,
                 top_k=dense_limit,
+                keyword=request.keyword,
                 owner_id=request.owner_id,
                 visibility=request.visibility,
                 crawl_type=request.crawl_type,
@@ -163,31 +161,11 @@ class QueryService:
                 retrieval="empty",
             )
 
-        # DISABLED 2026-10-08 (Jeff): the in-process BM25 re-rank and its RRF with the hybrid order.
-        #
-        # Written on 2026-09-07 (cfdb36e), when retrieval was meaning-only and this was the only
-        # keyword signal, fused 50/50 with the meaning order. Since 7c47fa1 the keyword half runs
-        # inside the hybrid query itself, so this pass scored the same keyword a second time and the
-        # RRF weighted the result about 3:1 keyword over meaning, with no single knob (alpha is the
-        # hybrid's). Kept rather than deleted because Jeff intends to turn one keyword engine back
-        # on for comparison. To restore: uncomment these seven lines and the two imports marked
-        # DISABLED at the top of this file; nothing else changed. `bm25_rank.py`, `rrf.py` and their
-        # tests are untouched. While disabled, `_lexical_doc` and `_node_id` below have no caller.
-        #
-        # dense_ids = [_node_id(n) for n in dense_nodes]
-        # docs_for_bm25 = [_lexical_doc(c["payload"]) for c in candidates]
-        # bm25_order = bm25_rank_indices(request.need, docs_for_bm25)
-        # bm25_ids = [candidates[i]["id"] for i in bm25_order]
-        # fused = reciprocal_rank_fusion([dense_ids, bm25_ids])
-        # id_to_cand = {c["id"]: c for c in candidates}
-        # fused_candidates = [id_to_cand[i] for i, _ in fused if i in id_to_cand]
-        fused_candidates = candidates
-
         pool_n = min(
-            len(fused_candidates),
+            len(candidates),
             max(request.top_k * 2, self._settings.rerank_pool_size),
         )
-        pool = fused_candidates[:pool_n]
+        pool = candidates[:pool_n]
         collapse_parents = _should_collapse_parents(request)
         rerank_docs = [
             _rerank_document(c["payload"], request, collapse_parents=collapse_parents)
@@ -310,17 +288,6 @@ def _candidates(dense_nodes: list[NodeWithScore]) -> list[dict[str, Any]]:
             "dense_score": float(hit.score or 0.0),
         }
     return list(out.values())
-
-
-def _lexical_doc(payload: dict[str, Any]) -> str:
-    parts = [
-        str(payload.get("childText") or ""),
-        str(payload.get("parentText") or ""),
-        str(payload.get("text") or ""),
-        str(payload.get("title") or ""),
-        str(payload.get("sectionTitle") or ""),
-    ]
-    return "\n".join(p for p in parts if p)
 
 
 def _should_collapse_parents(request: QueryRequest) -> bool:

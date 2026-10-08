@@ -468,6 +468,7 @@ class LlamaIndexEngine:
         *,
         run_id: str,
         top_k: int,
+        keyword: str | None = None,
         owner_id: str = "system:crawler",
         visibility: str = "service",
         crawl_type: str | None = None,
@@ -495,10 +496,16 @@ class LlamaIndexEngine:
         # branch is taken only when `mode == HYBRID and query_str is not None`; without the text it
         # falls through to a dense-only search and raises nothing. Absent until 2026-10-08, so every
         # query before that ran on the meaning half alone. `test_dense_query_is_hybrid.py` pins it.
+        #
+        # The two halves take different text when the caller says so: `need` is embedded for the
+        # meaning half; `keyword`, when given, is the keyword half's text. A paragraph describing
+        # the reader's situation is what the meaning half is good at, and on the keyword half every
+        # common word in it is a term ("cost", "manual" matched every ERP page on 2026-10-08).
         _HYBRID_RUN_ID.set(run_id)
+        keyword_text = (keyword or "").strip() or need
         result = await self._vector_store.aquery(
             VectorStoreQuery(
-                query_str=need,
+                query_str=keyword_text,
                 query_embedding=query_embedding,
                 similarity_top_k=top_k,
                 filters=filters,

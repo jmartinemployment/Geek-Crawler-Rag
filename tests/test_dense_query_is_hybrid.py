@@ -64,6 +64,53 @@ async def test_dense_query_passes_the_question_text_so_the_keyword_half_runs(eng
     assert query.similarity_top_k == 5
 
 
+async def test_the_keyword_half_gets_the_keyword_and_the_meaning_half_gets_the_need(engine) -> None:
+    """plans/retrieval-from-the-brief.md P1: a paragraph for the meaning half, a few terms for the
+    keyword half. Without `keyword`, both halves get `need`, as before."""
+    engine.embed_query = AsyncMock(return_value=[0.0, 0.0, 0.0, 1.0])
+    engine._vector_store.aquery = AsyncMock(
+        return_value=VectorStoreQueryResult(nodes=[], similarities=[], ids=[])
+    )
+
+    await engine.dense_query(
+        "The company cannot reconcile global payments to the right entity",
+        run_id="run-1",
+        top_k=8,
+        keyword="payment reconciliation multi-entity",
+    )
+    query = engine._vector_store.aquery.await_args.args[0]
+    assert query.query_str == "payment reconciliation multi-entity"
+    engine.embed_query.assert_awaited_with(
+        "The company cannot reconcile global payments to the right entity"
+    )
+
+    await engine.dense_query("Automated Payment Execution", run_id="run-1", top_k=8, keyword="   ")
+    query = engine._vector_store.aquery.await_args.args[0]
+    assert query.query_str == "Automated Payment Execution", "a blank keyword means the need"
+
+
+async def test_the_service_forwards_the_request_keyword_to_dense_query() -> None:
+    from conftest import FakeChunkTokenizer
+    from geek_crawler_rag.models import QueryRequest
+    from geek_crawler_rag.query import QueryService
+    from geek_crawler_rag.rerank import Reranker
+
+    llama = MagicMock()
+    llama.chunk_tokenizer = FakeChunkTokenizer()
+    llama.dense_query = AsyncMock(return_value=[])
+    svc = QueryService(
+        MagicMock(),
+        Settings(openai_api_key="test"),
+        llama=llama,
+        reranker=Reranker(None, enabled=False),
+    )
+
+    await svc.query(QueryRequest(need="a paragraph", runId="r1", topK=8, keyword="W-9 W-8"))
+
+    assert llama.dense_query.await_args.kwargs["keyword"] == "W-9 W-8"
+    assert llama.dense_query.await_args.args[0] == "a paragraph"
+
+
 async def test_dense_query_runs_both_halves_against_a_real_store(engine, caplog) -> None:
     """Through `dense_query`, a term the dense vector cannot rank is found by the keyword half,
     and the fusion logs that both halves answered -- the line that never appeared in production."""

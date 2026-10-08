@@ -149,6 +149,11 @@ class SchedulerPauseRequest(BaseModel):
 
 class QueryRequest(BaseModel):
     need: str = Field(..., min_length=1)
+    # The keyword half's text. `need` is embedded for the meaning half; when `keyword` is given it
+    # is what the sparse BM25 half searches instead of `need`, so a paragraph can describe the
+    # situation without every common word in it becoming a search term. Absent: both halves get
+    # `need`, as before 2026-10-08.
+    keyword: str | None = Field(None, max_length=300)
     run_id: str = Field(..., alias="runId", min_length=1)
     owner_id: str = Field("system:crawler", alias="ownerId", min_length=1)
     visibility: str = Field("service", min_length=1)

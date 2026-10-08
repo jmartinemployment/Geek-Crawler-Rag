@@ -24,7 +24,6 @@ dependencies = [
     "pydantic-settings>=2.15.0",
     "pymongo>=4.18.0",
     "qdrant-client>=1.19.0",
-    "rank-bm25>=0.2.2",
     # Batch sizing and chunk sizing only, never for the embedder's own limit -- it counts WordPiece
     # and this counts BPE. See embedding_batching's docstring.
     "uvicorn[standard]>=0.52.4",

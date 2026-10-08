@@ -13,8 +13,6 @@ from geek_crawler_rag.metadata import (
     normalize_host,
     quality_score,
 )
-from geek_crawler_rag.rrf import reciprocal_rank_fusion
-from geek_crawler_rag.bm25_rank import bm25_rank_indices, tokenize
 
 
 def test_chunk_empty(chunk_tokenizer):
@@ -274,16 +272,3 @@ def test_competitor_chunk_kind_and_feature_tag():
     assert infer_feature_tag("SSO & SCIM", ["docs"]) == "SSO  SCIM"
     assert infer_feature_tag(None, ["pricing", "analytics"]) == "analytics"
     assert infer_feature_tag(None, ["pricing", "docs"]) is None
-
-
-def test_rrf_and_bm25():
-    fused = reciprocal_rank_fusion([["a", "b", "c"], ["b", "c", "a"]])
-    assert fused[0][0] == "b"
-    docs = [
-        "alpha product pricing nine dollars",
-        "unrelated cooking recipes",
-        "alpha enterprise SSO audit",
-    ]
-    order = bm25_rank_indices("alpha pricing", docs)
-    assert order[0] == 0
-    assert tokenize("Hello World") == ["hello", "world"]

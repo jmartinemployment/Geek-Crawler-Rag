@@ -188,7 +188,7 @@ EOF
 | Index a run: delete, page loop, repeat collapse, readiness gate | `src/geek_crawler_rag/indexer.py` (`_index_run`, `_admit_page_nodes`, `readiness_refusal`) |
 | Chunks → nodes, `textDigest`, `sourceDigest` | `src/geek_crawler_rag/llama_nodes.py` (`text_digest`, `page_source_digest`) |
 | Embedding, hybrid query, hybrid half logging | `src/geek_crawler_rag/llama_engine.py` (`dense_query`, `logged_relative_score_fusion`) |
-| Query: hybrid candidates (Qdrant fusion) → pool cut → (Cohere off) → page-diverse select. The in-process BM25 re-rank + RRF is **disabled 2026-10-08**, kept commented in `_query_hybrid` with restore instructions | `src/geek_crawler_rag/query.py` (`_query_hybrid`, `_select_ranked_candidates`, `_page_key`) |
+| Query: hybrid candidates (Qdrant fusion; `keyword` → keyword half, `need` → meaning half) → pool cut → (Cohere off) → page-diverse select. The in-process BM25 re-rank + RRF was disabled in `e2937f0` and **deleted** per `plans/retrieval-from-the-brief.md` P2 | `src/geek_crawler_rag/query.py` (`_query_hybrid`, `_select_ranked_candidates`, `_page_key`), `llama_engine.dense_query` |
 | Verify route, page reads, shared refusal helper | `src/geek_crawler_rag/app.py` (`verify_quotes`, `_citable_page_text`) |
 | Quote check and the F-R10 normalisation | `src/geek_crawler_rag/citation_verify.py` (`verify_quote`) |
 | Block → text, the one projection | `src/geek_crawler_rag/block_text.py` |
@@ -302,9 +302,9 @@ the procurement "why" page and the payables-automation guide. Each query logged
 - **Two keyword passes, by accident.** The in-process BM25 + RRF (`cfdb36e`, 09-07) was the only
   keyword signal while retrieval was meaning-only; once the hybrid's own keyword half ran
   (`7c47fa1`) it scored the keyword a second time, about 3:1 keyword over meaning with no single
-  knob. Disabled 2026-10-08 at Jeff's instruction, kept commented in `_query_hybrid` because he
-  intends to turn one keyword engine back on for comparison. It cannot replace the hybrid's half
-  (it only ever ran on top of retrieval); re-enabling it means two passes again.
+  knob. Disabled in `e2937f0`, then deleted per `plans/retrieval-from-the-brief.md` P2 (Jeff:
+  delete). It could never replace the hybrid's half (it only ever ran on top of retrieval);
+  `git log -S bm25_rank_indices` is the record.
 - **A claim read from code is not a fact about production.** Check Mongo/Qdrant/the VPS first.
 - **Names hide behaviour.** `query.py` calls the hybrid query `dense_query` / `DenseRetriever`; the
   plan's audit missed that hybrid BM25 existed and decided to build a second keyword search.
