@@ -118,6 +118,7 @@ Geek-Crawler-v2 → MongoDB → Geek-Crawler-Rag/Qdrant
 | `POST` | `/v1/index` | Enqueue full-run index `{ "runId": "…" }` |
 | `GET` | `/v1/index/{runId}` | Index job status (ops/debug; UI uses SignalR, not polling) |
 | `GET` | `/v1/index-scheduler` | Persisted scheduler cadence, next run, and last enqueue |
+| `POST` | `/v1/index/hosts` | Which run is indexed for each URL's host: `{ urls, crawlType }`. A host is not a run — a site on the partner and competitor lists has two — so send the type; an untyped host indexed under more than one type is refused with the types named, never guessed |
 | `POST` | `/v1/query` | Hybrid or graph retrieve (see below) |
 | `POST` | `/v1/templates/index` | Upsert ad-template exemplars — a derived index; the records are GeekRepository's |
 | `POST` | `/v1/templates/query` | Retrieve few-shot templates by need (+ channel/framework/tags) |

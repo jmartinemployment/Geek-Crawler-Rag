@@ -411,9 +411,15 @@ def utc_now() -> datetime:
 
 
 class HostIndexRequest(BaseModel):
-    """URLs to check. Hosts are derived here; callers pass what the operator typed."""
+    """URLs to check. Hosts are derived here; callers pass what the operator typed.
+
+    `crawlType` is the list the URLs came from (`partner`, `competitors`, the project site). A host
+    is not a run: a site on two lists has two runs, and only the type says which one is wanted.
+    Without it a host indexed under more than one type is refused as ambiguous, never guessed.
+    """
 
     urls: list[str] = Field(..., min_length=1, max_length=100)
+    crawl_type: str | None = Field(None, alias="crawlType")
 
     model_config = {"populate_by_name": True}
 
@@ -423,6 +429,10 @@ class HostIndexResult(BaseModel):
     host: str | None = None
     indexed: bool
     run_id: str | None = Field(None, alias="runId")
+    # The crawl type of the run answered, so the caller can see it got the run it asked for.
+    crawl_type: str | None = Field(None, alias="crawlType")
+    # Why `indexed` is false when the host has points but the answer is withheld.
+    reason: str | None = None
 
     model_config = {"populate_by_name": True, "ser_json_by_alias": True}
 

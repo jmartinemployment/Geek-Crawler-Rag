@@ -1052,18 +1052,58 @@ def _host_candidates(raw: str) -> list[str]:
     dependencies=[Depends(require_api_key)],
 )
 async def host_index_exists(body: HostIndexRequest) -> HostIndexResponse:
-    """Whether an index exists for each URL's host, and which run indexed it."""
+    """Whether an index exists for each URL's host, for the requested crawl type, and which run.
+
+    A host is not a run. tipalti.com is on a project's partner list and on its competitor list;
+    both crawls completed and both are indexed. Resolved by host alone, this route answered the
+    competitor run, GeekAPI probed it with `crawlType: partner`, got nothing, and excluded the
+    partner: "its crawl finished, but a search of the index finds nothing from it" (2026-10-08).
+    With `crawlType` the lookup is `(host, crawlType)`. Without it, a host indexed under one type
+    answers as before, and a host indexed under more than one is refused with the types named --
+    the caller is told to send the type rather than handed a coin flip.
+    """
+    wanted = (body.crawl_type or "").strip() or None
     results: list[HostIndexResult] = []
     for url in body.urls:
-        found = None
-        run_id = None
+        result = HostIndexResult(url=url, indexed=False)
         for host in _host_candidates(url):
-            payload = await state.store.find_host_index_payload(host)
-            if payload is not None:
-                found = host
-                run_id = payload.get("runId")
+            if wanted is not None:
+                payload = await state.store.find_host_index_payload(host, wanted)
+                if payload is None:
+                    continue
+                result = HostIndexResult(
+                    url=url,
+                    host=host,
+                    indexed=True,
+                    run_id=payload.get("runId"),
+                    crawl_type=payload.get("crawlType"),
+                )
                 break
-        results.append(
-            HostIndexResult(url=url, host=found, indexed=found is not None, run_id=run_id)
-        )
+
+            types = await state.store.find_host_crawl_types(host)
+            if not types:
+                continue
+            if len(types) > 1:
+                result = HostIndexResult(
+                    url=url,
+                    host=host,
+                    indexed=False,
+                    reason=(
+                        f"host {host} is indexed under more than one crawl type "
+                        f"({', '.join(types)}); send crawlType to say which run is wanted"
+                    ),
+                )
+                break
+            payload = await state.store.find_host_index_payload(host, types[0])
+            if payload is None:
+                continue
+            result = HostIndexResult(
+                url=url,
+                host=host,
+                indexed=True,
+                run_id=payload.get("runId"),
+                crawl_type=payload.get("crawlType"),
+            )
+            break
+        results.append(result)
     return HostIndexResponse(results=results)

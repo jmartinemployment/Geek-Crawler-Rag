@@ -712,31 +712,87 @@ class QdrantStore:
         )
         return list(result.points)
 
-    async def find_host_index_payload(self, host: str) -> dict[str, Any] | None:
+    async def find_host_crawl_types(self, host: str) -> list[str] | None:
         """
-        The raw payload of an indexed chunk for a host, if any exists, else None.
+        The distinct `crawlType` values carried by a host's points, sorted; None when the lookup
+        itself failed (fail closed, same as `find_host_index_payload`).
 
-        Whether, not how much: one point is fetched, not counted. A count would invite a threshold
-        ("is 46 chunks enough?"), which is a different question. A host has one active run at a
-        time, so the first match's payload is already the whole answer.
-
-        Returns the full, unfiltered payload rather than a derived bool or a bare id -- one value
-        standing in for two different questions ("does it exist" vs "what is it") is how that
-        conflation bug gets written. Callers derive both facts explicitly from this one value.
-
-        Filtered on host alone. Crawler-written chunks carry no ownerId or visibility -- both are
-        absent on every crawl_pages-derived point -- so adding those conditions, as the delete paths
-        do, matches nothing and reports every host unindexed.
+        A host is not a run. tipalti.com was crawled as a partner on 2026-10-05 and as a competitor
+        on 2026-10-06, both complete and both indexed; a lookup by host alone then returns whichever
+        point Qdrant scrolls first. `crawlType` is a keyword-indexed payload field, so a facet gives
+        the exact set rather than a sample of the first N points, which for a 4,700-point run would
+        be one type every time.
         """
         if not host:
             return None
 
         try:
-            points, _ = await self._client.scroll(
+            response = await self._client.facet(
                 collection_name=self._collection,
-                scroll_filter=qm.Filter(
+                key="crawlType",
+                facet_filter=qm.Filter(
                     must=[qm.FieldCondition(key="host", match=qm.MatchValue(value=host))]
                 ),
+                limit=16,
+                exact=True,
+            )
+        except UnexpectedResponse as exc:
+            if _is_missing_collection(exc, self._collection):
+                logger.warning(
+                    "Collection %s is missing; reporting host=%s as unindexed",
+                    self._collection,
+                    host,
+                )
+                return None
+            logger.exception("Host crawl-type lookup failed for host=%s", host)
+            return None
+        except Exception:
+            logger.exception("Host crawl-type lookup failed for host=%s", host)
+            return None
+
+        values = sorted(
+            str(hit.value) for hit in (response.hits or []) if hit.value is not None and hit.count
+        )
+        return values
+
+    async def find_host_index_payload(
+        self, host: str, crawl_type: str | None = None
+    ) -> dict[str, Any] | None:
+        """
+        The raw payload of an indexed chunk for a host, and for a crawl type when one is given,
+        if any exists, else None.
+
+        Whether, not how much: one point is fetched, not counted. A count would invite a threshold
+        ("is 46 chunks enough?"), which is a different question.
+
+        A host is not a run: one site can be indexed under more than one crawl type at once
+        (tipalti.com, partner and competitors, 2026-10-06). Without `crawl_type` the first match
+        is whichever point Qdrant scrolls first, so callers that know the type pass it, and the
+        route refuses an ambiguous untyped host rather than guess (`find_host_crawl_types`).
+
+        Returns the full, unfiltered payload rather than a derived bool or a bare id -- one value
+        standing in for two different questions ("does it exist" vs "what is it") is how that
+        conflation bug gets written. Callers derive both facts explicitly from this one value.
+
+        Crawler-written chunks carry no ownerId or visibility -- both are absent on every
+        crawl_pages-derived point -- so adding those conditions, as the delete paths do, matches
+        nothing and reports every host unindexed.
+        """
+        if not host:
+            return None
+
+        must: list[qm.FieldCondition] = [
+            qm.FieldCondition(key="host", match=qm.MatchValue(value=host))
+        ]
+        if crawl_type:
+            must.append(
+                qm.FieldCondition(key="crawlType", match=qm.MatchValue(value=crawl_type))
+            )
+
+        try:
+            points, _ = await self._client.scroll(
+                collection_name=self._collection,
+                scroll_filter=qm.Filter(must=must),
                 limit=1,
                 with_payload=True,
                 with_vectors=False,
