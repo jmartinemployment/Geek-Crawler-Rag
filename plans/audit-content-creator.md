@@ -514,7 +514,12 @@ hints say what the code does.
 ## 3. Open plan items, reconciled against git (2026-10-08)
 
 Sixty-three items across the five `fix-*.md` files, the Rag and content-creator-v2 handoffs and the
-10-07 plan: **21 done, 11 partial, 31 open.** The done ones are in their plans' tables. The rest:
+10-07 plan, each checked against the code and `git log --all`: **done** means the code on `main`
+does what the item says, with the commit named — not that it has been proven on a run; **partial**
+means part is in code and a named remainder is not; **open** means not on `main`, which includes
+the four items that exist only on the unpushed branch and the items only Jeff can do. The count
+at the time of the sweep was 21 / 11 / 31; R7 was done the same afternoon, so it stands at
+**22 done, 11 partial, 30 open.** The done ones are in their plans' tables. The rest:
 
 | ID | Item | State |
 |---|---|---|
@@ -559,7 +564,10 @@ built" — Stages 1–3 and the verify route landed the morning it was written; 
 rows; a Status table now leads it); `README.md` R7 (upsert delay 0, API `mem_limit` 7g, no embed
 retry, the chunker's tokenizer); `HANDOFF.md` §3 deploy table, §4 R7, §4b, the open-items list.
 
-**Still false, other repos (their sessions' to correct):**
+**Corrected the same day, second pass, at Jeff's instruction** ("Update false documentation"):
+every row below except the commit message, which cannot be edited — it is answered by the audit
+line (F13) and by `fix-geekapi.md`'s status. The table stays as the record of what was false and
+for how long:
 
 | Where | Says | Is |
 |---|---|---|

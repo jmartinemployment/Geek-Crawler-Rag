@@ -126,7 +126,11 @@ and gates, writer prompts and brief-field usage, guards and verification, the fr
 reconciliation of every open plan item against git) plus this repo's own retrieval numbers. The
 findings carry F-ids, severity, `file:line` evidence and the change each needs; the headline is
 that **nothing in GeekAPI calls `/v1/verify`** — quotes are checked only against spans GeekAPI
-cuts for itself — and that GeekBackend's A8/D3/D4 sit on an unpushed branch.
+cuts for itself — and that GeekBackend's A8/D3/D4 sit on an unpushed branch. The plan that fixes
+it is `plans/fix-from-the-audit.md` (same day): thirteen stages, X1–X13, ordered by trust bought
+per commit, with ten decisions for Jeff at the end. Nothing in it is built. The false statements
+the audit listed in the other repositories' plans and handoffs were corrected the same afternoon
+at Jeff's instruction.
 In content-creator-v2: the rows on the form. In Geek-Crawler-v2: `/legal/`, `/privacy/`, terms,
 cookies and careers directories refused as `non_content_directory` (`05b2649`). All seven stages
 are built; what remains is Jeff's: a Tipalti re-crawl and re-index, evidence rows on the brief, a
