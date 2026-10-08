@@ -255,14 +255,17 @@ the remote API was the tokens-per-minute limiter it needed.
 - `EMBEDDING_MAX_BATCH_TOKENS=50000`
 - `EMBED_BATCH_SIZE=64`
 - `FASTEMBED_CACHE_PATH=/tmp/fastembed_cache` — pinned so the named volume keeps catching model weights
-- `QDRANT_UPSERT_DELAY_SECONDS=0.5`
+- `QDRANT_UPSERT_DELAY_SECONDS=0` — no pause between upserts; `config.py` and the compose default agree
 - `INDEX_SCHEDULER_INTERVAL_SECONDS=300`
 
 **The model truncates at 512 tokens, silently.** `LocalDenseEmbedding` counts each input with the
 model's own tokenizer and logs every one that reaches the limit, reporting the total as
-`truncatedInputs`. It does not raise: the chunker sizes chunks with tiktoken BPE while the model counts
-WordPiece, which runs longer on technical text, so a chunk inside its configured budget can legitimately
-cross the ceiling. That count is how `PARENT_CHUNK_SIZE_TOKENS` gets tuned rather than estimated.
+`truncatedInputs`. It does not raise. The chunker measures in that same tokenizer
+(`chunk_tokenizer.ChunkTokenizer`, a required argument with no default) and rejects a chunk budget
+above the model's usable sequence limit at the boundary (`chunk.py`), so a chunk inside its configured
+budget no longer crosses the ceiling — the tiktoken-versus-WordPiece gap that silently truncated 6.9%
+of parent chunks was closed on 2026-09-30. A non-zero `truncatedInputs` is a defect to look at, not an
+expected cost.
 
 **`EMBED_BATCH_SIZE=128` OOM-killed the container — do not set it there again.** On
 2026-09-25, 32 → 128 took the api container from a steady 2.4 GiB to past its **6 GiB**
@@ -270,14 +273,15 @@ limit in about two minutes: `docker events` recorded `oom` then `die exitCode=13
 each kill emptied the in-memory index queue and orphaned the `running` row, which reads
 as a hang rather than a kill. Note `docker inspect` reported `OOMKilled=false` afterwards
 — it reflects the state after the restart, so the event log is the authority, not
-`inspect`. 64 with `mem_limit: 8g` is the supported setting; treat 128 as known-bad at
-6 GiB. Idle is ~0.9 GiB, so the batch-dependent share is roughly linear: ~1.5 GiB at 32,
+`inspect`. 64 with `mem_limit: 7g` is the supported setting (the compose says why not 8g:
+api 7 + qdrant 3 + mongo 4 + caddy 0.25 already commit 14.25 of the host's 15 GiB); treat
+128 as known-bad at 6 GiB. Idle is ~0.9 GiB, so the batch-dependent share is roughly linear: ~1.5 GiB at 32,
 ~3 GiB at 64.
 
-**Retry policy, one place.** The SDK's `max_retries` stays 0; the only retry is
-`LlamaIndexEngine._embed_batch`, bounded and logged, for failures with no cause in this
-repo. See [`plans/rules.md`](./plans/rules.md) §3a — a 400 and a 429 are still never
-retried.
+**Retry policy, one place: there is none.** The SDK's `max_retries` stays 0 and
+`LlamaIndexEngine._embed_batch` makes one attempt — it fails or it does not. The bounded
+retry that used to live there was removed on 2026-09-28; the method's docstring records the
+three things that were wrong with it. See [`plans/rules.md`](./plans/rules.md) §3a.
 
 **Why the delay and batch size were revisited, 2026-09-25.** Indexing was assumed CPU-bound on sparse
 encoding. Measured mid-run on the VPS it was not: the api container sat at **86% of one
@@ -349,7 +353,8 @@ Live stack on KVM 2 (alongside Mongo):
 - Compose: [`deploy/hostinger-compose.yml`](./deploy/hostinger-compose.yml) (Qdrant + API; Mongo via `host.docker.internal`)
 
 Caps: Qdrant `mem_limit: 3g`, `cpus: 0.5`, `MAX_SEARCH_THREADS=1`; API
-`mem_limit: 2g`. Corpus indexing pauses two seconds between Qdrant batches.
+`mem_limit: 7g`, `cpus: 3.5`. There is no pause between Qdrant batches
+(`QDRANT_UPSERT_DELAY_SECONDS` defaults to 0).
 The scheduler is on in the repo compose and on the box (see *Indexing trigger*).
 Point `MONGO_CRAWLER_URL` at the existing Hostinger Mongo `geek_crawler` database. Normal indexing reads the corpus; controlled cleanup procedures may delete unusable crawl pages and related links.
 

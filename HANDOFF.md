@@ -86,9 +86,9 @@ index job in flight. There are no branches.
 
 | Repository | `main` | Deployed | Checked |
 |---|---|---|---|
-| Geek-Crawler-Rag | the hybrid fix commit of 2026-10-08 (`query_str=need`), pushed | VPS, deploys on push; after it, a live `/v1/query` must leave a `hybrid_halves runId=… dense=N sparse=N fused=N` line in `docker compose logs api` — that line is the proof the keyword half ran, nothing else is | 2026-10-08 |
-| GeekBackend | `5671288`, working tree clean | Railway, not checked from here | 2026-10-06 |
-| content-creator-v2 | origin `67456d3`; 2 local unpushed commits from another session | — | — |
+| Geek-Crawler-Rag | `eaa8c8a` (`query_str = keyword or need` since `d8a628e`), pushed | VPS, deploys on push; a live `/v1/query` must leave a `hybrid_halves runId=… dense=N sparse=N fused=N` line in `docker compose logs api` — that line is the proof the keyword half ran, nothing else is | 2026-10-08 |
+| GeekBackend | `288dde3` on `main`. A local branch `fix-content-creator-stages` (9 commits, 2026-10-04: A8, A9, A10, A11, A12, A13, D2, D3, D4) was never pushed; A8, D3, D4 and A10's writer exist only there — see `plans/audit-content-creator.md` | Railway, SUCCESS 2026-10-08 15:32 UTC | 2026-10-08 |
+| content-creator-v2 | `4677b69` | Vercel production, READY | 2026-10-08 |
 
 This repo's commits this week, in order: `1a25095` (R1/R4/R5 first cut), `03b02c7` (always delete,
 resume removed, status round-trip fix), `529a5df` (hybrid always), `9a0c901` (R4 fixed, F-R10),
@@ -106,7 +106,7 @@ fixture). content-creator-v2 `9f41697` (the six re-indexed runs, in the Rag plan
 | **R2** keyword scroll deleted (D15) | 2 | **Done early** (`5e622b6`). Distinct pages before/after on the old Ramp run with `BuildNeed` questions: 20/19/28/25/23, identical — **measured on dense-only retrieval**, before the 2026-10-08 hybrid fix; re-measure on Ramp `4563f7ec`. On 2026-10-08, before the fix, the five "test" partners returned 32 passages from 19–23 distinct pages each. |
 | **R3** collapse before the cut; measure near-copies | 2 | **Selection rule done 2026-10-08** (Jeff: "proceed to fully implement this"): `_select_ranked_candidates` ranks passages then selects pages — every page's best first, then second-best, until `topK`; text dedupe and sibling collapse unchanged. Before/after on the live box is in §9. The near-copy measurement (same paragraph, merchant name swapped) is still open. |
 | **R6** tests | 2 | Done: cross-page collapse, verify route, readiness, F-R10, hybrid half logging, `dense_query` hybrid, hosts crawl type, **the flooded-pool test** (`tests/test_page_diverse_selection.py`, through the service). "Ranked lexical list" is moot now the list is deleted. |
-| **R7** README drift | 3 | Open. Memory limit, upsert delay and retry wording still disagree with code. |
+| **R7** README drift | 3 | **Done 2026-10-08.** Upsert delay (0, not 0.5), API memory (7g, not 8g or 2g), retry wording (one attempt, no retry) and the chunker's tokenizer (the model's own, not tiktoken) now match `config.py`, `deploy/hostinger-compose.yml` and the code. |
 
 **The Rag plan's Status section is stale on R4:** it lists the three R4 defects as open; all three
 are fixed in `9a0c901`. It also predates `2cd443f` (scheduler on, logging). The plan writer owns it.
@@ -118,6 +118,15 @@ Status table is the record. In this repo: `keyword` on `/v1/query` (the keyword 
 the second BM25 deleted, stub chunks dropped and counted. In GeekBackend: the brief's evidence
 rows read, a partner run asked its core problem then one question per row, the blockquote probe
 asking the brief's question, a missing blockquote reported as a gap instead of refusing the page.
+
+## 4b. The audit: `plans/audit-content-creator.md` (2026-10-08)
+
+Jeff asked "Audit" after the second plan shipped. Five read-only sweeps (Generate orchestration
+and gates, writer prompts and brief-field usage, guards and verification, the frontend, and a
+reconciliation of every open plan item against git) plus this repo's own retrieval numbers. The
+findings carry F-ids, severity, `file:line` evidence and the change each needs; the headline is
+that **nothing in GeekAPI calls `/v1/verify`** — quotes are checked only against spans GeekAPI
+cuts for itself — and that GeekBackend's A8/D3/D4 sit on an unpushed branch.
 In content-creator-v2: the rows on the form. In Geek-Crawler-v2: `/legal/`, `/privacy/`, terms,
 cookies and careers directories refused as `non_content_directory` (`05b2649`). All seven stages
 are built; what remains is Jeff's: a Tipalti re-crawl and re-index, evidence rows on the brief, a
@@ -234,8 +243,13 @@ At startup: `Hybrid retrieval: dense model=…, sparse (BM25) model=… on vecto
   characters. A model that straightens an apostrophe gets `found: false`.
 - `CLAUDE.md` §1a names `mongo.find_smallest_content_ready_run`; the code is
   `find_oldest_content_ready_run`.
-- `plans/partner-evidence-reaches-the-writer.md` is untracked here and not this session's.
-- Cohere rerank is off in production (no key), so ranking is RRF over hybrid + BM25 (F-R7).
+- `plans/partner-evidence-reaches-the-writer.md` — corrected and committed 2026-10-08. Its
+  "Nothing here is built" was false the day it was written: Stages 1–3 and the Library half of
+  Stage 4 landed that morning, Stage 5 shipped on 10-08 as evidence rows. It carries a Status
+  table now; Stage 6 and the GeekAPI call to `/v1/verify` are what is left.
+- Cohere rerank is off in production (no key; `rerank_enabled` defaults true but the client
+  disables itself without one, `rerank.py:53`), so the order is Qdrant's relative-score fusion
+  of the two halves alone — the in-process BM25 + RRF was deleted in `d8a628e` (F-R7).
 - Ramp's passages are mostly `/blog` (21–27 of 32) on the old run; the re-crawl (`4563f7ec`) follows
   off-sitemap links (C1) and has not been measured.
 
