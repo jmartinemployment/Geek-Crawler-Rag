@@ -138,6 +138,14 @@ with 37 PAA questions went to one FAQ call with a 3,072-token budget and OpenAI 
 limit. That is the first piece of X1 (a cut reply costs the call, not the page). The run's other
 findings — every batch 50–75% of the floor it is measured against, keyword quotas, one tool page
 without a quotation and the line not naming which — are X10b and X6, not yet built.
+
+**Also that evening, at Jeff's instruction ("Add Blog, Tool FAQ's"):** the brief carries
+`blogFaqQuestions` (answered at the end of the blog in calls of eight, the pillar's shape) and each
+tool's `perTool` entry carries `faqQuestions`, answered on that tool's page from the partner's
+retrieved pages only — a question no page answers is left out and reported as a gap. GeekBackend
+`25227e0`, content-creator-v2 `f3f3fe6`. And `plans/linkedin-document.md`: the plan to enable the
+LinkedIn document (PDF carousel) as a first-class generated type, not a repurposing — four stages,
+four decisions for Jeff.
 In content-creator-v2: the rows on the form. In Geek-Crawler-v2: `/legal/`, `/privacy/`, terms,
 cookies and careers directories refused as `non_content_directory` (`05b2649`). All seven stages
 are built; what remains is Jeff's: a Tipalti re-crawl and re-index, evidence rows on the brief, a
