@@ -118,7 +118,10 @@ Status table is the record. In this repo: `keyword` on `/v1/query` (the keyword 
 the second BM25 deleted, stub chunks dropped and counted. In GeekBackend: the brief's evidence
 rows read, a partner run asked its core problem then one question per row, the blockquote probe
 asking the brief's question, a missing blockquote reported as a gap instead of refusing the page.
-In content-creator-v2: the rows on the form. Open: P7, the crawler's non-content directories.
+In content-creator-v2: the rows on the form. In Geek-Crawler-v2: `/legal/`, `/privacy/`, terms,
+cookies and careers directories refused as `non_content_directory` (`05b2649`). All seven stages
+are built; what remains is Jeff's: a Tipalti re-crawl and re-index, evidence rows on the brief, a
+readiness run — the plan's acceptance tests 1–4.
 
 ## 5. Outstanding steps in the whole plan (`fix-overview.md` §4), as of 2026-10-06
 

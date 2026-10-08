@@ -8,12 +8,15 @@
 | P2 second BM25 deleted | Rag `d8a628e` | VPS 14:41; `bm25_rank` absent from the image |
 | P3 stub chunks dropped, `chunksSkippedStub` | Rag `b14c200` + GeekBackend `36283f1` | VPS 14:41, Railway 14:42; status carries the field (0 until a re-index) |
 | P4 evidence rows in the brief | content-creator-v2 `290440c` + GeekBackend `8f3ead6` | Vercel on push; GeekAPI with P5 |
-| P5 partner runs asked from the brief | GeekBackend (commit after `8f3ead6`) | Railway on push |
-| P6 probe asks the brief; missing blockquote is a gap | same commit as P5 | Railway on push |
-| P7 crawler: non-content directories | — | **open** |
+| P5 partner runs asked from the brief | GeekBackend `6ea68fb` | Railway 14:57 UTC |
+| P6 probe asks the brief; missing blockquote is a gap | GeekBackend `6ea68fb` | Railway 14:57 UTC |
+| P7 crawler: non-content directories | Geek-Crawler-v2 `05b2649` | the crawler runs locally; the next crawl uses it |
 
-Acceptance tests 1–4 need a Tipalti re-crawl and re-index (Jeff queues both) and rows
-entered on the brief; test 5 holds on the live box.
+**All seven stages are built.** Acceptance tests 1–4 still need, from Jeff: a Tipalti re-crawl
+(on `05b2649`, so the legal pages are refused) and its re-index (so stubs are dropped and
+`chunksSkippedStub` is reported), evidence rows entered on the brief for Tipalti, then a readiness
+run. Test 5 holds on the live box: `hybrid_halves` on every query, `bm25_rank` absent from the
+image, `chunksSkippedStub` on the status.
 
 **Written for one session to implement, in order, across three repositories.** Decided with Jeff on
 2026-10-08 after a day of live measurement on project `cc480d8c` ("Accounts Payable: Automated
