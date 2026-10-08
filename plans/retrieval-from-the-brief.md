@@ -8,6 +8,7 @@
 | P2 second BM25 deleted | Rag `d8a628e` | VPS 14:41; `bm25_rank` absent from the image |
 | P3 stub chunks dropped, `chunksSkippedStub` | Rag `b14c200` + GeekBackend `36283f1` | VPS 14:41, Railway 14:42; status carries the field (0 until a re-index) |
 | P4 evidence rows in the brief | content-creator-v2 `290440c` + GeekBackend `8f3ead6` | Vercel on push; GeekAPI with P5 |
+| P4, second cut (Jeff: enter a failure once) — rows **replace** "Where they fail"; `painPoints` derived from the rows' Problem column; paste-to-rows importer; the category's rows shown above a tool's own | content-creator-v2 `4677b69` + GeekBackend `288dde3` | Vercel and Railway on push |
 | P5 partner runs asked from the brief | GeekBackend `6ea68fb` | Railway 14:57 UTC |
 | P6 probe asks the brief; missing blockquote is a gap | GeekBackend `6ea68fb` | Railway 14:57 UTC |
 | P7 crawler: non-content directories | Geek-Crawler-v2 `05b2649` | the crawler runs locally; the next crawl uses it |
