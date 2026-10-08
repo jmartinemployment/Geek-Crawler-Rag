@@ -248,6 +248,20 @@ blog post; bare: `/dynamic-approval-workflows/`). Not measured yet: whether the 
 GeekAPI's category count (the Avidxchange 2-of-20 refusal) — that is GeekAPI's extraction over
 these pages and needs a readiness run.
 
+**Item 2, the second keyword pass disabled (`e2937f0`, deployed 12:39 UTC).** Same runs, the
+bare keyword `Automated Payment Execution` (what GeekAPI sends since `bfd99c9`), topK 32,
+partner; 32 pages both before and after, so the lists are what moved. First eight slots:
+
+| Run | In-process BM25 on (`3092ccd`) | Off (`e2937f0`) |
+|---|---|---|
+| melio.com `651643a7` | /api/, construction, manufacturing, /cash-flow/, /platinum/, multi-entity bill payment, SMB payment solution, virtual-card API | /api/, /platinum/, manufacturing, construction, multi-entity bill payment, **/accounts-payable/**, /cash-flow/, virtual-card API |
+| tipalti.com `39bbce59` | invoice-flow, services industry, payment reconciliation, Dynamics BC integration, music-royalties guide, multi-FX, healthcare industry, QuickBooks integration | services industry, payment reconciliation, invoice-flow, **/why/procurement/**, travel industry, **/accounts-payable-software/**, SAP B1 integration, **CFO guide to payables automation** |
+
+Melio: seven of eight pages the same, reordered. Tipalti: three kept, five changed; the industry
+and integration pages that an exact keyword re-score favoured gave way to the AP-software page,
+the procurement "why" page and the payables-automation guide. Each query logged
+`hybrid_halves dense=64 sparse=64 fused=64`; the order is now Qdrant's fusion alone.
+
 ## 9. Corpus state (2026-10-06)
 
 - 104 crawl runs; no index job pending or running.
