@@ -244,9 +244,15 @@ At startup: `Hybrid retrieval: dense model=…, sparse (BM25) model=… on vecto
   2026-10-08 on both sides: this repo `0eb139c` — the route takes `crawlType` and resolves
   `(host, crawlType)`; an untyped host indexed under more than one type is refused with the
   types named. GeekBackend `2d7420b` — `HostsIndexedAsync(urls, crawlType, ct)` sends the type
-  from all four callers and refuses a blank one before any request. The proof, once GeekAPI's
-  deploy is up and a validation is re-run: the probe's `hybrid_halves runId=39bbce59…` (Tipalti's
-  partner run) in this service's log, where it used to be `5cbbb85b`.
+  from all four callers and refuses a blank one before any request. **Proven 2026-10-08
+  11:31:56 UTC:** Jeff reloaded the app, re-entered https://tipalti.com/ and saved; this service's
+  log shows the typed hosts lookup, then `hybrid_halves runId=39bbce59…` (the partner run) for the
+  probe, then the query answered; `5cbbb85b` never appears, and the UI reported Tipalti usable.
+  Two traps: the project form asks the index only for URL strings it has no answer for in React
+  state (`ProjectForm.tsx:218`), so re-entering an answered URL on an open form sends nothing — a
+  page reload or "Re-check the index" re-asks; and a filtered `grep` over `docker compose logs`
+  twice returned nothing while the lines were present — dump raw `--since/--until` windows before
+  concluding a log is empty.
 - **A claim read from code is not a fact about production.** Check Mongo/Qdrant/the VPS first.
 - **Names hide behaviour.** `query.py` calls the hybrid query `dense_query` / `DenseRetriever`; the
   plan's audit missed that hybrid BM25 existed and decided to build a second keyword search.
