@@ -21,7 +21,6 @@ from llama_index.core.vector_stores.types import (
 from llama_index.vector_stores.qdrant import QdrantVectorStore
 from llama_index.vector_stores.qdrant.utils import (
     fastembed_sparse_encoder,
-    relative_score_fusion,
 )
 from qdrant_client import AsyncQdrantClient, QdrantClient
 
@@ -58,40 +57,55 @@ _LOG_NEED_CHARS = 72
 _LOG_KEYWORD_CHARS = 48
 
 
-def logged_relative_score_fusion(
+# Reciprocal rank fusion's constant: a node at rank r in a half scores 1 / (RRF_K + r) there. 60 is
+# the value the method was published with; it sets how slowly the reward decays with rank (rank 1
+# and rank 10 differ by 14%, not by a factor), so a hit both halves return outranks one either half
+# returns alone, whatever the two score scales were.
+RRF_K = 60
+
+
+def logged_rank_fusion(
     dense_result: VectorStoreQueryResult,
     sparse_result: VectorStoreQueryResult,
     alpha: float = 0.5,
     top_k: int = 2,
 ) -> VectorStoreQueryResult:
-    """LlamaIndex's own `relative_score_fusion`, unchanged, with what it did to each half logged.
+    """Reciprocal rank fusion of the two halves, with what it did to each half logged.
 
     A hybrid query runs a dense (meaning) search and a sparse BM25 (keyword) search and fuses them
     inside the vector store. If one half comes back empty the fusion returns the other half alone,
     and the answer looks the same as a healthy one: a silent drop to one signal. Logged before
     anything is ever built on top of it, so a failure can be understood from the log alone (Jeff,
-    2026-10-06). Ranking is not touched; this only records what happened.
+    2026-10-06).
 
-    What the fusion does, mechanically. Each half is min-max normalised over its own list, a node
-    absent from a half scores 0 there, the two are summed at `alpha`, and the list is cut at
-    `top_k` -- which `dense_query` leaves at the per-half fetch size, so up to half the union is
-    dropped here, before `query.py` sees a candidate. Which half loses is decided by the shape of
-    its score curve for that query, not by relevance: the steeper tail is cut harder. Measured on
-    the live box on 2026-10-08, six partner runs, the bare keyword at topK 32: the halves shared
-    2-15 of 64 chunks, the cut dropped 17-34 keyword-only and 15-44 meaning-only chunks per query,
-    and the final 32 held between 4 (melio, a heavy-tailed keyword curve) and 21 (tipalti)
-    keyword-only chunks -- while this line read `dense=64 sparse=64 fused=64` on every one of
-    them. Three sizes cannot show that, so the line reports: the overlap of the two halves; the
-    survivors in the fused list by class (overlap, meaning-only, keyword-only); how many of each
-    half's own hits were dropped and the best rank among them; the fused score of the last kept
-    node; and each half's raw score band, max..min -- the band min-max stretches to [0, 1], so a
-    band with one high hit far above the rest is the heavy tail that loses the cut.
+    The rule, since 2026-10-08: a node scores the sum over the halves that returned it of
+    1 / (RRF_K + its rank in that half). Rank r in the keyword half is worth exactly rank r in the
+    meaning half, and a node both halves return outranks one either returns alone. No score is
+    normalised and `alpha` plays no part -- it is in the signature because QdrantVectorStore passes
+    it. Ties keep the meaning half's node first (it is scored first; the sort is stable).
+
+    Until that day this was LlamaIndex's `relative_score_fusion`, unchanged: each half min-max
+    normalised over its own fetch, an absent node scoring 0, summed at alpha 0.5, and cut at
+    `top_k` -- which `dense_query` left at the per-half fetch size, so up to half the union was
+    dropped here before `query.py` saw a candidate, and which half lost was the shape of its own
+    score curve for that query, not relevance. Measured live that day (HANDOFF 9b): on six partner
+    runs the halves shared 2-15 of 64 chunks, the cut dropped 17-34 keyword-only and 15-44
+    meaning-only chunks per query, the final 32 held between 4 and 21 keyword-only chunks, and a
+    competitor whose dense band was 0.680..0.687 -- flat -- had that half turned into noise by the
+    stretch. `dense_query` now sends `hybrid_top_k` as both fetches together, so `top_k` here is the
+    union and nothing is cut at fusion; the line's `dropped=0/0` is the proof. The selection in
+    `query.py` reads the whole union.
+
+    The line reports: the overlap of the two halves; the survivors in the fused list by class
+    (overlap, meaning-only, keyword-only); how many of each half's own hits were dropped and the
+    best rank among them; the fused score of the last kept node; and each half's raw score band,
+    max..min, which is what the old rule stretched and this one never reads.
     """
     dense_ids = _ranked_ids(dense_result)
     sparse_ids = _ranked_ids(sparse_result)
     dense_n = len(dense_ids)
     sparse_n = len(sparse_ids)
-    fused = relative_score_fusion(dense_result, sparse_result, alpha=alpha, top_k=top_k)
+    fused = _rank_fusion(dense_result, sparse_result, dense_ids, sparse_ids, top_k)
     fused_ids = [n.node_id for n in (fused.nodes or [])]
     run_id = _HYBRID_RUN_ID.get()
     host = _host_of(fused, dense_result, sparse_result)
@@ -142,11 +156,38 @@ def logged_relative_score_fusion(
         len(dropped_sparse),
         dropped_dense[0] if dropped_dense else "-",
         dropped_sparse[0] if dropped_sparse else "-",
-        "-" if last_kept is None else f"{float(last_kept):.3f}",
+        "-" if last_kept is None else f"{float(last_kept):.4f}",
         _raw_band(dense_result),
         _raw_band(sparse_result),
     )
     return fused
+
+
+def _rank_fusion(
+    dense_result: VectorStoreQueryResult,
+    sparse_result: VectorStoreQueryResult,
+    dense_ids: list[str],
+    sparse_ids: list[str],
+    top_k: int,
+) -> VectorStoreQueryResult:
+    """Score every node by 1 / (RRF_K + rank) summed over the halves that returned it, best first."""
+    nodes: dict[str, TextNode] = {n.node_id: n for n in (dense_result.nodes or [])}
+    for node in sparse_result.nodes or []:
+        nodes.setdefault(node.node_id, node)
+    if not nodes:
+        return VectorStoreQueryResult(nodes=None, similarities=None, ids=None)
+    score: dict[str, float] = {}
+    for ids in (dense_ids, sparse_ids):
+        for rank, node_id in enumerate(ids, 1):
+            score[node_id] = score.get(node_id, 0.0) + 1.0 / (RRF_K + rank)
+    fused = sorted(score.items(), key=lambda t: t[1], reverse=True)
+    if top_k > 0:
+        fused = fused[:top_k]
+    return VectorStoreQueryResult(
+        nodes=[nodes[i] for i, _ in fused],
+        similarities=[s for _, s in fused],
+        ids=[i for i, _ in fused],
+    )
 
 
 def _raw_band(result: VectorStoreQueryResult) -> str:
@@ -278,7 +319,7 @@ class LlamaIndexEngine:
             sparse_vector_name=SPARSE_VECTOR_NAME,
             sparse_doc_fn=sparse_encoder,
             sparse_query_fn=sparse_encoder,
-            hybrid_fusion_fn=logged_relative_score_fusion,
+            hybrid_fusion_fn=logged_rank_fusion,
             text_key="text",
         )
 
@@ -614,6 +655,11 @@ class LlamaIndexEngine:
                 filters=filters,
                 mode=VectorStoreQueryMode.HYBRID,
                 sparse_top_k=top_k,
+                # Both fetches together: the fusion ranks the union and cuts nothing. Left unset
+                # until 2026-10-08, LlamaIndex cut the fused list at `similarity_top_k`, so half
+                # of what the halves returned was dropped by score shape before `query.py` chose
+                # a page (HANDOFF 9b). `query.py` reads the whole union when nothing re-ranks it.
+                hybrid_top_k=top_k * 2,
             )
         )
         nodes = list(result.nodes or [])

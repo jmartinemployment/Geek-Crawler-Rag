@@ -212,7 +212,7 @@ EOF
 |---|---|
 | Index a run: delete, page loop, repeat collapse, readiness gate | `src/geek_crawler_rag/indexer.py` (`_index_run`, `_admit_page_nodes`, `readiness_refusal`) |
 | Chunks → nodes, `textDigest`, `sourceDigest`; stub chunks (a heading alone, a breadcrumb, under eight words) dropped and counted as `chunksSkippedStub` (plan P3, 2026-10-08) | `src/geek_crawler_rag/llama_nodes.py` (`text_digest`, `page_source_digest`, `page_to_nodes`), `chunk.py` (`is_stub_text`) |
-| Embedding, hybrid query, hybrid half logging | `src/geek_crawler_rag/llama_engine.py` (`dense_query`, `logged_relative_score_fusion`) |
+| Embedding, hybrid query, hybrid half logging | `src/geek_crawler_rag/llama_engine.py` (`dense_query`, `logged_rank_fusion`) |
 | Query: hybrid candidates (Qdrant fusion; `keyword` → keyword half, `need` → meaning half) → pool cut → (Cohere off) → page-diverse select. The in-process BM25 re-rank + RRF was disabled in `e2937f0` and **deleted** per `plans/retrieval-from-the-brief.md` P2 | `src/geek_crawler_rag/query.py` (`_query_hybrid`, `_select_ranked_candidates`, `_page_key`), `llama_engine.dense_query` |
 | Verify route, page reads, shared refusal helper | `src/geek_crawler_rag/app.py` (`verify_quotes`, `_citable_page_text`) |
 | Quote check and the F-R10 normalisation | `src/geek_crawler_rag/citation_verify.py` (`verify_quote`) |
@@ -252,8 +252,9 @@ At startup: `Hybrid retrieval: dense model=…, sparse (BM25) model=… on vecto
   Stage 4 landed that morning, Stage 5 shipped on 10-08 as evidence rows. It carries a Status
   table now; Stage 6 and the GeekAPI call to `/v1/verify` are what is left.
 - Cohere rerank is off in production (no key; `rerank_enabled` defaults true but the client
-  disables itself without one, `rerank.py:53`), so the order is Qdrant's relative-score fusion
-  of the two halves alone — the in-process BM25 + RRF was deleted in `d8a628e` (F-R7).
+  disables itself without one, `rerank.py:53`), so the order is the reciprocal-rank fusion of the two halves over the whole union
+  (`logged_rank_fusion`, since the evening of 2026-10-08; min-max relative score with a cut
+  before that, §9b) — the in-process BM25 + RRF was deleted in `d8a628e` (F-R7).
 - Ramp's passages are mostly `/blog` (21–27 of 32) on the old run; the re-crawl (`4563f7ec`) follows
   off-sitemap links (C1) and has not been measured.
 
@@ -360,11 +361,18 @@ pages (reconciliation, invoice-flow, procurement, AP software) in slots 2–6; R
 music-royalties guide and `company/reviews` at 2–3 and the product pages after. The reconciliation
 row is the same eight pages reordered under both.
 
-**Not decided — Jeff's (fix-from-the-audit decision 11).** Three separable things: (a) the cut at
-fusion — remove it (`hybrid_top_k` = the union) so selection sees everything; (b) the order rule —
-min-max relative score (share decided by curve shape) or rank fusion (parity by rank, overlap
-rewarded; Qdrant's own default); (c) the pool cut when the reranker is off (today a no-op). The
-measurement script is in this session's scratchpad and is reproducible from §9b's inputs.
+**Decided and built the same evening** (Jeff, after the first real run: "based on those numbers
+fix … you have my permission to do whatever necessary"). The real run's 69 lines (five partners ×
+six questions at topK 8, the site and five competitors, 20:01–20:06 UTC) said: on the row
+questions the halves overlapped up to 16 of 30 (the vendor vocabulary makes both searches land on
+the same pages); the cut still dropped 5–21 keyword-only and as many meaning-only chunks per
+question from ranks 12–25; the bands were wide, not peaked — and one competitor's dense band was
+0.680..0.687, flat, so min-max turned that half into noise (29 of 30 survivors keyword-only). All
+three changes: (a) `dense_query` sends `hybrid_top_k` = both fetches, so fusion cuts nothing;
+(b) the order rule is reciprocal rank fusion, k 60 (`logged_rank_fusion`, the test that pinned
+"LlamaIndex's, unchanged" reversed on purpose); (c) `query.py`'s pool is the whole union unless
+the Cohere reranker is on. After the deploy every line reads `dropped=0/0`; the after-numbers on
+the nine §9b questions are appended below once measured.
 
 ## 9. Corpus state (2026-10-06)
 

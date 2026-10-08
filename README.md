@@ -2,7 +2,7 @@
 
 Standalone **Python** retrieval product for the Geek-Crawler Mongo corpus.
 **FastAPI** exposes `v1/*`; **LlamaIndex** owns ingest/embed/dense retrieval into Qdrant
-(parent/child chunks, hybrid dense + BM25 fused by relative score, optional Cohere rerank).
+(parent/child chunks, hybrid dense + BM25 fused by reciprocal rank over the whole union, optional Cohere rerank).
 
 See [`architecture.md`](./architecture.md) and [`plans/geek-crawler-rag.md`](./plans/geek-crawler-rag.md).
 `contracts/` holds cross-repo wire contracts, both live and historical:
@@ -71,7 +71,7 @@ Geek-Crawler-Rag turns partner and competitor website crawls into searchable evi
 
 - English-only parent/child chunking for pinpoint and section-level context
 - Local dense + sparse embeddings and deterministic Qdrant vector records
-- Hybrid retrieval in Qdrant: dense (meaning) and sparse BM25 (keyword) halves fused by relative score (alpha 0.5); `keyword` on the request gives the keyword half its own text. The older in-process BM25 re-rank + RRF over the candidates was deleted on 2026-10-08
+- Hybrid retrieval in Qdrant: dense (meaning) and sparse BM25 (keyword) halves fused by reciprocal rank (k 60) over the whole union — nothing is cut at fusion (min-max relative score with a cut at the per-half fetch until 2026-10-08, HANDOFF §9b); `keyword` on the request gives the keyword half its own text. The older in-process BM25 re-rank + RRF over the candidates was deleted on 2026-10-08
 - Optional Cohere reranking
 - Entity, source, category, quality, host, and chunk-role filters
 - Graph-style entity/category/co-occurrence themes
@@ -149,7 +149,7 @@ RAG in this repository is **library-only**: index, query, and page block text. T
 }
 ```
 
-- Default `retrievalMode`: `hybrid` (Qdrant dense + sparse BM25, fused by relative score, then the pool cut, optional Cohere rerank, and page-diverse selection). The in-process BM25 re-rank + RRF that used to follow the hybrid query was deleted on 2026-10-08: it scored the keyword a second time once the hybrid's own keyword half ran. `git log -S bm25_rank_indices` finds it.
+- Default `retrievalMode`: `hybrid` (Qdrant dense + sparse BM25, fused by reciprocal rank over the whole union, no pool cut unless Cohere is on, optional Cohere rerank, and page-diverse selection). The in-process BM25 re-rank + RRF that used to follow the hybrid query was deleted on 2026-10-08: it scored the keyword a second time once the hybrid's own keyword half ran. `git log -S bm25_rank_indices` finds it.
 - **`keyword` (optional, 2026-10-08).** `need` is embedded for the meaning half. When `keyword` is given it is the text the sparse BM25 half searches instead of `need`, so `need` can be a paragraph describing the reader's situation while the keyword half matches a few distinctive terms. Absent, both halves get `need`.
 - **Results are de-duplicated by text.** A heading section shorter than the child
   window produces a child chunk identical to its parent, and identical vectors

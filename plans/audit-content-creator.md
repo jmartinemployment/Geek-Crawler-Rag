@@ -320,11 +320,14 @@ was the steepness of its own score curve — melio's heavy-tailed keyword curve 
 chunks in the final 32, tipalti's flat one left 21. Every one of those queries logged
 `dense=64 sparse=64 fused=64`; the line the audit's author called "the proof the keyword half ran"
 proved execution and nothing about survival. Fixed the same day: the line reports the composition,
-the drops and the best rank dropped per half (`test_hybrid_half_logging.py`). **Not fixed, Jeff's
-decision (fix plan 11):** the cut itself and the order rule. Measured alongside: rank fusion (RRF,
-k 60) with no cut makes the halves symmetric by rank and rewards overlap — melio 4 → 7 keyword-only
-and 7 → 13 in both, bill.com 26 → 32 pages, tipalti 21 → 15 keyword-only — and reorders tipalti's
-first eight to put a guide and `company/reviews` above the product pages.
+the drops and the best rank dropped per half (`test_hybrid_half_logging.py`). **The cut and the
+order rule fixed the same evening** on Jeff's instruction after the first real run's lines
+(HANDOFF §9b): `hybrid_top_k` = both fetches (nothing cut at fusion), reciprocal rank fusion
+(k 60) replaces min-max relative score, and the pool is the whole union unless Cohere is on.
+Measured before the change: rank fusion with no cut made the halves symmetric by rank and rewarded
+overlap — melio 4 → 7 keyword-only and 7 → 13 in both, bill.com 26 → 32 pages, tipalti 21 → 15
+keyword-only — and reordered tipalti's first eight to put a guide and `company/reviews` above the
+product pages. Decision 11 is closed.
 
 **F21. Crawler counters that nothing increments** (`Geek-Crawler-v2/tests/KNOWN_GAPS.md`):
 `enqueueSuppressedQueue`, `browserRenders`, and `pagesWithoutContent` — the last reads 0 in

@@ -149,7 +149,8 @@ class QueryService:
         # exact substring test of the whole question, so it returned nothing for four of five Ramp
         # questions, and what it did return came in storage order under made-up scores. The ranked
         # keyword signal is the sparse BM25 half of the hybrid query, fused with the meaning half
-        # inside Qdrant (relative score fusion, alpha 0.5); the order of `candidates` is that fusion.
+        # by reciprocal rank (`llama_engine.logged_rank_fusion`, since 2026-10-08; min-max relative
+        # score before that) over the whole union; the order of `candidates` is that fusion.
         candidates = _candidates(dense_nodes)
         if not candidates:
             warning = f"No chunks for runId={request.run_id}; notify-and-skip research"
@@ -161,10 +162,14 @@ class QueryService:
                 retrieval="empty",
             )
 
-        pool_n = min(
-            len(candidates),
-            max(request.top_k * 2, self._settings.rerank_pool_size),
-        )
+        # The pool is every candidate unless something re-ranks it. The cap exists for Cohere, a
+        # paid call per document; applied with the reranker off, as it was until 2026-10-08, it
+        # only repeated the fusion's cut in the fusion's order (HANDOFF 9b). The page-diverse
+        # selection below reads the whole union.
+        if self._reranker.enabled:
+            pool_n = min(len(candidates), max(request.top_k * 2, self._settings.rerank_pool_size))
+        else:
+            pool_n = len(candidates)
         pool = candidates[:pool_n]
         collapse_parents = _should_collapse_parents(request)
         rerank_docs = [

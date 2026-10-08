@@ -285,19 +285,15 @@ nothing.
 
 ### X12 — Library (Geek-Crawler-Rag) — F19, F20, F22
 
-**First, the fusion cut and the order rule (decision 11; measured in `HANDOFF.md` §9b).** Today
-`dense_query` fetches `max(topK·2, 30)` per half and LlamaIndex cuts the fused union at that same
-number by min-max relative score, so 7–34 keyword-only and 12–44 meaning-only chunks per query are
-dropped by curve shape before selection. Three separable changes, each a few lines in
-`llama_engine.py` / `query.py`, each measurable with the §9b script: (a) `hybrid_top_k` = the
-union, so nothing is dropped at fusion; (b) the order rule — keep relative score, or reciprocal
-rank fusion over the two halves (parity by rank, overlap rewarded, Qdrant's own default), as a
-replacement of `logged_relative_score_fusion`'s inner call with the composition logging kept;
-(c) the pool when the reranker is off = the union, so `query.py` drops nothing either; the Cohere
-pool cap (`rerank_pool_size`) applies only when the reranker is on. **Done when** the nine §9b
-questions are re-run on the deployed code and the table is appended to §9b; `hybrid_halves`
-reports `dropped=0/0` under (a)+(c); the first eight on tipalti and the reconciliation row are
-read by Jeff.
+**The fusion cut and the order rule — built 2026-10-08 evening (decision 11, closed).** Until then
+`dense_query` fetched `max(topK·2, 30)` per half and LlamaIndex cut the fused union at that same
+number by min-max relative score, so 7–34 keyword-only and 12–44 meaning-only chunks per query were
+dropped by curve shape before selection. Built, on the first real run's lines (HANDOFF §9b):
+(a) `hybrid_top_k` = both fetches, nothing dropped at fusion; (b) reciprocal rank fusion, k 60, in
+`logged_rank_fusion` with the composition logging kept — the "LlamaIndex's, unchanged" test
+reversed on purpose; (c) the pool is the whole union unless the Cohere reranker is on. Remaining
+done-when: the nine §9b questions re-run on the deployed code and appended to §9b, and the first
+eight on tipalti and the reconciliation row read by Jeff.
 
 **Then.** R3's first half: the exact-text and sibling collapse run inside the ranked list before
 the pool cut (`query.py:164-168` cuts, 372-384 collapses after), so the pool holds `max(topK·2, 40)`
@@ -358,7 +354,7 @@ still stand and are not repeated here.
 | 8 | X10d: the six chunks per page — six best-scored or six earliest | Six best-scored |
 | 9 | X12: the `minQuality` 0.55 floor | Keep, documented; an untitled blockless page under 2,000 characters is not evidence |
 | 10 | X13: per-directory breakdown of `refused.directoryCap` | Yes, as a map in the ledger — cheap, and it is the number C2 asks for |
-| 11 | X12: the fusion — (a) no cut at fusion, (b) relative score or rank fusion, (c) pool = union when the reranker is off | (a) and (c) now: dropping half the union before selection by curve shape is a defect whichever order rule stands. (b) rank fusion: a keyword hit at rank r is always worth a meaning hit at rank r and the overlap is rewarded; min-max hands the share to whichever curve is flatter that query. Measured on nine questions (§9b); read the two first-eight lists before deciding |
+| 11 | X12: the fusion — (a) no cut at fusion, (b) relative score or rank fusion, (c) pool = union when the reranker is off | **Taken and built 2026-10-08 evening** — all three, on Jeff's "do whatever necessary" after the first real run's lines (HANDOFF §9b). The first-eight lists on tipalti and the reconciliation row are still his to read |
 
 ## Status
 

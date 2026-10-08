@@ -24,7 +24,7 @@ from llama_index.vector_stores.qdrant import QdrantVectorStore
 from qdrant_client import AsyncQdrantClient
 
 from geek_crawler_rag.config import Settings
-from geek_crawler_rag.llama_engine import LlamaIndexEngine, logged_relative_score_fusion
+from geek_crawler_rag.llama_engine import LlamaIndexEngine, logged_rank_fusion
 from geek_crawler_rag.qdrant_store import SPARSE_VECTOR_NAME
 
 
@@ -122,7 +122,7 @@ async def test_dense_query_runs_both_halves_against_a_real_store(engine, caplog)
         sparse_vector_name=SPARSE_VECTOR_NAME,
         sparse_doc_fn=_sparse_by_token,
         sparse_query_fn=_sparse_by_token,
-        hybrid_fusion_fn=logged_relative_score_fusion,
+        hybrid_fusion_fn=logged_rank_fusion,
         text_key="text",
     )
     common = {"runId": "run-1", "ownerId": "system:crawler", "visibility": "service", "language": "en"}
